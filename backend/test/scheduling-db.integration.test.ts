@@ -56,7 +56,6 @@ const at = (date: string, time: string) => {
     return r.value;
 };
 const MON_0900 = at(MONDAY, "09:00");
-const RUN_DATE = instantToLocal(MON_0900 + 5 * DAY, TZ).date; // the Saturday after
 
 type Hook = { op: string; phase: "before" | "after"; run: () => unknown; when?: (input: any) => boolean };
 
@@ -128,7 +127,7 @@ function must<T>(r: { ok: true; value: T } | { ok: false; error: unknown }): T {
     if (!r.ok) throw new Error(`expected ok, got ${JSON.stringify(r.error)}`);
     return r.value;
 }
-const person = (email: string, language?: string): Person => ({ email, name: "Test Person", ...(language ? { language } : {}) });
+const person = (email: string): Person => ({ email, name: "Test Person" });
 const admin = { kind: "admin" as const, email: "owner@studio.example" };
 const customer = { kind: "customer" as const };
 
@@ -140,18 +139,6 @@ async function seedSlots(store: sdb.SchedulingStore, t: string, services = [{ id
 }
 const holdSlot = (store: sdb.SchedulingStore, t: string, start: number, who: Person, extra: Partial<sdb.SlotHoldInput> = {}) =>
     sdb.holdSlot(store, { tenantId: t, serviceId: "svc60", start, who, intentId: randomUUID(), fingerprint: "fp", settings, now: NOW, ...extra });
-
-async function seedRun(store: sdb.SchedulingStore, t: string, capacity: number, trainerId?: string, meetings?: any[], now = NOW) {
-    await sdb.putCourse(store, t, { id: "c1", name: "Course", defaultCapacity: 8, languages: ["ro", "en"] });
-    const trainer = trainerId ?? (await sdb.createResource(store, t, "Trainer")).id;
-    const run = must(await sdb.createRun(store, {
-        tenantId: t, courseId: "c1", timezone: TZ, capacity, trainerIds: [trainer], language: { kind: "notSet" },
-        meetings: meetings ?? [{ date: RUN_DATE, start: "10:00", end: "13:00" }], now,
-    }));
-    return { run, trainerId: trainer };
-}
-const holdSeat = (store: sdb.SchedulingStore, t: string, runId: string, who: Person, extra: Partial<sdb.SeatHoldInput> = {}) =>
-    sdb.holdSeat(store, { tenantId: t, courseId: "c1", runId, who, intentId: randomUUID(), fingerprint: "fp", settings, now: NOW, ...extra });
 
 async function partition(t: string): Promise<Record<string, any>[]> {
     const out: Record<string, any>[] = [];
@@ -172,16 +159,7 @@ const isRelease = (u: any) => u.UpdateExpression === "REMOVE #r";
 const tokensOf = async (t: string, bookingId: string) => (await partition(t)).filter((i) => i.SK.startsWith("TOKEN#") && i.bookingId === bookingId);
 
 describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped without SCHEDULING_TABLE_NAME)", () => {
-    // ---- capacity, overlap, expiry, language, moves -------------------------------------------------------------
-
-    rowTest("C1 — 20 parallel seat holds, 1 free seat: exactly 1 success, 19 runFull; active count = capacity", async (t, { store }) => {
-        const { run } = await seedRun(store, t, 1);
-        const results = await settleAll(Array.from({ length: 20 }, (_, i) => holdSeat(store, t, run.id, person(`v${i}@example.com`))));
-        expect(results.filter((r) => r.ok)).toHaveLength(1);
-        expect(results.filter((r) => !r.ok).map((r) => (r as any).error)).toEqual(Array(19).fill({ kind: "runFull", capacity: 1 }));
-        expect(Object.keys((await sdb.getRun(store, t, "c1", run.id, true))!.seats)).toHaveLength(1);
-        expect((await partition(t)).filter((i) => i.SK.startsWith("BOOKING#"))).toHaveLength(1);
-    });
+    // ---- overlap, expiry, moves ---------------------------------------------------------------------------------
 
     rowTest("C2 — parallel slot holds 60 min at 09:00 and 30 min at 09:30, one resource: exactly 1 success, the other slotTaken", async (t, { store }) => {
         await seedSlots(store, t, [{ id: "svc60", durationMin: 60 }, { id: "svc30", durationMin: 30 }]);
@@ -191,24 +169,6 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         ]);
         expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
         expect(a.ok ? b : a).toEqual({ ok: false, error: { kind: "slotTaken" } });
-    });
-
-    rowTest("C3 seat (a) — A's confirm (clock X − 2 s) commits first; B's hold (clock X + 2 s) → runFull", async (t, { store, on }) => {
-        const { run } = await seedRun(store, t, 1);
-        const A = must(await holdSeat(store, t, run.id, person("a@example.com"))).booking;
-        const X = A.heldUntil!;
-        on("TransactWriteCommand", "before", async () => { must(await sdb.confirmBooking(store, t, A.id, X - 2000)); });
-        expect(await holdSeat(store, t, run.id, person("b@example.com"), { now: X + 2000 })).toEqual({ ok: false, error: { kind: "runFull", capacity: 1 } });
-        expect(Object.keys((await sdb.getRun(store, t, "c1", run.id, true))!.seats)).toEqual([A.id]);
-    });
-
-    rowTest("C3 seat (b) — B's hold (clock X + 2 s) commits first, removing A; A's confirm (clock X − 2 s) → expired", async (t, { store, on }) => {
-        const { run } = await seedRun(store, t, 1);
-        const A = must(await holdSeat(store, t, run.id, person("a@example.com"))).booking;
-        const X = A.heldUntil!;
-        on("TransactWriteCommand", "before", async () => { must(await holdSeat(store, t, run.id, person("b@example.com"), { now: X + 2000 })); });
-        expect(await sdb.confirmBooking(store, t, A.id, X - 2000)).toEqual({ ok: false, error: { kind: "expired", at: X } });
-        expect(Object.keys((await sdb.getRun(store, t, "c1", run.id, true))!.seats)).toHaveLength(1);
     });
 
     rowTest("C3 slot (a) — A's confirm (clock X − 2 s) commits first; B's overlapping hold (clock X + 2 s) → slotTaken", async (t, { store, on }) => {
@@ -232,20 +192,12 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         expect(Object.keys(day.entries)).not.toContain(A.id);
     });
 
-    rowTest("C9 — two first enrolments ro / en on a notSet run: one wins; the other languageMismatch", async (t, { store }) => {
-        const { run } = await seedRun(store, t, 8);
-        const [ro, en] = await settleAll([holdSeat(store, t, run.id, person("ro@example.com", "ro")), holdSeat(store, t, run.id, person("en@example.com", "en"))]);
-        expect([ro.ok, en.ok].filter(Boolean)).toHaveLength(1);
-        expect((ro.ok ? en : ro) as any).toMatchObject({ ok: false, error: { kind: "languageMismatch" } });
-    });
-
     rowTest("C10 — two admin moves of one booking at once with the same rev: one commits, the other stale", async (t, { store }) => {
-        const { run, trainerId } = await seedRun(store, t, 8);
-        const { run: run2 } = await seedRun(store, t, 8, trainerId);
-        const b = must(await sdb.createManualSeat(store, { tenantId: t, courseId: "c1", runId: run.id, who: person("p@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        const r = await seedSlots(store, t);
+        const b = must(await sdb.createManualAppointment(store, { tenantId: t, serviceId: "svc60", resourceId: r, start: MON_0900, who: person("p@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
         const [m1, m2] = await settleAll([
-            sdb.moveSeat(store, { tenantId: t, bookingId: b.id, runId: run2.id, actor: admin, cutoffHours: 24, now: NOW, expectedRev: b.rev }),
-            sdb.moveSeat(store, { tenantId: t, bookingId: b.id, runId: null, actor: admin, cutoffHours: 24, now: NOW, expectedRev: b.rev }),
+            sdb.moveSlot(store, { tenantId: t, bookingId: b.id, start: MON_0900 + HOUR, resourceIds: [r], actor: admin, settings, now: NOW, expectedRev: b.rev }),
+            sdb.moveSlot(store, { tenantId: t, bookingId: b.id, start: MON_0900 + 2 * HOUR, resourceIds: [r], actor: admin, settings, now: NOW, expectedRev: b.rev }),
         ]);
         expect([m1, m2].filter((r) => r.ok)).toHaveLength(1);
         expect([m1, m2].find((r) => !r.ok)).toEqual({ ok: false, error: { kind: "stale" } });
@@ -256,7 +208,7 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
     rowTest("C11 (a) hold first — the hold commits; the removal → resourceInUse; the fence is released", async (t, { store }) => {
         const r = await seedSlots(store, t);
         must(await holdSlot(store, t, MON_0900, person("a@example.com")));
-        expect(await sdb.removeResource(store, t, r, NOW)).toEqual({ ok: false, error: { kind: "resourceInUse", activeBookings: 1, runs: 0 } });
+        expect(await sdb.removeResource(store, t, r, NOW)).toEqual({ ok: false, error: { kind: "resourceInUse", activeBookings: 1 } });
         expect((await sdb.getResource(store, t, r, true))!.retiring).toBeUndefined();
     });
 
@@ -284,21 +236,6 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         expect((await partition(t)).filter((i) => i.SK.startsWith("BOOKING#"))).toEqual([]);
     });
 
-    rowTest("C11 (c) trainer change first — commits; the removal of the new trainer → resourceInUse", async (t, { store }) => {
-        const { run } = await seedRun(store, t, 8);
-        const r2 = (await sdb.createResource(store, t, "R2")).id;
-        must(await sdb.updateRun(store, t, "c1", run.id, { trainerIds: [r2] }, NOW));
-        expect(await sdb.removeResource(store, t, r2, NOW)).toMatchObject({ ok: false, error: { kind: "resourceInUse", runs: 1 } });
-    });
-
-    rowTest("C11 (c) removal first — completes before the trainer change commits → resourceUnavailable; trainers unchanged", async (t, { store, on }) => {
-        const { run, trainerId } = await seedRun(store, t, 8);
-        const r3 = (await sdb.createResource(store, t, "R3")).id;
-        on("TransactWriteCommand", "before", async () => { must(await sdb.removeResource(store, t, r3, NOW)); });
-        expect(await sdb.updateRun(store, t, "c1", run.id, { trainerIds: [r3] }, NOW)).toEqual({ ok: false, error: { kind: "resourceUnavailable" } });
-        expect((await sdb.getRun(store, t, "c1", run.id, true))!.trainerIds).toEqual([trainerId]);
-    });
-
     rowTest("C11 (d) — two removal requests at once: one 204, the other resourceRemovalInProgress", async (t, { store }) => {
         const r = (await sdb.createResource(store, t, "R")).id;
         const results = await settleAll([sdb.removeResource(store, t, r, NOW), sdb.removeResource(store, t, r, NOW)]);
@@ -323,27 +260,13 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         expect((await sdb.getResource(store, t, r, true))!.retiring).toEqual({ attemptId: "B", at: NOW + 11 * MIN });
     });
 
-    const pastMeetings = () => [{ date: instantToLocal(NOW - 10 * DAY, TZ).date, start: "10:00", end: "12:00" }];
-
-    rowTest("C11 (g) move first — an ended run moved to future dates; the removal of its trainer → resourceInUse", async (t, { store }) => {
-        const { run, trainerId } = await seedRun(store, t, 8, undefined, pastMeetings(), NOW - 30 * DAY);
-        must(await sdb.moveRun(store, t, "c1", run.id, [{ date: RUN_DATE, start: "10:00", end: "12:00" }], NOW));
-        expect(await sdb.removeResource(store, t, trainerId, NOW)).toMatchObject({ ok: false, error: { kind: "resourceInUse", runs: 1 } });
-    });
-
-    rowTest("C11 (g) removal first — completes before the move commits → resourceUnavailable; meetings unchanged", async (t, { store, on }) => {
-        const { run, trainerId } = await seedRun(store, t, 8, undefined, pastMeetings(), NOW - 30 * DAY);
-        on("TransactWriteCommand", "before", async () => { must(await sdb.removeResource(store, t, trainerId, NOW)); });
-        expect(await sdb.moveRun(store, t, "c1", run.id, [{ date: RUN_DATE, start: "10:00", end: "12:00" }], NOW)).toEqual({ ok: false, error: { kind: "resourceUnavailable" } });
-        expect((await sdb.getRun(store, t, "c1", run.id, true))!.meetings).toEqual(pastMeetings());
-    });
 
     // ---- erasure, tokens ----------------------------------------------------------------------------------------
 
     rowTest("C13 — erasure while a hold for the same email commits after step 1: remaining 1; a second run → 0", async (t, { store, on }) => {
-        const { run } = await seedRun(store, t, 8);
-        must(await holdSeat(store, t, run.id, person("ana@example.com")));
-        on("GetCommand", "before", async () => { must(await holdSeat(store, t, run.id, person("ana@example.com"))); }, (g) => g.Key.SK.startsWith("BOOKING#"));
+        await seedSlots(store, t);
+        must(await holdSlot(store, t, MON_0900, person("ana@example.com")));
+        on("GetCommand", "before", async () => { must(await holdSlot(store, t, MON_0900 + HOUR, person("ana@example.com"))); }, (g) => g.Key.SK.startsWith("BOOKING#"));
         expect(must(await sdb.eraseCustomer(store, t, "ana@example.com", NOW))).toEqual({ removedBookings: 1, remainingBookings: 1 });
         expect(must(await sdb.eraseCustomer(store, t, "ana@example.com", NOW))).toEqual({ removedBookings: 1, remainingBookings: 0 });
     });
@@ -546,22 +469,5 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         on("PutCommand", "before", () => sdb.deleteService(store, t, "svc1"));
         expect(await sdb.replaceService(store, t, { ...svc, name: "Renamed" })).toEqual({ ok: false, error: { kind: "notFound" } });
         expect(await sdb.getService(store, t, "svc1", true)).toBeUndefined();
-    });
-
-    rowTest("SCHED-1F1 store rulings: a dependent written between deleteCourse's checks and its Delete refuses the delete (the version condition on the real table); replaceCourse does not re-create a deleted course; cancelRun returns the run snapshot and clearCancelledRunTokens runs after it", async (t, { store, on }) => {
-        await sdb.putCourse(store, t, { id: "c1", name: "Course", defaultCapacity: 8, languages: ["ro", "en"] });
-        on("DeleteCommand", "before", async () => {
-            must(await sdb.createManualSeat(store, { tenantId: t, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
-        });
-        expect(await sdb.deleteCourse(store, t, "c1")).toEqual({ ok: false, error: { kind: "courseInUse" } });
-        expect(await sdb.getCourse(store, t, "c1", true)).toBeDefined();
-        expect((await sdb.listCourses(store, t, true)).map((c) => c.id)).toEqual(["c1"]);
-        const { run } = await seedRun(store, t, 2);
-        const result = must(await sdb.cancelRun(store, t, "c1", run.id, admin.email, NOW));
-        expect(result.run.id).toBe(run.id);
-        expect(await sdb.clearCancelledRunTokens(store, t, result.cancelled, NOW)).toEqual({ failed: [] });
-        on("UpdateCommand", "before", () => doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: sdb.schedulingKeys.pk(t), SK: "COURSE#c1" } })));
-        expect(await sdb.replaceCourse(store, t, { id: "c1", name: "Renamed", defaultCapacity: 8, languages: [] })).toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(await sdb.getCourse(store, t, "c1", true)).toBeUndefined();
     });
 });

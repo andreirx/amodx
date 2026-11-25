@@ -14,25 +14,16 @@
  *   `storedDataInvalid`, § 10.2); a broken invariant or caller precondition throws `Error`.
  *
  * Two version rules (§ 7.1), applied by one loop (`versioned`):
- * - container rule: `RESDAY#`, `RUN#` (its `seats`) and `HOLDS#` are read consistently and written with
- *   `v = :v + 1` under `v = :v` (or `attribute_not_exists(SK)`). Every write that reads a container's entries to
- *   decide or to count rewrites the whole map in that update, without the entries its own clock counts as
- *   expired. The one container write that reads no entry, `updateRun` (capacity, trainers, language, link,
- *   open/closed), bumps `v` and leaves `seats` as stored;
+ * - container rule: `RESDAY#` and `HOLDS#` are read consistently and written with `v = :v + 1` under `v = :v` (or
+ *   `attribute_not_exists(SK)`). Every write that reads a container's entries to decide or to count rewrites the
+ *   whole map in that update, without the entries its own clock counts as expired;
  * - booking rule: every change of a booking's `what`, `state` or `tokenHashes` is conditioned on
  *   `attribute_exists(SK) AND rev = :rev` and sets `rev = :rev + 1`; a change of `what` or `state` appends its
  *   `history` entry in the same update. The update sets only the attributes the change names (`changed()`), never
  *   a read copy of another attribute.
  * Reads that a write decides on use `ConsistentRead` (§ 6.4 rule 4); the display reads (`readIntervals`,
- * `listRuns(…, false)`, `getBookingViews`, `listResources(…, false)`, …) do not.
- * Course dependents (SCHED-1F1 ruling S1F1-COURSE-DELETE-GUARD): the `COURSE#` item carries a version `v`; every
- * write that gives a course a new dependent (a run, or an `UNPLACED#` booking) raises it in its own transaction
- * (`courseDependent`), and `deleteCourse` deletes only under the version it read after its consistent checks.
+ * `getBookingViews`, `listResources(…, false)`, …) do not.
  * Transactions: each booking or container change is ONE `TransactWriteItems`. Not single transactions by design:
- * `cancelRun` (one run transaction, returned as the committed result; the token cleanup of the bookings it cancelled
- * is the separate `clearCancelledRunTokens`, one transaction per booking, called by the handler AFTER its audit —
- * ruling S1F1-CANCEL-OUTCOME, review S1F1-R02; a cleanup failure is reported, never thrown), `deleteCourse` (consistent
- * checks, then one conditional Delete),
  * `removeResource` (fence UpdateItem, check reads, release UpdateItem or delete transaction, § 13), the
  * per-booking transactions of `cleanupExpiredHolds` and `eraseCustomer` (§ 14), and the single-item writes
  * `markHoldMail`, `markWeekMailSent`, `claimWeekMail`, `editResourceDays` (Put) and configuration Puts.
@@ -44,8 +35,18 @@
  *   with the in-memory fake; the integration test with a staging client); axis: none — a parameter object, not an
  *   interface (rejected: a module-level client + env const as `lib/db.ts`, which a unit test cannot replace).
  * - `versioned` + `Tagged<R>` (the § 7.1 "container write") — users: every transaction of § 7, § 8.4, § 14;
- *   axis: operations fixed, three container kinds as a closed sum (`ContainerKey`, exhaustive `switch`);
+ *   axis: operations fixed, two container kinds as a closed sum (`ContainerWrite`, exhaustive `switch`);
  *   rejected: one hand-written read/condition/retry/reason loop per operation.
+ * - `StoredBooking` (SCHED-GROUPS-REMOVE-1) — users: `getBooking`, `cleanupExpiredHolds`, `eraseCustomer`; axis:
+ *   variants fixed (a slot, or a stored item of the removed group shape), sum + exhaustive `switch`; rejected: keeping the
+ *   removed group variants in `BookingSchema` (the group types would stay on `main`).
+ *
+ * Stored items of the removed group shape (SCHED-GROUPS-REMOVE-1; code on branch `archive/group-scheduling-2026-11`):
+ * a `BOOKING#` whose `what.kind` is `"seat"` or `"unplaced"` is never parsed as a `Booking`. Every reader treats it as absent
+ * (`getBooking` → `undefined`), except the two removals of customer data, which delete its item set (`BOOKING#`,
+ * `CUST#`, `HELD#`, `INTENT#`, listed `TOKEN#`): `cleanupExpiredHolds` (§ 14.1) and `eraseCustomer` (§ 14.2). The
+ * other items of that shape (`COURSE#`, `RUN#`, `RUNSPAN#`, `UNPLACED#`) are not read by any code; they hold no
+ * person's name, email or phone.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
@@ -54,15 +55,13 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import {
-    AvailabilityRulesSchema, BookingSchema, CourseSchema, DayOverridesSchema, ResDayEntrySchema, ResourceSchema,
-    RunSchema, SeatEntrySchema, ServiceSchema,
-    activeEntries, activeSeats, appendHistory, cancelRunEffects, changeDecision, confirmDecision, editDays,
-    holdExpiry, lastBookableDate, normalizeEmail, overlapCheck, seatDecision, slotDecision, validateMeetings,
-    localToInstant,
+    AvailabilityRulesSchema, BookingSchema, DayOverridesSchema, ResDayEntrySchema, ResourceSchema, ServiceSchema,
+    activeEntries, appendHistory, changeDecision, confirmDecision, editDays,
+    holdExpiry, lastBookableDate, normalizeEmail, overlapCheck, slotDecision,
     type Actor, type AvailabilityRule, type Booking, type BookingWhat, type ChangeRefusal, type ConfirmRefusal,
-    type ContainerEntry, type Course, type DayOverrides, type DaysEdit, type DaysEditError, type HistoryEntry,
-    type Instant, type LocalDate, type Meeting, type MeetingError, type Person, type Placement, type Resource,
-    type Result, type RunLanguage, type SeatEntry, type SeatRefusal, type Service, type SlotRefusal,
+    type ContainerEntry, type DayOverrides, type DaysEdit, type DaysEditError, type HistoryEntry,
+    type Instant, type LocalDate, type Person, type Placement, type Resource,
+    type Result, type Service, type SlotRefusal,
     type TimeZone,
 } from "@amodx/shared";
 import { db } from "./db.js";
@@ -121,7 +120,6 @@ const ADDRESS_LIMIT_PER_HOUR = 20; // § 4.5
 const CLEANUP_AGE_MS = 7 * DAY_MS; // § 14.1
 const FENCE_TAKEOVER_MS = 10 * MINUTE_MS; // § 13
 const TRANSACTION_ITEM_LIMIT = 100;
-const UNPLACED_PAGE = 100;         // § 10.3 AP8 page
 
 export function sha256hex(text: string): string {
     return createHash("sha256").update(text).digest("hex");
@@ -170,17 +168,12 @@ export const schedulingKeys = {
     service: (serviceId: string) => `SERVICE#${part(serviceId, "serviceId")}`,
     availability: (resourceId: string) => `AVAILABILITY#${part(resourceId, "resourceId")}`,
     days: (resourceId: string) => `DAYS#${part(resourceId, "resourceId")}`,
-    course: (courseId: string) => `COURSE#${part(courseId, "courseId")}`,
-    run: (courseId: string, runId: string) => `RUN#${part(courseId, "courseId")}#${part(runId, "runId")}`,
-    runSpan: (lastEndIso: string, courseId: string, runId: string) =>
-        `RUNSPAN#${lastEndIso}#${part(courseId, "courseId")}#${part(runId, "runId")}`,
     resDay: (resourceId: string, date: string) => `RESDAY#${part(resourceId, "resourceId")}#${date}`,
     booking: (bookingId: string) => `BOOKING#${part(bookingId, "bookingId")}`,
     token: (hash: string) => `TOKEN#${hash}`,
     /** The email is the `normalizeEmail()` form (stored `Person.email`); the booking id is the last segment. */
     cust: (email: string, bookingId: string) => `CUST#${email}#${part(bookingId, "bookingId")}`,
     held: (expiresAt: Instant, bookingId: string) => `HELD#${iso(expiresAt)}#${part(bookingId, "bookingId")}`,
-    unplaced: (courseId: string, bookingId: string) => `UNPLACED#${part(courseId, "courseId")}#${part(bookingId, "bookingId")}`,
     holds: (emailHash: string) => `HOLDS#${emailHash}`,
     intent: (intentId: string) => `INTENT#${part(intentId, "intentId")}`,
     limitEmail: (emailHash: string, hour: number) => `LIMIT#EMAIL#${emailHash}#${hour}`,
@@ -201,12 +194,6 @@ const key = (tenantId: string, sk: string): Key => ({ PK: K.pk(tenantId), SK: sk
 
 const VersionSchema = z.number().int().min(1);
 const ResDayItemSchema = z.object({ v: VersionSchema, entries: z.record(z.string(), ResDayEntrySchema) });
-const RunItemSchema = RunSchema.extend({
-    v: VersionSchema,
-    seats: z.record(z.string(), SeatEntrySchema),
-    firstStartIso: z.string(),
-    lastEndIso: z.string(),
-});
 const HoldsItemSchema = z.object({ v: VersionSchema, entries: z.record(z.string(), z.object({ x: z.number().int() })) });
 const DaysItemSchema = z.object({ v: VersionSchema, days: DayOverridesSchema });
 const AvailabilityItemSchema = z.object({ rules: AvailabilityRulesSchema });
@@ -214,7 +201,6 @@ const IntentItemSchema = z.object({ fingerprint: z.string(), bookingId: z.string
 const TokenItemSchema = z.object({ bookingId: z.string().min(1) });
 
 export type ResDayEntry = z.infer<typeof ResDayEntrySchema>;
-export type RunRecord = z.infer<typeof RunItemSchema>;
 
 function decode<S extends z.ZodType>(schema: S, item: Record<string, unknown>, sk: string): z.output<S> {
     const parsed = schema.safeParse(item);
@@ -436,7 +422,7 @@ function resourceGuard(store: SchedulingStore, tenantId: string, resourceId: str
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Containers (§ 6.2, § 7.1): RESDAY#, RUN# seats, HOLDS#. A closed sum; one writer builds each kind's update.
+// Containers (§ 6.2, § 7.1): RESDAY#, HOLDS#. A closed sum; one writer builds each kind's update.
 // ---------------------------------------------------------------------------------------------------------------
 
 /** A container read: `v` absent = the item does not exist (the write then conditions on `attribute_not_exists`). */
@@ -445,8 +431,6 @@ type HoldsSnapshot = { emailHash: string; v?: number; entries: Record<string, { 
 
 type ContainerWrite =
     | { kind: "resDay"; snap: ResDaySnapshot; entries: Record<string, ResDayEntry>; entryX?: { bookingId: string; x: Instant } }
-    | { kind: "run"; run: RunRecord; seats: Record<string, SeatEntry>; set?: Record<string, unknown>;
-        entryX?: { bookingId: string; x: Instant }; requireOpen?: boolean }
     | { kind: "holds"; snap: HoldsSnapshot; entries: Record<string, { x: Instant }>; now: Instant };
 
 /**
@@ -465,14 +449,6 @@ function containerUpdate(store: SchedulingStore, tenantId: string, w: ContainerW
             version = w.snap.v;
             sets.push(`${e.path("entries")} = ${e.value(w.entries)}`);
             if (w.entryX) conditions.push(`${e.path("entries", w.entryX.bookingId, "x")} = ${e.value(w.entryX.x)}`);
-            break;
-        case "run":
-            sk = K.run(w.run.courseId, w.run.id);
-            version = w.run.v;
-            sets.push(`${e.path("seats")} = ${e.value(w.seats)}`);
-            for (const [name, value] of Object.entries(w.set ?? {})) sets.push(`${e.path(name)} = ${e.value(value)}`);
-            if (w.entryX) conditions.push(`${e.path("seats", w.entryX.bookingId, "x")} = ${e.value(w.entryX.x)}`);
-            if (w.requireOpen) conditions.push(`${e.path("status")} = ${e.value("open")}`);
             break;
         case "holds": {
             sk = K.holds(w.snap.emailHash);
@@ -560,9 +536,7 @@ export function emailHash(email: string): string {
 function placementOf(what: BookingWhat): Placement {
     switch (what.kind) {
         case "slot": return { kind: "slot", resourceId: what.resourceId, start: what.start, end: what.end };
-        case "seat": return { kind: "seat", runId: what.runId };
-        case "unplaced": return { kind: "unplaced" };
-        default: return assertNever(what);
+        default: return assertNever(what.kind);
     }
 }
 
@@ -641,12 +615,48 @@ function limitCounter<R>(store: SchedulingStore, tenantId: string, sk: string, m
 // Reads (§ 6.3)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** AP1. `consistent` for reads a write decides on (§ 6.4 rule 4). */
-export async function getBooking(store: SchedulingStore, tenantId: string, bookingId: string, consistent: boolean)
-    : Promise<Booking | undefined> {
+/**
+ * The attributes that locate a booking's item set (§ 6.1) and its state. Common to every stored `BOOKING#`, whatever
+ * its `what`; the removals of customer data (§ 14) need nothing else.
+ */
+const BookingItemSetSchema = BookingSchema.pick({ id: true, rev: true, state: true, who: true, tokenHashes: true, intentId: true, heldUntil: true });
+type BookingItemSet = z.infer<typeof BookingItemSetSchema>;
+
+/** The two `what.kind` values of the removed group shape (SCHED-GROUPS-REMOVE-1) that a stored `BOOKING#` can carry. */
+const REMOVED_GROUP_KINDS: readonly unknown[] = ["seat", "unplaced"];
+
+/**
+ * One stored `BOOKING#`, by its `what.kind` checked BEFORE parsing: `"seat"` or `"unplaced"` (the removed group shape)
+ * → only its item set; anything else → the whole `Booking`. So a broken item (no `what`, an unknown kind, a slot that
+ * fails its schema) still throws `StoredDataInvalidError` (§ 10.2: never read as absent), as does a group item whose
+ * item set fails its schema.
+ */
+type StoredBooking = { kind: "slot"; booking: Booking } | { kind: "removedGroupShape"; itemSet: BookingItemSet };
+
+async function readStoredBooking(store: SchedulingStore, tenantId: string, bookingId: string, consistent: boolean)
+    : Promise<StoredBooking | undefined> {
     const sk = K.booking(bookingId);
     const item = await getItem(store, tenantId, sk, consistent);
-    return item === undefined ? undefined : decode(BookingSchema, item, sk);
+    if (item === undefined) return undefined;
+    const what = item.what as { kind?: unknown } | undefined;
+    return REMOVED_GROUP_KINDS.includes(what?.kind)
+        ? { kind: "removedGroupShape", itemSet: decode(BookingItemSetSchema, item, sk) }
+        : { kind: "slot", booking: decode(BookingSchema, item, sk) };
+}
+
+/**
+ * AP1. `consistent` for reads a write decides on (§ 6.4 rule 4). A stored booking of the removed group shape reads as
+ * absent: every route then answers as for an unknown booking (404).
+ */
+export async function getBooking(store: SchedulingStore, tenantId: string, bookingId: string, consistent: boolean)
+    : Promise<Booking | undefined> {
+    const stored = await readStoredBooking(store, tenantId, bookingId, consistent);
+    if (stored === undefined) return undefined;
+    switch (stored.kind) {
+        case "slot": return stored.booking;
+        case "removedGroupShape": return undefined;
+        default: return assertNever(stored);
+    }
 }
 
 /**
@@ -687,86 +697,27 @@ export async function readIntervals(store: SchedulingStore, tenantId: string, re
     return activeEntries(raw, span, now);
 }
 
-/**
- * AP4: runs of a course (admin list, proposal; `seats` is returned for counting only; DTOs carry counts).
- * `consistent`: `true` for a read that decides a write (the `languageInUse` check of a course update), `false` for
- * displays.
- */
-export async function listRuns(store: SchedulingStore, tenantId: string, courseId: string, consistent: boolean): Promise<RunRecord[]> {
-    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `RUN#${part(courseId, "courseId")}#` },
-        RUN_ATTRIBUTES, consistent);
-    return items.map((item) => decode(RunItemSchema, item, String(item.SK)));
-}
-
-const RUN_ATTRIBUTES = ["SK", "id", "courseId", "meetings", "timezone", "capacity", "trainerIds", "language",
-    "groupLink", "status", "firstStartIso", "lastEndIso", "v", "seats"];
-
-/** AP5 (consistent for a seat write; `consistent: false` for displays). */
-export async function getRun(store: SchedulingStore, tenantId: string, courseId: string, runId: string, consistent: boolean)
-    : Promise<RunRecord | undefined> {
-    const sk = K.run(courseId, runId);
-    const item = await getItem(store, tenantId, sk, consistent);
-    return item === undefined ? undefined : decode(RunItemSchema, item, sk);
-}
-
-/** The AP6 projection of a run (feed, reminders, trainer check): never a copy for `status` or `trainerIds`. */
-const RunSpanViewSchema = z.object({
-    SK: z.string(), status: RunSchema.shape.status, trainerIds: RunSchema.shape.trainerIds,
-    meetings: RunSchema.shape.meetings, timezone: RunSchema.shape.timezone, firstStartIso: z.string(),
-    seats: z.record(z.string(), SeatEntrySchema),
-});
-export type RunSpanView = z.infer<typeof RunSpanViewSchema> & { courseId: string; runId: string };
-
-/**
- * AP6: runs whose last meeting ends at or after `t`, kept when their first meeting starts at or before
- * `windowEnd` (a run that started before a window and still has meetings inside it is found, row C17).
- * `windowEnd: null` keeps every run not ended (the removal check of § 13).
- */
-export async function runsNotEndedBy(store: SchedulingStore, tenantId: string, t: Instant, windowEnd: Instant | null,
-    consistent: boolean): Promise<Result<RunSpanView[], Busy>> {
-    const spans = await queryAll(store, tenantId, { kind: "between", low: `RUNSPAN#${iso(t)}`, high: `RUNSPAN#${TOP}` },
-        ["SK", "firstStartIso"], consistent);
-    const keys: Key[] = [];
-    for (const span of spans) {
-        const sk = String(span.SK);
-        const parsed = decode(z.object({ firstStartIso: z.string() }), span, sk);
-        if (windowEnd !== null && parsed.firstStartIso > iso(windowEnd)) continue;
-        const [, , courseId, runId] = sk.split("#"); // RUNSPAN#<lastEndIso>#<courseId>#<runId>; the ISO has no '#'
-        keys.push(key(tenantId, K.run(courseId, runId)));
-    }
-    const runs = await batchGetAll(store, keys,
-        ["SK", "status", "trainerIds", "meetings", "timezone", "firstStartIso", "seats"], consistent);
-    if (!runs.ok) return runs;
-    return ok(runs.value.map((item) => {
-        const sk = String(item.SK);
-        const [, courseId, runId] = sk.split("#");
-        return { ...decode(RunSpanViewSchema, item, sk), courseId, runId };
-    }));
-}
-
 /** The projections of § 6.3 for bookings read in a list (BatchGet). Exhaustive by consumer kind. */
-export type BookingProjection = "roster" | "display" | "feed";
-const BookingRosterSchema = BookingSchema.pick({ id: true, ref: true, who: true, state: true, source: true });
+export type BookingProjection = "display" | "feed";
 const BookingDisplaySchema = BookingSchema.pick({ id: true, ref: true, what: true, state: true })
     .extend({ who: z.object({ name: z.string() }) });
 const BookingFeedSchema = BookingSchema.pick({ id: true, ref: true, what: true, state: true });
-export type BookingRosterView = z.infer<typeof BookingRosterSchema>;
 export type BookingDisplayView = z.infer<typeof BookingDisplaySchema>;
 export type BookingFeedView = z.infer<typeof BookingFeedSchema>;
 
-/** AP7 / planner / feed: BatchGet `BOOKING#` with the consumer's projection; ids not returned are skipped. */
-export async function getBookingViews(store: SchedulingStore, tenantId: string, ids: string[], view: "roster")
-    : Promise<Result<BookingRosterView[], Busy>>;
+/**
+ * Planner / appointments / feed: BatchGet `BOOKING#` with the consumer's projection; ids not returned are skipped.
+ * The ids come from `RESDAY#` entries, which only slot bookings have, so every item read here is a slot booking.
+ */
 export async function getBookingViews(store: SchedulingStore, tenantId: string, ids: string[], view: "display")
     : Promise<Result<BookingDisplayView[], Busy>>;
 export async function getBookingViews(store: SchedulingStore, tenantId: string, ids: string[], view: "feed")
     : Promise<Result<BookingFeedView[], Busy>>;
 export async function getBookingViews(store: SchedulingStore, tenantId: string, ids: string[], view: BookingProjection)
-    : Promise<Result<(BookingRosterView | BookingDisplayView | BookingFeedView)[], Busy>> {
+    : Promise<Result<(BookingDisplayView | BookingFeedView)[], Busy>> {
     let attributes: string[];
-    let schema: z.ZodType<BookingRosterView | BookingDisplayView | BookingFeedView>;
+    let schema: z.ZodType<BookingDisplayView | BookingFeedView>;
     switch (view) {
-        case "roster": attributes = ["SK", "id", "ref", "who", "state", "source"]; schema = BookingRosterSchema; break;
         case "display": attributes = ["SK", "id", "ref", "what", "state", "who.name"]; schema = BookingDisplaySchema; break;
         case "feed": attributes = ["SK", "id", "ref", "what", "state"]; schema = BookingFeedSchema; break;
         default: return assertNever(view);
@@ -775,33 +726,6 @@ export async function getBookingViews(store: SchedulingStore, tenantId: string, 
     const res = await batchGetAll(store, unique.map((id) => key(tenantId, K.booking(id))), attributes, false);
     if (!res.ok) return res;
     return ok(res.value.map((item) => decode(schema, item, String(item.SK))));
-}
-
-/**
- * AP8, paged (§ 10.3: 100 per page; § 6.4 rule 1 exception). The cursor is the opaque base64url form of
- * `LastEvaluatedKey`; a cursor that does not name this tenant's and course's prefix → `invalidCursor` (400).
- */
-export async function listUnplacedPage(store: SchedulingStore, tenantId: string, courseId: string, cursor?: string)
-    : Promise<Result<{ bookingIds: string[]; cursor?: string }, { kind: "invalidCursor" }>> {
-    const prefix = `UNPLACED#${part(courseId, "courseId")}#`;
-    let start: Record<string, unknown> | undefined;
-    if (cursor !== undefined) {
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-        } catch {
-            return err({ kind: "invalidCursor" });
-        }
-        const k = z.object({ PK: z.literal(K.pk(tenantId)), SK: z.string().startsWith(prefix) }).strict().safeParse(parsed);
-        if (!k.success) return err({ kind: "invalidCursor" });
-        start = k.data;
-    }
-    const page = await store.db.send(new QueryCommand({
-        ...queryInput(store, tenantId, { kind: "beginsWith", prefix }, ["SK"], false), Limit: UNPLACED_PAGE, ExclusiveStartKey: start,
-    }));
-    const bookingIds = (page.Items ?? []).map((item) => String(item.SK).slice(prefix.length));
-    const next = page.LastEvaluatedKey;
-    return ok({ bookingIds, ...(next ? { cursor: Buffer.from(JSON.stringify(next)).toString("base64url") } : {}) });
 }
 
 /** AP9: ids of every booking of one person (`CUST#<email>#`), all pages. */
@@ -841,19 +765,6 @@ export async function getService(store: SchedulingStore, tenantId: string, servi
     const sk = K.service(serviceId);
     const item = await getItem(store, tenantId, sk, consistent);
     return item === undefined ? undefined : decode(ServiceSchema, item, sk);
-}
-
-/** AP10 `COURSE#` list. `consistent`: `true` for a read that decides a write (the create bound), `false` for displays. */
-export async function listCourses(store: SchedulingStore, tenantId: string, consistent: boolean): Promise<Course[]> {
-    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: "COURSE#" }, ["SK", "id", "name", "defaultCapacity", "languages"], consistent);
-    return items.map((item) => decode(CourseSchema, item, String(item.SK)));
-}
-
-export async function getCourse(store: SchedulingStore, tenantId: string, courseId: string, consistent: boolean)
-    : Promise<Course | undefined> {
-    const sk = K.course(courseId);
-    const item = await getItem(store, tenantId, sk, consistent);
-    return item === undefined ? undefined : decode(CourseSchema, item, sk);
 }
 
 /** AP10 `AVAILABILITY#<r>`: absent item = no weekly hours. */
@@ -989,86 +900,12 @@ export async function putAvailability(store: SchedulingStore, tenantId: string, 
     return parsed;
 }
 
-export async function putCourse(store: SchedulingStore, tenantId: string, course: Course): Promise<Course> {
-    const c = decodeInput(CourseSchema, course);
-    await store.db.send(new PutCommand({ TableName: store.table, Item: { ...key(tenantId, K.course(c.id)), ...c } }));
-    return c;
-}
-
-/**
- * Update an EXISTING course (the update route): one UpdateItem of `name`, `defaultCapacity`, `languages` under
- * `attribute_exists(SK)`, so a delete that committed after the caller's read is never undone (`notFound`). The
- * dependent version `v` is not touched (S1F1-COURSE-DELETE-GUARD). `putCourse` stays for create.
- */
-export async function replaceCourse(store: SchedulingStore, tenantId: string, course: Course): Promise<Result<Course, NotFound>> {
-    const c = decodeInput(CourseSchema, course);
-    const done = await singleUpdate(store, tenantId, K.course(c.id), "SET #n = :n, #c = :c, #l = :l",
-        { "#n": "name", "#c": "defaultCapacity", "#l": "languages" }, { ":n": c.name, ":c": c.defaultCapacity, ":l": c.languages });
-    return done.ok ? ok(c) : done;
-}
-
-/** The dependent version of a `COURSE#` item: absent until a first dependent is written (S1F1-COURSE-DELETE-GUARD). */
-const CourseVersionSchema = z.object({ v: VersionSchema.optional() });
-
-/**
- * S1F1-COURSE-DELETE-GUARD: the item every write that gives a course a NEW dependent adds to its own transaction —
- * a run (`createRun`), an `UNPLACED#` booking (`createManualSeat` without a run, `moveSeat` out of a run, `cancelRun`
- * with confirmed seats). `ADD v 1` under `attribute_exists(SK)`: a course deleted before this commit refuses the whole
- * write (`onGone`); a `deleteCourse` that read the course before this commit fails its version condition.
- */
-function courseDependent<R>(store: SchedulingStore, tenantId: string, courseId: string, onGone: "unexpected" | R): Tagged<R> {
-    return {
-        item: {
-            Update: {
-                TableName: store.table, Key: key(tenantId, K.course(courseId)),
-                UpdateExpression: "ADD #v :one", ConditionExpression: "attribute_exists(SK)",
-                ExpressionAttributeNames: { "#v": "v" }, ExpressionAttributeValues: { ":one": 1 },
-            },
-        },
-        onConditionFailed: onGone,
-    };
-}
-
-/**
- * § 10.3: refused while any run or `UNPLACED#` of the course exists (`courseInUse`). Order (S1F1-COURSE-DELETE-GUARD):
- * 1. the course, consistent (absent → `notFound`), with its dependent version `v`;
- * 2. the runs and the `UNPLACED#` keys of the course, consistent (any → `courseInUse`);
- * 3. one Delete under "the version is still the one read in 1" (`v = :v`, or `attribute_not_exists(v)`). A dependent
- *    written between 1 and 3 raised `v` in its own transaction → the condition fails → `courseInUse`. A dependent
- *    writer that commits after 3 finds no course (its `attribute_exists`) and is refused. A delete that loses to a
- *    concurrent delete also answers `courseInUse` (the item is gone, so the condition fails).
- * Returns the deleted course (its name is the caller's audit title).
- */
-export async function deleteCourse(store: SchedulingStore, tenantId: string, courseId: string)
-    : Promise<Result<Course, { kind: "courseInUse" } | NotFound>> {
-    const sk = K.course(courseId);
-    const item = await getItem(store, tenantId, sk, true);
-    if (item === undefined) return err(NOT_FOUND);
-    const course = decode(CourseSchema, item, sk);
-    const { v } = decode(CourseVersionSchema, item, sk);
-    const runs = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `RUN#${part(courseId, "courseId")}#` }, ["SK"], true);
-    const unplaced = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `UNPLACED#${courseId}#` }, ["SK"], true);
-    if (runs.length > 0 || unplaced.length > 0) return err({ kind: "courseInUse" });
-    try {
-        await store.db.send(new DeleteCommand({
-            TableName: store.table, Key: key(tenantId, sk),
-            ...(v === undefined
-                ? { ConditionExpression: "attribute_exists(SK) AND attribute_not_exists(#v)", ExpressionAttributeNames: { "#v": "v" } }
-                : { ConditionExpression: "#v = :v", ExpressionAttributeNames: { "#v": "v" }, ExpressionAttributeValues: { ":v": v } }),
-        }));
-    } catch (e) {
-        if (e instanceof Error && e.name === "ConditionalCheckFailedException") return err({ kind: "courseInUse" });
-        throw e;
-    }
-    return ok(course);
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Idempotency (§ 7.2)
 // ---------------------------------------------------------------------------------------------------------------
 
 /** The `what` of a hold request (§ 10.2 `HoldRequest.what`). */
-export type HoldWhatInput = { kind: "slot"; serviceId: string; start: string } | { kind: "seat"; courseId: string; runId: string };
+export type HoldWhatInput = { kind: "slot"; serviceId: string; start: string };
 
 function canonicalJson(value: unknown): string {
     if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -1153,7 +990,7 @@ export async function markHoldMail(store: SchedulingStore, tenantId: string, boo
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Holds (§ 7.3, § 7.4, § 7.5, § 9) — the visitor's only write without a token
+// Holds (§ 7.3, § 7.5, § 9) — the visitor's only write without a token
 // ---------------------------------------------------------------------------------------------------------------
 
 export type HoldSettings = { timezone: TimeZone; holdMinutes: number; bookingHorizonWeeks: number };
@@ -1165,15 +1002,13 @@ type HoldCommon = {
     settings: HoldSettings; now: Instant;
 };
 export type SlotHoldInput = HoldCommon & { serviceId: string; start: Instant };
-export type SeatHoldInput = HoldCommon & { courseId: string; runId: string };
 
 type LimitRefusal = { kind: "tooManyForEmail" } | { kind: "tooManyFromAddress" };
 export type SlotHoldRefusal = SlotRefusal | { kind: "slotTaken" } | LimitRefusal | { kind: "intentExists" } | NotFound | Busy;
-export type SeatHoldRefusal = SeatRefusal | LimitRefusal | { kind: "intentExists" } | NotFound | Busy;
 /** The new booking and its first link token (for the `hold` mail; never stored, logged or returned to a page). */
 export type Created = { booking: Booking; token: string };
 
-/** The items every visitor hold carries besides its container(s) (§ 7.3 / § 7.4 tables). */
+/** The items every visitor hold carries besides its container(s) (§ 7.3 table). */
 function holdItems(store: SchedulingStore, input: HoldCommon, b: Booking, tokenHash: string, holds: HoldsSnapshot)
     : Tagged<LimitRefusal | { kind: "intentExists" }>[] {
     const { tenantId, now } = input;
@@ -1290,38 +1125,8 @@ export async function holdSlot(store: SchedulingStore, input: SlotHoldInput): Pr
     }));
 }
 
-/** § 7.4 visitor seat hold: `seatDecision` on the consistent `RUN#`, the seat map, the open-hold cap, the limits. */
-export async function holdSeat(store: SchedulingStore, input: SeatHoldInput): Promise<Result<Created, SeatHoldRefusal>> {
-    const { tenantId, now } = input;
-    return versioned<Created, SeatHoldRefusal>(store, async () => {
-        const run = await getRun(store, tenantId, input.courseId, input.runId, true);
-        if (run === undefined) return final(err(NOT_FOUND));
-        const decision = seatDecision(run, activeSeats(run.seats, now), Date.parse(run.firstStartIso), input.who, "visitor", now);
-        if (!decision.ok) return final(decision);
-        const holds = await readHolds(store, tenantId, emailHash(input.who.email));
-        if (openHoldsFull(holds, now)) return final(err({ kind: "tooManyForEmail" }));
-
-        const t = newToken();
-        const b = newHeldBooking(input, { kind: "seat", courseId: run.courseId, runId: run.id }, t.hash);
-        const items: Tagged<SeatHoldRefusal>[] = [
-            containerUpdate(store, tenantId, {
-                kind: "run", run, requireOpen: true,
-                seats: { ...withoutExpired(run.seats, now), [b.id]: { x: b.heldUntil } },
-                set: languageChange(run.language, decision.value.languageAfter),
-            }),
-            ...holdItems(store, input, b, t.hash, holds),
-        ];
-        return { kind: "write", items, value: { booking: b, token: t.token } };
-    });
-}
-
-/** `SET language` only when the decision changed it (§ 7.4: first enrolment sets an unset language). */
-function languageChange(before: RunLanguage, after: RunLanguage): Record<string, unknown> | undefined {
-    return canonicalJson(before) === canonicalJson(after) ? undefined : { language: after };
-}
-
 // ---------------------------------------------------------------------------------------------------------------
-// Confirm (§ 7.3, § 7.4): no recount; the container entry must still carry the hold's `x`
+// Confirm (§ 7.3): no recount; the container entry must still carry the hold's `x`
 // ---------------------------------------------------------------------------------------------------------------
 
 export type ConfirmFailure = ConfirmRefusal | NotFound | Busy;
@@ -1336,7 +1141,7 @@ export type ConfirmOutcome = { kind: "applied"; booking: Booking } | { kind: "al
 
 /**
  * § 5.3 confirm by link: held and unexpired → confirmed (≤ 5 items) → `applied`; confirmed → no write →
- * `alreadyConfirmed`; expired, or the entry went to another writer after expiry (`seatLost`) → `expired`; cancelled →
+ * `alreadyConfirmed`; expired, or the entry went to another writer after expiry (`entryLost`) → `expired`; cancelled →
  * `cancelled`. A lost version re-reads: a competing confirm that committed first makes this call `alreadyConfirmed`.
  */
 export async function confirmBooking(store: SchedulingStore, tenantId: string, bookingId: string, now: Instant)
@@ -1350,7 +1155,7 @@ export async function confirmBooking(store: SchedulingStore, tenantId: string, b
         const state = b.state;
         if (state.kind !== "held" || b.heldUntil === undefined) throw new Error("[scheduling] held booking without heldUntil");
         const x = state.expiresAt;
-        const seatLost = final<ConfirmOutcome, ConfirmFailure>(err({ kind: "expired", at: x }));
+        const entryLost = final<ConfirmOutcome, ConfirmFailure>(err({ kind: "expired", at: x }));
         const change = changed(b, now, { state: { kind: "confirmed", at: now } }, { action: "confirmed", at: now });
         const next: Booking = { ...change.next };
         delete next.heldUntil;
@@ -1360,7 +1165,7 @@ export async function confirmBooking(store: SchedulingStore, tenantId: string, b
         switch (what.kind) {
             case "slot": {
                 const dayList = await Promise.all(utcDatesOf(what.start, what.end).map((d) => readResDay(store, tenantId, what.resourceId, d)));
-                if (dayList.some((day) => day.entries[b.id]?.x !== x)) return seatLost;
+                if (dayList.some((day) => day.entries[b.id]?.x !== x)) return entryLost;
                 for (const day of dayList) {
                     items.push(containerUpdate(store, tenantId, {
                         kind: "resDay", snap: day, entryX: { bookingId: b.id, x },
@@ -1369,16 +1174,7 @@ export async function confirmBooking(store: SchedulingStore, tenantId: string, b
                 }
                 break;
             }
-            case "seat": {
-                const run = await getRun(store, tenantId, what.courseId, what.runId, true);
-                if (run === undefined || run.seats[b.id]?.x !== x) return seatLost;
-                items.push(containerUpdate(store, tenantId, {
-                    kind: "run", run, entryX: { bookingId: b.id, x }, seats: { ...withoutExpired(run.seats, now), [b.id]: {} },
-                }));
-                break;
-            }
-            case "unplaced": throw new Error("[scheduling] an unplaced booking is never held");
-            default: return assertNever(what);
+            default: return assertNever(what.kind);
         }
         const holds = await readHolds(store, tenantId, emailHash(b.who.email));
         const remaining = withoutExpired(holds.entries, now);
@@ -1393,12 +1189,11 @@ export async function confirmBooking(store: SchedulingStore, tenantId: string, b
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Cancel (§ 7.3, § 7.4): customer by link or admin; tokens deleted in the same transaction (§ 8.4)
+// Cancel (§ 7.3): customer by link or admin; tokens deleted in the same transaction (§ 8.4)
 // ---------------------------------------------------------------------------------------------------------------
 
 export type ChangeFailure = ChangeRefusal | { kind: "stale" } | NotFound | Busy;
 
-/** The change window's start for a seat: the run's first meeting (§ 5.3); `null` for unplaced. */
 type CancelInput = {
     tenantId: string; bookingId: string; actor: Actor; cutoffHours: number; now: Instant;
     /** An admin route that received a `rev` answers `stale` when the booking moved on (§ 7.1). */
@@ -1406,7 +1201,7 @@ type CancelInput = {
 };
 
 /**
- * Cancel an active booking (≤ 25 items): its container entry (or `UNPLACED#`), `BOOKING#` → cancelled with
+ * Cancel an active booking (≤ 25 items): its container entry, `BOOKING#` → cancelled with
  * `tokenHashes = []` and its history entry, every listed `TOKEN#`, the `HOLDS#` entry when held. `HELD#` and
  * `heldUntil` stay: the daily cleanup removes a held-then-cancelled item set (§ 14.1).
  */
@@ -1417,9 +1212,7 @@ export async function cancelBooking(store: SchedulingStore, input: CancelInput):
         if (b === undefined) return final(err(NOT_FOUND));
         if (input.expectedRev !== undefined && input.expectedRev !== b.rev) return final(err({ kind: "stale" }));
         const what = b.what;
-        const run = what.kind === "seat" ? await getRun(store, tenantId, what.courseId, what.runId, true) : undefined;
-        const startOf = run !== undefined ? Date.parse(run.firstStartIso) : null;
-        const decision = changeDecision(b, startOf, now, input.cutoffHours, "cancel", actor.kind);
+        const decision = changeDecision(b, now, input.cutoffHours, "cancel", actor.kind);
         if (!decision.ok) return final(decision);
 
         const change = changed(b, now, { state: { kind: "cancelled", at: now, by: actor }, tokenHashes: [] },
@@ -1436,17 +1229,7 @@ export async function cancelBooking(store: SchedulingStore, input: CancelInput):
                 }
                 break;
             }
-            case "seat":
-                if (run !== undefined && run.seats[b.id] !== undefined) {
-                    const seats = withoutExpired(run.seats, now);
-                    delete seats[b.id];
-                    items.push(containerUpdate(store, tenantId, { kind: "run", run, seats }));
-                }
-                break;
-            case "unplaced":
-                items.push({ item: del(store, tenantId, K.unplaced(what.courseId, b.id)), onConditionFailed: "unexpected" });
-                break;
-            default: return assertNever(what);
+            default: return assertNever(what.kind);
         }
         items.push(bookingUpdate(store, tenantId, b, change, {}), ...tokenDeletes(store, tenantId, b.tokenHashes));
         if (b.state.kind === "held") {
@@ -1489,8 +1272,7 @@ export async function moveSlot(store: SchedulingStore, input: MoveSlotInput): Pr
         if (b === undefined) return final(err(NOT_FOUND));
         if (input.expectedRev !== undefined && input.expectedRev !== b.rev) return final(err({ kind: "stale" }));
         const what = b.what;
-        if (what.kind !== "slot") return final(err(NOT_FOUND));
-        const decision = changeDecision(b, null, now, settings.changeCutoffHours, "move", actor.kind);
+        const decision = changeDecision(b, now, settings.changeCutoffHours, "move", actor.kind);
         if (!decision.ok) return final(decision);
         const resource = await getResource(store, tenantId, resourceId, true);
         if (resource === undefined) return final(err({ kind: "resourceUnavailable" }));
@@ -1592,372 +1374,6 @@ export async function createManualAppointment(store: SchedulingStore, input: Man
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Seats: manual seat, person moves (§ 7.4)
-// ---------------------------------------------------------------------------------------------------------------
-
-export type ManualSeatInput = ManualCommon & { courseId: string; runId: string | null };
-export type ManualSeatRefusal = SeatRefusal | NotFound | Busy;
-
-/**
- * § 7.4 manual seat (admin), ≤ 5 items: admin seat rules on the run (4 items), or an unplaced booking (`UNPLACED#`
- * and the course's dependent version, S1F1-COURSE-DELETE-GUARD: 5 items; a course deleted meanwhile → `notFound`).
- */
-export async function createManualSeat(store: SchedulingStore, input: ManualSeatInput): Promise<Result<Created, ManualSeatRefusal>> {
-    const { tenantId, now } = input;
-    return versioned<Created, ManualSeatRefusal>(store, async () => {
-        const t = newToken();
-        if (input.runId === null) {
-            if ((await getCourse(store, tenantId, input.courseId, true)) === undefined) return final(err(NOT_FOUND));
-            const b = newConfirmedBooking(input, { kind: "unplaced", courseId: input.courseId }, t.hash);
-            return {
-                kind: "write", value: { booking: b, token: t.token },
-                items: [...creationItems(store, tenantId, b, t.hash, now),
-                    { item: put(store, key(tenantId, K.unplaced(input.courseId, b.id)), true), onConditionFailed: "unexpected" },
-                    courseDependent<ManualSeatRefusal>(store, tenantId, input.courseId, NOT_FOUND)],
-            };
-        }
-        const run = await getRun(store, tenantId, input.courseId, input.runId, true);
-        if (run === undefined) return final(err(NOT_FOUND));
-        const decision = seatDecision(run, activeSeats(run.seats, now), Date.parse(run.firstStartIso), input.who, "admin", now);
-        if (!decision.ok) return final(decision);
-        const b = newConfirmedBooking(input, { kind: "seat", courseId: run.courseId, runId: run.id }, t.hash);
-        return {
-            kind: "write", value: { booking: b, token: t.token },
-            items: [containerUpdate(store, tenantId, { kind: "run", run, seats: { ...withoutExpired(run.seats, now), [b.id]: {} } }),
-                ...creationItems(store, tenantId, b, t.hash, now)],
-        };
-    });
-}
-
-export type MoveSeatInput = {
-    tenantId: string; bookingId: string;
-    /** `null` = out of the run, unplaced (admin only, § 10.3 move-seat). */
-    runId: string | null;
-    actor: Actor; cutoffHours: number; now: Instant; expectedRev?: number;
-};
-export type MoveSeatRefusal = SeatRefusal | ChangeRefusal | { kind: "stale" } | NotFound | Busy;
-
-/**
- * § 7.4 person moves inside the booking's own course, ≤ 4 items: seat → seat (both runs versioned; one update
- * when the same run; 3 items), unplaced → seat (`UNPLACED#` deleted; 3 items), seat → unplaced (`UNPLACED#` put and
- * the course's dependent version, S1F1-COURSE-DELETE-GUARD; 4 items: the course cannot be gone while the booking's
- * run exists, so a failed course condition is an invariant breach). `seatDecision`
- * with the actor's rules (customer = visitor rules) on the target, the source entry excluded when source =
- * target; `BOOKING#.what` with a `moved` history entry.
- */
-export async function moveSeat(store: SchedulingStore, input: MoveSeatInput): Promise<Result<Booking, MoveSeatRefusal>> {
-    const { tenantId, now, actor } = input;
-    if (input.runId === null && actor.kind !== "admin") throw new Error("[scheduling] only an admin moves a person out of a run");
-    return versioned<Booking, MoveSeatRefusal>(store, async () => {
-        const b = await getBooking(store, tenantId, input.bookingId, true);
-        if (b === undefined) return final(err(NOT_FOUND));
-        if (input.expectedRev !== undefined && input.expectedRev !== b.rev) return final(err({ kind: "stale" }));
-        const what = b.what;
-        if (what.kind === "slot") return final(err(NOT_FOUND));
-        const source = what.kind === "seat" ? await getRun(store, tenantId, what.courseId, what.runId, true) : undefined;
-        if (what.kind === "seat" && source === undefined) throw new Error("[scheduling] seat booking without its run");
-        const decision = changeDecision(b, source ? Date.parse(source.firstStartIso) : null, now, input.cutoffHours, "move", actor.kind);
-        if (!decision.ok) return final(decision);
-
-        const items: Tagged<never>[] = [];
-        let target: BookingWhat;
-        if (input.runId === null) {
-            if (source === undefined) return final(ok(b)); // unplaced → unplaced: nothing changes
-            target = { kind: "unplaced", courseId: what.courseId };
-            const seats = withoutExpired(source.seats, now);
-            delete seats[b.id];
-            items.push(containerUpdate(store, tenantId, { kind: "run", run: source, seats }),
-                { item: put(store, key(tenantId, K.unplaced(what.courseId, b.id)), true), onConditionFailed: "unexpected" },
-                courseDependent<never>(store, tenantId, what.courseId, "unexpected"));
-        } else {
-            const dest = source !== undefined && source.id === input.runId ? source
-                : await getRun(store, tenantId, what.courseId, input.runId, true);
-            if (dest === undefined) return final(err(NOT_FOUND));
-            const seat = seatDecision(dest, activeSeats(dest.seats, now, b.id), Date.parse(dest.firstStartIso), b.who,
-                actor.kind === "admin" ? "admin" : "visitor", now);
-            if (!seat.ok) return final(seat);
-            target = { kind: "seat", courseId: what.courseId, runId: dest.id };
-            const destSeats = withoutExpired(dest.seats, now);
-            destSeats[b.id] = {};
-            items.push(containerUpdate(store, tenantId, {
-                kind: "run", run: dest, seats: destSeats, set: languageChange(dest.language, seat.value.languageAfter),
-            }));
-            if (source === undefined) {
-                items.push({ item: del(store, tenantId, K.unplaced(what.courseId, b.id)), onConditionFailed: "unexpected" });
-            } else if (source.id !== dest.id) {
-                const seats = withoutExpired(source.seats, now);
-                delete seats[b.id];
-                items.push(containerUpdate(store, tenantId, { kind: "run", run: source, seats }));
-            }
-        }
-        const change = changed(b, now, { what: target }, { action: "moved", at: now, by: actor, from: placementOf(what), to: placementOf(target) });
-        items.push(bookingUpdate(store, tenantId, b, change, { requireState: "confirmed" }));
-        return { kind: "write", items, value: change.next };
-    });
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Run operations (§ 7.6)
-// ---------------------------------------------------------------------------------------------------------------
-
-/** First start and last end of validated meetings, as instants in the run's zone. */
-function runSpan(meetings: Meeting[], tz: TimeZone): { firstStart: Instant; lastEnd: Instant } {
-    const at = (m: Meeting, t: "start" | "end"): Instant => {
-        const r = localToInstant(m.date, m[t], tz);
-        if (!r.ok) throw new Error("[scheduling] validated meeting with a nonexistent local time");
-        return r.value;
-    };
-    return {
-        firstStart: Math.min(...meetings.map((m) => at(m, "start"))),
-        lastEnd: Math.max(...meetings.map((m) => at(m, "end"))),
-    };
-}
-
-function trainerGuards<R>(store: SchedulingStore, tenantId: string, trainerIds: string[], lastEnd: Instant, now: Instant)
-    : Tagged<R | { kind: "resourceUnavailable" }>[] {
-    // § 7.6 rule: a run write after which a trainer has a meeting in the future carries the guard on that trainer.
-    return lastEnd > now ? trainerIds.map((r) => resourceGuard(store, tenantId, r)) : [];
-}
-
-export type CreateRunInput = {
-    tenantId: string; courseId: string; meetings: Meeting[]; timezone: TimeZone; capacity: number;
-    trainerIds: [string, ...string[]]; language: RunLanguage; groupLink?: string; now: Instant;
-};
-export type CreateRunRefusal = MeetingError | { kind: "resourceUnavailable" } | NotFound | Busy;
-
-/**
- * § 7.6 run create: `RUN#` (v 1, no seats) + `RUNSPAN#` + the guard on each trainer + the course's dependent version
- * (S1F1-COURSE-DELETE-GUARD; a course deleted meanwhile → `notFound`): ≤ 13 items. `trainerIds` must hold distinct
- * ids (one transaction may not name an item twice): the caller validates it.
- */
-export async function createRun(store: SchedulingStore, input: CreateRunInput): Promise<Result<RunRecord, CreateRunRefusal>> {
-    const { tenantId, now } = input;
-    const meetings = validateMeetings(input.meetings, input.timezone);
-    if (!meetings.ok) return meetings;
-    const span = runSpan(meetings.value, input.timezone);
-    const run: RunRecord = decodeInput(RunItemSchema, {
-        id: randomUUID(), courseId: input.courseId, meetings: meetings.value, timezone: input.timezone, capacity: input.capacity,
-        trainerIds: input.trainerIds, language: input.language, status: "open",
-        ...(input.groupLink !== undefined ? { groupLink: input.groupLink } : {}),
-        v: 1, seats: {}, firstStartIso: iso(span.firstStart), lastEndIso: iso(span.lastEnd),
-    });
-    return versioned<RunRecord, CreateRunRefusal>(store, async () => ({
-        kind: "write", value: run,
-        items: [
-            { item: put(store, { ...key(tenantId, K.run(run.courseId, run.id)), ...run }, true), onConditionFailed: "unexpected" },
-            { item: put(store, { ...key(tenantId, K.runSpan(run.lastEndIso, run.courseId, run.id)), firstStartIso: run.firstStartIso }, true), onConditionFailed: "unexpected" },
-            ...trainerGuards<CreateRunRefusal>(store, tenantId, run.trainerIds, span.lastEnd, now),
-            courseDependent<CreateRunRefusal>(store, tenantId, run.courseId, NOT_FOUND),
-        ],
-    }));
-}
-
-export type RunUpdate = {
-    capacity?: number; trainerIds?: [string, ...string[]]; language?: string | null; groupLink?: string | null;
-    status?: "open" | "closed";
-};
-export type RunUpdateRefusal = { kind: "runCancelled" } | { kind: "resourceUnavailable" } | NotFound | Busy;
-
-/**
- * § 10.3 run update (capacity, trainers, language, group link, open/closed), versioned on `RUN#.v` (a capacity
- * change is the 1-item write of § 7.4; § 13: lowering it removes nobody). A trainer change carries the guard on
- * each trainer of the new list while the run has a future meeting. A cancelled run refuses every change. It reads
- * and counts no seat, so it leaves `seats` as stored (no expiry pruning; the next seat writer prunes).
- */
-export async function updateRun(store: SchedulingStore, tenantId: string, courseId: string, runId: string, change: RunUpdate,
-    now: Instant): Promise<Result<RunRecord, RunUpdateRefusal>> {
-    return versioned<RunRecord, RunUpdateRefusal>(store, async () => {
-        const run = await getRun(store, tenantId, courseId, runId, true);
-        if (run === undefined) return final(err(NOT_FOUND));
-        if (run.status === "cancelled") return final(err({ kind: "runCancelled" }));
-        const next: RunRecord = decodeInput(RunItemSchema, {
-            ...run,
-            ...(change.capacity !== undefined ? { capacity: change.capacity } : {}),
-            ...(change.trainerIds !== undefined ? { trainerIds: change.trainerIds } : {}),
-            ...(change.status !== undefined ? { status: change.status } : {}),
-            ...(change.language !== undefined
-                ? { language: change.language === null ? { kind: "notSet" } : { kind: "set", tag: change.language } } : {}),
-            v: run.v,
-        });
-        if (change.groupLink === null) delete next.groupLink;
-        else if (change.groupLink !== undefined) next.groupLink = change.groupLink;
-        const e = new Expr();
-        const sets = (["capacity", "trainerIds", "status", "language"] as const).map((n) => `${e.path(n)} = ${e.value(next[n])}`);
-        sets.push(`${e.path("v")} = ${e.value(run.v + 1)}`);
-        if (next.groupLink !== undefined) sets.push(`${e.path("groupLink")} = ${e.value(next.groupLink)}`);
-        const removeLink = next.groupLink === undefined && run.groupLink !== undefined ? ` REMOVE ${e.path("groupLink")}` : "";
-        const update: Tagged<never> = {
-            item: {
-                Update: {
-                    TableName: store.table, Key: key(tenantId, K.run(courseId, runId)),
-                    UpdateExpression: `SET ${sets.join(", ")}${removeLink}`,
-                    ConditionExpression: `${e.path("v")} = ${e.value(run.v)}`, ...e.attrs(),
-                },
-            },
-            onConditionFailed: "retry",
-        };
-        const guards = change.trainerIds !== undefined
-            ? trainerGuards<RunUpdateRefusal>(store, tenantId, next.trainerIds, Date.parse(run.lastEndIso), now) : [];
-        return { kind: "write", items: [update, ...guards], value: { ...next, v: run.v + 1 } };
-    });
-}
-
-export type MoveRunRefusal = MeetingError | { kind: "runCancelled" } | { kind: "resourceUnavailable" } | NotFound | Busy;
-
-/**
- * § 7.6 move a run (≤ 13 items): `RUN#` meetings, `firstStartIso`, `lastEndIso` (versioned), the old `RUNSPAN#`
- * deleted and the new one put (one put when the key is unchanged), and the guard on each trainer when the new last
- * meeting ends after `now`. People stay. Returns the run and the ids of its active bookings (for the `moved` mail).
- */
-export async function moveRun(store: SchedulingStore, tenantId: string, courseId: string, runId: string, meetings: Meeting[],
-    now: Instant): Promise<Result<{ run: RunRecord; activeBookingIds: string[] }, MoveRunRefusal>> {
-    return versioned<{ run: RunRecord; activeBookingIds: string[] }, MoveRunRefusal>(store, async () => {
-        const run = await getRun(store, tenantId, courseId, runId, true);
-        if (run === undefined) return final(err(NOT_FOUND));
-        if (run.status === "cancelled") return final(err({ kind: "runCancelled" }));
-        const valid = validateMeetings(meetings, run.timezone);
-        if (!valid.ok) return final(valid);
-        const span = runSpan(valid.value, run.timezone);
-        const firstStartIso = iso(span.firstStart);
-        const lastEndIso = iso(span.lastEnd);
-        // § 7.1 point 3 (review SCHED1C-R2): this write counts the active seats (the `moved` mail list), so it
-        // removes the seats it counted as expired, in the same version-conditioned update.
-        const seats = withoutExpired(run.seats, now);
-        const e = new Expr();
-        const update: Tagged<never> = {
-            item: {
-                Update: {
-                    TableName: store.table, Key: key(tenantId, K.run(courseId, runId)),
-                    UpdateExpression: `SET ${e.path("meetings")} = ${e.value(valid.value)}, ${e.path("firstStartIso")} = ${e.value(firstStartIso)}, `
-                        + `${e.path("lastEndIso")} = ${e.value(lastEndIso)}, ${e.path("seats")} = ${e.value(seats)}, ${e.path("v")} = ${e.value(run.v + 1)}`,
-                    ConditionExpression: `${e.path("v")} = ${e.value(run.v)}`, ...e.attrs(),
-                },
-            },
-            onConditionFailed: "retry",
-        };
-        const oldSpan = K.runSpan(run.lastEndIso, courseId, runId);
-        const newSpan = K.runSpan(lastEndIso, courseId, runId);
-        const spanItems: Tagged<never>[] = [
-            ...(oldSpan !== newSpan ? [{ item: del(store, tenantId, oldSpan), onConditionFailed: "unexpected" as const }] : []),
-            { item: put(store, { ...key(tenantId, newSpan), firstStartIso }, false), onConditionFailed: "unexpected" },
-        ];
-        const moved: RunRecord = { ...run, meetings: valid.value, firstStartIso, lastEndIso, seats, v: run.v + 1 };
-        return {
-            kind: "write",
-            items: [update, ...spanItems, ...trainerGuards<MoveRunRefusal>(store, tenantId, run.trainerIds, span.lastEnd, now)],
-            value: { run: moved, activeBookingIds: Object.keys(seats).sort() },
-        };
-    });
-}
-
-/**
- * The committed outcome of a run cancel (ruling S1F1-CANCEL-OUTCOME): the ids the ONE run transaction moved to
- * `unplaced` and cancelled; `run` = the run snapshot that transaction decided on (as read just before it: its
- * meetings, trainers and language; `status` and `seats` are those before the cancel). Returned as soon as that
- * transaction commits: no other request follows it inside `cancelRun` (review S1F1-R02), so the caller can record
- * the committed fact before any later work. The token cleanup of `cancelled` is `clearCancelledRunTokens`.
- */
-export type CancelRunResult = { unplaced: string[]; cancelled: string[]; run: RunRecord };
-
-/**
- * § 7.6 cancel a run (≤ 2 + 2 × 45 + 1 = 93 items): `RUN#` cancelled with no seats (versioned), `RUNSPAN#` deleted;
- * each confirmed seat → unplaced (`moved` history, `UNPLACED#` put); each held unexpired seat → cancelled by the
- * admin (tokens kept in this transaction: no room in the 100-item budget); when at least one booking is unplaced, the
- * course's dependent version (S1F1-COURSE-DELETE-GUARD). Returns right after the commit (`CancelRunResult`); the
- * caller then runs `clearCancelledRunTokens(result.cancelled)`. A crash in between leaves listed tokens of a cancelled
- * booking: they answer 404 and erasure still finds them (row C24).
- */
-export async function cancelRun(store: SchedulingStore, tenantId: string, courseId: string, runId: string, adminEmail: string,
-    now: Instant): Promise<Result<CancelRunResult, { kind: "runCancelled" } | NotFound | Busy>> {
-    const by: Actor = { kind: "admin", email: adminEmail };
-    return versioned<CancelRunResult, { kind: "runCancelled" } | NotFound | Busy>(store, async () => {
-        const run = await getRun(store, tenantId, courseId, runId, true);
-        if (run === undefined) return final(err(NOT_FOUND));
-        if (run.status === "cancelled") return final(err({ kind: "runCancelled" }));
-        const effects = cancelRunEffects(run.seats, now);
-        const read = await batchGetAll(store, [...effects.toUnplace, ...effects.toCancel].map((id) => key(tenantId, K.booking(id))),
-            BOOKING_ATTRIBUTES, true);
-        if (!read.ok) return final(read);
-        const bookings = new Map(read.value.map((item) => {
-            const b = decode(BookingSchema, item, String(item.SK));
-            return [b.id, b] as const;
-        }));
-        const e = new Expr();
-        const items: Tagged<never>[] = [
-            {
-                item: {
-                    Update: {
-                        TableName: store.table, Key: key(tenantId, K.run(courseId, runId)),
-                        UpdateExpression: `SET ${e.path("status")} = ${e.value("cancelled")}, ${e.path("seats")} = ${e.value({})}, ${e.path("v")} = ${e.value(run.v + 1)}`,
-                        ConditionExpression: `${e.path("v")} = ${e.value(run.v)}`, ...e.attrs(),
-                    },
-                },
-                onConditionFailed: "retry",
-            },
-            { item: del(store, tenantId, K.runSpan(run.lastEndIso, courseId, runId)), onConditionFailed: "unexpected" },
-        ];
-        const result: CancelRunResult = { unplaced: [], cancelled: [], run };
-        for (const id of effects.toUnplace) {
-            const b = bookings.get(id);
-            if (b === undefined) continue; // removed with its entry by erasure: nothing to move
-            const target: BookingWhat = { kind: "unplaced", courseId };
-            const change = changed(b, now, { what: target }, { action: "moved", at: now, by, from: placementOf(b.what), to: placementOf(target) });
-            items.push(bookingUpdate(store, tenantId, b, change, {}),
-                { item: put(store, key(tenantId, K.unplaced(courseId, id)), true), onConditionFailed: "unexpected" });
-            result.unplaced.push(id);
-        }
-        for (const id of effects.toCancel) {
-            const b = bookings.get(id);
-            if (b === undefined) continue;
-            const change = changed(b, now, { state: { kind: "cancelled", at: now, by } }, { action: "cancelled", at: now, by });
-            items.push(bookingUpdate(store, tenantId, b, change, {}));
-            result.cancelled.push(id);
-        }
-        // A run cannot outlive its course (deleteCourse refuses while a run exists): a failed condition here is an
-        // invariant breach, not a refusal.
-        if (result.unplaced.length > 0) items.push(courseDependent<never>(store, tenantId, courseId, "unexpected"));
-        return { kind: "write", items, value: result };
-    });
-}
-
-const BOOKING_ATTRIBUTES = ["SK", "id", "ref", "rev", "what", "state", "source", "who", "tokenHashes", "intentId",
-    "heldUntil", "reminderSentFor", "createdAt", "updatedAt", "history"];
-
-/**
- * The post-commit step of a run cancel (§ 7.6, ruling S1F1-CANCEL-OUTCOME), called by the caller of `cancelRun` after
- * it recorded the committed result: for each booking id (the `cancelled` of `CancelRunResult`) delete its listed
- * `TOKEN#` items and set `tokenHashes = []`, one booking-rule transaction per booking. Returns the ids whose cleanup
- * failed (busy or an error), logged by booking id; never throws for a booking's failure. A failed booking keeps listed
- * tokens of a cancelled booking: they answer 404 and erasure still finds them (row C24).
- */
-export async function clearCancelledRunTokens(store: SchedulingStore, tenantId: string, bookingIds: string[], now: Instant)
-    : Promise<{ failed: string[] }> {
-    const failed: string[] = [];
-    for (const id of bookingIds) {
-        try {
-            if (!(await clearCancelledTokens(store, tenantId, id, now)).ok) failed.push(id);
-        } catch {
-            failed.push(id);
-        }
-    }
-    if (failed.length > 0) console.error("[scheduling] run cancel token cleanup failed", failed.join(","));
-    return { failed };
-}
-
-/** One booking of `clearCancelledRunTokens`. A booking that is gone or already has no tokens: nothing. */
-async function clearCancelledTokens(store: SchedulingStore, tenantId: string, bookingId: string, now: Instant): Promise<Result<void, Busy>> {
-    return versioned<void, Busy>(store, async () => {
-        const b = await getBooking(store, tenantId, bookingId, true);
-        if (b === undefined || b.tokenHashes.length === 0) return final(ok(undefined));
-        const change = changed(b, now, { tokenHashes: [] });
-        return {
-            kind: "write", value: undefined,
-            items: [bookingUpdate(store, tenantId, b, change, { requireState: "cancelled" }), ...tokenDeletes(store, tenantId, b.tokenHashes)],
-        };
-    });
-}
-
-// ---------------------------------------------------------------------------------------------------------------
 // Link tokens (§ 8.4): one new token per mail
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -1998,24 +1414,20 @@ export async function mintToken(store: SchedulingStore, tenantId: string, bookin
 // Reminder marker (§ 11.3): the one booking attribute outside the booking rule
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ReminderTarget =
-    | { kind: "slot"; start: Instant }
-    | { kind: "seat"; courseId: string; runId: string; firstStart: Instant };
+export type ReminderTarget = { kind: "slot"; start: Instant };
 
 /**
- * Mark `reminderSentFor = S` only while the booking still starts at `S` (slot: `what.start`; seat: `what.runId`
- * and the run's `firstStartIso`, not cancelled), is confirmed, and was not reminded for `S`. `stale` = a move or
- * a mark happened since the selection: no reminder for that start.
+ * Mark `reminderSentFor = S` only while the booking still starts at `S` (`what.start`), is confirmed, and was not
+ * reminded for `S`. `stale` = a move or a mark happened since the selection: no reminder for that start.
  */
 export async function markReminder(store: SchedulingStore, tenantId: string, bookingId: string, target: ReminderTarget)
     : Promise<{ kind: "marked" } | { kind: "stale" }> {
     const e = new Expr();
-    const S = target.kind === "slot" ? target.start : target.firstStart;
+    const S = target.start;
     const conditions = [`${e.path("state", "kind")} = ${e.value("confirmed")}`];
     switch (target.kind) {
         case "slot": conditions.unshift(`${e.path("what", "start")} = ${e.value(target.start)}`); break;
-        case "seat": conditions.unshift(`${e.path("what", "runId")} = ${e.value(target.runId)}`); break;
-        default: return assertNever(target);
+        default: return assertNever(target.kind);
     }
     const reminded = e.path("reminderSentFor");
     const s = e.value(S);
@@ -2028,19 +1440,6 @@ export async function markReminder(store: SchedulingStore, tenantId: string, boo
         },
     };
     const items: Tagged<{ kind: "stale" }>[] = [{ item: update, onConditionFailed: { kind: "stale" } }];
-    if (target.kind === "seat") {
-        items.push({
-            item: {
-                ConditionCheck: {
-                    TableName: store.table, Key: key(tenantId, K.run(target.courseId, target.runId)),
-                    ConditionExpression: "#f = :f AND #s <> :c",
-                    ExpressionAttributeNames: { "#f": "firstStartIso", "#s": "status" },
-                    ExpressionAttributeValues: { ":f": iso(target.firstStart), ":c": "cancelled" },
-                },
-            },
-            onConditionFailed: { kind: "stale" },
-        });
-    }
     const out = await transact(store, items);
     switch (out.kind) {
         case "committed": return { kind: "marked" };
@@ -2055,12 +1454,12 @@ export async function markReminder(store: SchedulingStore, tenantId: string, boo
 // ---------------------------------------------------------------------------------------------------------------
 
 export type RemoveResourceRefusal =
-    | NotFound | { kind: "resourceRemovalInProgress" } | { kind: "resourceInUse"; activeBookings: number; runs: number } | Busy;
+    | NotFound | { kind: "resourceRemovalInProgress" } | { kind: "resourceInUse"; activeBookings: number } | Busy;
 
 /**
  * Three steps, one attempt id per call: (1) acquire the fence `retiring = { attemptId, at }` (a fence older than
- * 10 minutes is taken over); (2) consistent check of active future entries (AP3 from today's UTC date) and of
- * runs not ended that name the resource as trainer (AP6, `RUN#.trainerIds`); (3a) in use → release own fence,
+ * 10 minutes is taken over); (2) consistent check of active future entries (AP3 from today's UTC date); (3a) in use
+ * → release own fence,
  * `resourceInUse`; (3b) free → delete `RESOURCE#` (own fence only), `AVAILABILITY#`, `DAYS#`. A step 3 whose fence
  * was taken over → `resourceRemovalInProgress`, nothing changed.
  */
@@ -2090,16 +1489,9 @@ export async function removeResource(store: SchedulingStore, tenantId: string, r
             if (entry.e > now && (entry.x === undefined || now < entry.x)) active.add(bookingId);
         }
     }
-    const runs = await runsNotEndedBy(store, tenantId, now, null, true);
-    if (!runs.ok) {
-        await releaseFence(store, resourceKey, attemptId);
-        return runs;
-    }
-    const usingRuns = runs.value.filter((r) => r.status !== "cancelled" && r.trainerIds.includes(resourceId)).length;
-
-    if (active.size > 0 || usingRuns > 0) {
+    if (active.size > 0) {
         if (!(await releaseFence(store, resourceKey, attemptId))) return err({ kind: "resourceRemovalInProgress" });
-        return err({ kind: "resourceInUse", activeBookings: active.size, runs: usingRuns });
+        return err({ kind: "resourceInUse", activeBookings: active.size });
     }
     const out = await transact<{ kind: "resourceRemovalInProgress" }>(store, [
         {
@@ -2141,8 +1533,11 @@ async function releaseFence(store: SchedulingStore, resourceKey: Key, attemptId:
 // Removal of customer data (§ 14)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The deletes of a booking's whole item set, every key read from the stored booking (never from settings). */
-function itemSetDeletes(store: SchedulingStore, tenantId: string, b: Booking): Tagged<never>[] {
+/**
+ * The deletes of a booking's whole item set, every key read from the stored booking (never from settings). Takes the
+ * item set only, so a stored booking of the removed group shape (`readStoredBooking`) is removed the same way.
+ */
+function itemSetDeletes(store: SchedulingStore, tenantId: string, b: BookingItemSet): Tagged<never>[] {
     const items: Tagged<never>[] = [
         {
             item: {
@@ -2157,7 +1552,6 @@ function itemSetDeletes(store: SchedulingStore, tenantId: string, b: Booking): T
         { item: del(store, tenantId, K.cust(b.who.email, b.id)), onConditionFailed: "unexpected" },
     ];
     if (b.heldUntil !== undefined) items.push({ item: del(store, tenantId, K.held(b.heldUntil, b.id)), onConditionFailed: "unexpected" });
-    if (b.what.kind === "unplaced") items.push({ item: del(store, tenantId, K.unplaced(b.what.courseId, b.id)), onConditionFailed: "unexpected" });
     if (b.intentId !== undefined) items.push({ item: del(store, tenantId, K.intent(b.intentId)), onConditionFailed: "unexpected" });
     items.push(...tokenDeletes(store, tenantId, b.tokenHashes));
     return items;
@@ -2167,15 +1561,22 @@ function itemSetDeletes(store: SchedulingStore, tenantId: string, b: Booking): T
  * § 14.1 daily cleanup for one tenant (any `schedulingEnabled`): every `HELD#` older than 7 days → one
  * transaction (≤ 24 items) removes `BOOKING#` (booking rule), `CUST#`, `HELD#`, `INTENT#`, listed `TOKEN#`s.
  * Container entries are not touched (expired entries are free; the next writer drops them). A booking already
- * gone → skipped. Idempotent: a second run the same day finds nothing.
+ * gone → skipped. Idempotent: a second run the same day finds nothing. A booking of the removed group shape is
+ * removed by the same rule: its `HELD#` is only found while it was never confirmed.
  */
 export async function cleanupExpiredHolds(store: SchedulingStore, tenantId: string, now: Instant)
     : Promise<{ removed: number; skipped: number; busy: number }> {
     const out = { removed: 0, skipped: 0, busy: 0 };
     for (const held of await expiredHeldKeys(store, tenantId, now)) {
         const result = await versioned<boolean, Busy>(store, async () => {
-            const b = await getBooking(store, tenantId, held.bookingId, true);
-            if (b === undefined) return final(ok(false));
+            const stored = await readStoredBooking(store, tenantId, held.bookingId, true);
+            if (stored === undefined) return final(ok(false));
+            let b: BookingItemSet;
+            switch (stored.kind) {
+                case "slot": b = stored.booking; break;
+                case "removedGroupShape": b = stored.itemSet; break;
+                default: return assertNever(stored);
+            }
             // A HELD# exists only for a never-confirmed booking (§ 6.2); a confirmed one is never removed here.
             if (b.state.kind === "confirmed") {
                 console.log("[scheduling] cleanup: HELD# of a confirmed booking left in place", held.bookingId);
@@ -2191,42 +1592,38 @@ export async function cleanupExpiredHolds(store: SchedulingStore, tenantId: stri
 }
 
 /**
- * § 14.2 erasure of one customer: AP9 (consistent, all pages); per booking one transaction (≤ 27 items) that
- * releases its place by the cancel rule (the `RESDAY#` or `RUN#` entry, versioned, when present) and removes its
- * whole item set; then the read-back. Idempotent; two passes at once both finish without error.
+ * § 14.2 erasure of one customer: AP9 (consistent, all pages: every `CUST#<email>#<bookingId>`, which every booking
+ * creator writes); per booking one transaction (≤ 27 items) that releases its place by the cancel rule (the
+ * `RESDAY#` entry, versioned, when present) and removes its whole item set; then the read-back. A booking of the
+ * removed group shape has its item set removed; its `RUN#` seat entry or `UNPLACED#` pointer is left (a
+ * random booking id, no person data; no code reads them). Idempotent; two passes at once both finish without error.
  */
 export async function eraseCustomer(store: SchedulingStore, tenantId: string, email: string, now: Instant)
     : Promise<Result<{ removedBookings: number; remainingBookings: number }, Busy>> {
     let removed = 0;
     for (const bookingId of await bookingIdsOfEmail(store, tenantId, email, true)) {
         const result = await versioned<boolean, Busy>(store, async () => {
-            const b = await getBooking(store, tenantId, bookingId, true);
-            if (b === undefined) return final(ok(false)); // removed by another pass
+            const stored = await readStoredBooking(store, tenantId, bookingId, true);
+            if (stored === undefined) return final(ok(false)); // removed by another pass
             const items: Tagged<never>[] = [];
-            const what = b.what;
-            switch (what.kind) {
+            switch (stored.kind) {
                 case "slot": {
+                    const b = stored.booking;
+                    const what = b.what;
                     const dayList = await Promise.all(utcDatesOf(what.start, what.end).map((d) => readResDay(store, tenantId, what.resourceId, d)));
                     for (const day of dayList.filter((d) => d.entries[b.id] !== undefined)) {
                         const entries = withoutExpired(day.entries, now);
                         delete entries[b.id];
                         items.push(containerUpdate(store, tenantId, { kind: "resDay", snap: day, entries }));
                     }
+                    items.push(...itemSetDeletes(store, tenantId, b));
                     break;
                 }
-                case "seat": {
-                    const run = await getRun(store, tenantId, what.courseId, what.runId, true);
-                    if (run !== undefined && run.seats[b.id] !== undefined) {
-                        const seats = withoutExpired(run.seats, now);
-                        delete seats[b.id];
-                        items.push(containerUpdate(store, tenantId, { kind: "run", run, seats }));
-                    }
+                case "removedGroupShape":
+                    items.push(...itemSetDeletes(store, tenantId, stored.itemSet));
                     break;
-                }
-                case "unplaced": break; // its UNPLACED# is in the item set
-                default: return assertNever(what);
+                default: return assertNever(stored);
             }
-            items.push(...itemSetDeletes(store, tenantId, b));
             return { kind: "write", items, value: true };
         });
         if (!result.ok) return result;

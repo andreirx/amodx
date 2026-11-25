@@ -6,6 +6,7 @@ import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
+import { withoutRetiredTemplateKeys } from "../lib/scheduling-email.js";
 import { z } from "zod";
 import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, readLanguageSettings, type CookieOrLegalLabelKey } from "@amodx/shared";
 
@@ -213,8 +214,9 @@ function themeAttributesError(body: Record<string, unknown>): string | null {
  * refused for them; the body is stored as sent (defaults are applied when the record is read, as the shared schema
  * does). `schedulingEnabled`: a boolean. `scheduling`: `SchedulingSettingsSchema` with no unknown key (ranges of
  * § 4.5: `holdMinutes` 5-1440, `changeCutoffHours` and `reminderHours` 0-168, `bookingHorizonWeeks` 1-52; a timezone
- * must be an IANA name). `schedulingEmailConfig`: `SchedulingEmailConfigSchema` with no unknown key (the seven keys of
- * § 11.1; each template needs `subject` and `body`). The rule "enabling needs a timezone" is checked on the merged
+ * must be an IANA name). `schedulingEmailConfig`: `SchedulingEmailConfigSchema` with no unknown key (the six keys of
+ * § 11.1; each template needs `subject` and `body`; the retired group key `unplaced` is dropped first by the handler,
+ * `withoutRetiredTemplateKeys`). The rule "enabling needs a timezone" is checked on the merged
  * record (`schedulingTimezoneError`). Returns the message of the first problem, naming the field; null when none.
  */
 const SCHEDULING_ATTRIBUTES = ["schedulingEnabled", "scheduling", "schedulingEmailConfig"] as const;
@@ -391,6 +393,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         // CAT-THEME-1: same place and kind — before any read.
         const themeError = themeAttributesError(body);
         if (themeError) return { statusCode: 400, body: JSON.stringify({ error: themeError }) };
+        // SCHED-GROUPS-REMOVE-1: a stored override of the retired group mail key comes back in a General Settings save
+        // (the page sends the loaded config); it is dropped here by the same rule as on read, so the save is not refused
+        // and the key is not stored again. Any other unknown key is still refused below.
+        if (Object.hasOwn(body, "schedulingEmailConfig")) body.schedulingEmailConfig = withoutRetiredTemplateKeys(body.schedulingEmailConfig);
         // SCHED-1D1: same place and kind — before any read.
         const schedulingError = schedulingAttributesError(body);
         if (schedulingError) return { statusCode: 400, body: JSON.stringify({ error: schedulingError }) };

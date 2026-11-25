@@ -11,9 +11,9 @@ import {
  */
 
 describe("SCHED-LABELS-1 — the booking key list and the bookingStrings schema", () => {
-    it("the key list is the English pack's keys (98), and the schema has exactly these keys", () => {
+    it("the key list is the English pack's keys (75), and the schema has exactly these keys", () => {
         expect(BOOKING_TEXT_KEYS).toEqual(Object.keys(EN_LANGUAGE_PACK.booking));
-        expect(BOOKING_TEXT_KEYS).toHaveLength(98);
+        expect(BOOKING_TEXT_KEYS).toHaveLength(75);
         expect(Object.keys(BookingStringsSchema.shape)).toEqual(BOOKING_TEXT_KEYS);
     });
 

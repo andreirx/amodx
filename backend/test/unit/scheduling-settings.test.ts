@@ -21,7 +21,7 @@ vi.mock("@aws-sdk/client-eventbridge", () => ({
     PutEventsCommand: class { constructor(public input: any) {} },
 }));
 
-import { updateHandler as putSettings } from "../../src/tenant/settings.js";
+import { getHandler as getSettings, updateHandler as putSettings } from "../../src/tenant/settings.js";
 
 const TENANT_ADMIN = { sub: "u1", email: "admin@t1.test", role: "TENANT_ADMIN", tenantId: "t1" };
 const SOURCE_IP = "198.51.100.23";
@@ -165,5 +165,51 @@ describe("D17 UPDATE_SETTINGS audit: no ip on a save that names a scheduling att
             expect((await put(body)).statusCode).toBe(200);
             expect({ body, hasIp: Object.hasOwn(auditDetails()[0], "ip") }).toEqual({ body, hasIp: false });
         }
+    });
+});
+
+/**
+ * SCHED-GROUPS-REMOVE-1 row G6, write-back part (review SGR-R1). The General Settings page loads the stored config
+ * (GET /settings) and sends it back whole on save (`admin/src/pages/Settings.tsx`). A tenant saved before the removal may
+ * hold an override of the retired group mail key `unplaced`: the save must not be refused for it, the current mail
+ * overrides and every other setting must be kept, and the retired key is not stored again. Both handlers are the real
+ * ones; only the main-table client is replaced.
+ */
+describe("G6 General Settings round trip with a stored override of the retired mail key", () => {
+    const get = async () => (await (getSettings as any)({
+        headers: { "x-tenant-id": "t1" }, requestContext: { authorizer: { lambda: TENANT_ADMIN }, http: { sourceIp: SOURCE_IP } },
+    }, {} as any, () => {})) as { statusCode: number; body: string };
+
+    it("G6 GET → change only the name → PUT the loaded config: 200; current overrides and other settings kept; `unplaced` not stored again", async () => {
+        const hold = { subject: "Confirm {{ref}}", body: "{{link}}", sendToCustomer: true };
+        const weekAhead = { subject: "Week {{weekStart}}", body: "{{summary}}", sendToAdmin: false };
+        stored = {
+            ...structuredClone(BASE),
+            schedulingEnabled: true,
+            scheduling: { timezone: "Europe/Bucharest", holdMinutes: 45 },
+            schedulingEmailConfig: { templates: { unplaced: { subject: "Choose a group {{ref}}", body: "{{link}}" }, hold, weekAhead } },
+            bookingStrings: { bookTitle: "Programare", seatsLeft: "Mai sunt {n} locuri" },   // seatsLeft: a removed booking key
+            locale: "ro-RO",
+        };
+        const loaded = await get();
+        expect(loaded.statusCode).toBe(200);
+        const config = JSON.parse(loaded.body);
+        expect(config.schedulingEmailConfig.templates).toHaveProperty("unplaced");   // control: the page receives the stored key
+        const res = await put({ ...config, name: "Tenant One, renamed" });
+        expect({ status: res.statusCode, body: res.statusCode === 200 ? "" : res.body }).toEqual({ status: 200, body: "" });
+        expect(stored.name).toBe("Tenant One, renamed");
+        expect(stored.schedulingEmailConfig).toEqual({ templates: { hold, weekAhead } });
+        expect(stored.schedulingEnabled).toBe(true);
+        expect(stored.scheduling).toEqual({ timezone: "Europe/Bucharest", holdMinutes: 45 });
+        expect(stored.bookingStrings).toEqual({ bookTitle: "Programare", seatsLeft: "Mai sunt {n} locuri" });   // unknown keys are kept (§ 2.4)
+        expect(stored.locale).toBe("ro-RO");
+    });
+
+    it("G6 the rule drops only the retired key: a body naming `unplaced` beside a valid override → 200 without it; any other unknown key → 400, nothing written", async () => {
+        const hold = { subject: "Confirm {{ref}}", body: "{{link}}" };
+        expect((await put({ schedulingEmailConfig: { templates: { unplaced: { subject: "u", body: "v" }, hold } } })).statusCode).toBe(200);
+        expect(stored.schedulingEmailConfig).toEqual({ templates: { hold } });
+        await expectRefused({ schedulingEmailConfig: { templates: { unplaced: { subject: "u", body: "v" }, welcome: { subject: "a", body: "b" } } } },
+            /^schedulingEmailConfig\.templates/);
     });
 });

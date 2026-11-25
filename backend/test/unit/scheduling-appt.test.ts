@@ -792,7 +792,7 @@ describe("admin slot move", () => {
         expect(h.putEvents).toEqual([]);
     });
 
-    it("E8 a stale rev → 409 stale (the rev the screen sent is passed through); other refusals; a seat booking → 400; unknown → 404", async () => {
+    it("E8 a stale rev → 409 stale (the rev the screen sent is passed through); other refusals; unknown → 404; G3 a stored seat booking of the removed group shape → the same 404", async () => {
         const b = confirmedSlot({ rev: 5 });
         seedBooking({ id: b.id, resourceId: "res1", s: (b.what as any).start, e: (b.what as any).end, rev: 5, name: "Ana Pop" });
         const body = { start: "2026-12-14T08:00:00.000Z", resourceId: "res1", rev: 4 };
@@ -807,10 +807,13 @@ describe("admin slot move", () => {
         expect(h.mint).not.toHaveBeenCalled();
         expect(h.sesSends).toEqual([]);
         h.move.mockClear();
-        mem.put({ PK, SK: `BOOKING#${bid(0x62)}`, ...BookingSchema.parse({ ...b, id: bid(0x62), ref: refOf(bid(0x62)), what: { kind: "seat", courseId: "c1", runId: "r1" },
-            history: [{ action: "created", at: NOW, state: "confirmed", placement: { kind: "seat", runId: "r1" } }] }) });
-        expect((await call(moveSlotRoute, { path: { bookingId: bid(0x62) }, body })).statusCode).toBe(400);
-        expect((await call(moveSlotRoute, { path: { bookingId: bid(0x63) }, body })).statusCode).toBe(404);
+        // G3: the item as stored before SCHED-GROUPS-REMOVE-1 (raw: BookingSchema no longer parses a seat).
+        mem.put({ PK, SK: `BOOKING#${bid(0x62)}`, ...BookingSchema.parse(b), id: bid(0x62), ref: refOf(bid(0x62)), what: { kind: "seat", courseId: "c1", runId: "r1" },
+            history: [{ action: "created", at: NOW, state: "confirmed", placement: { kind: "seat", runId: "r1" } }] });
+        const legacy = await call(moveSlotRoute, { path: { bookingId: bid(0x62) }, body });
+        const unknown = await call(moveSlotRoute, { path: { bookingId: bid(0x63) }, body });
+        expect([legacy.statusCode, legacy.json]).toEqual([404, unknown.json]);
+        expect(unknown.statusCode).toBe(404);
         for (const bad of [{ ...body, rev: 0 }, { ...body, rev: "4" }, { start: body.start, resourceId: "res1" }, { ...body, extra: 1 }]) {
             expect((await call(moveSlotRoute, { path: { bookingId: b.id }, body: bad })).json.code).toBe("invalid");
         }

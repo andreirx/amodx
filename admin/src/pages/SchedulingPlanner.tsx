@@ -56,10 +56,7 @@ export type WeekPlanDTO = {
     defaults: AvailabilityRule[]; days: DayDTO[];
 };
 export type DayEditResult = { changed: LocalDate[]; outsideHours: string[] };
-export type PlacementDTO =
-    | { kind: "slot"; resourceId: string; start: string; end: string }
-    | { kind: "seat"; runId: string }
-    | { kind: "unplaced" };
+export type PlacementDTO = { kind: "slot"; resourceId: string; start: string; end: string };
 export type HistoryEntryDTO =
     | { action: "created"; at: string; state: "held" | "confirmed"; placement: PlacementDTO }
     | { action: "confirmed"; at: string }
@@ -67,10 +64,7 @@ export type HistoryEntryDTO =
     | { action: "moved"; at: string; by: Actor; from: PlacementDTO; to: PlacementDTO };
 export type BookingAdminDTO = {
     id: string; ref: string; rev: number;
-    what:
-        | { kind: "slot"; serviceId: string; serviceName: string; resourceId: string; resourceName: string | null; start: string; end: string }
-        | { kind: "seat"; courseId: string; courseName: string | null; runId: string; firstStart: string | null }
-        | { kind: "unplaced"; courseId: string; courseName: string | null };
+    what: { kind: "slot"; serviceId: string; serviceName: string; resourceId: string; resourceName: string | null; start: string; end: string };
     state:
         | { kind: "held"; expiresAt: string; mail: "pending" | "sent" | "failed" }
         | { kind: "confirmed"; at: string }

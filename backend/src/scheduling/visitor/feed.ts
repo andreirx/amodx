@@ -30,23 +30,16 @@
  * - Slots: AP3 over the window through `readIntervals` (each booking once, at the highest `rev` the query returned,
  *   active only, § 5.5), then BatchGet `BOOKING#` with the `feed` projection (`id, ref, what, state` — no `who`).
  *   Times and service name come from `BOOKING#.what` (§ 6.3); a booking that BatchGet does not return, that is no
- *   longer a slot of this resource, that is cancelled or an expired hold, or that no longer intersects the window,
+ *   longer on this resource, that is cancelled or an expired hold, or that no longer intersects the window,
  *   is skipped. Confirmed → `STATUS:CONFIRMED`; held → `STATUS:TENTATIVE`. `SUMMARY` = service name + ref.
- * - Runs: AP6 with `t = windowStart` (`runsNotEndedBy`: keeps `firstStartIso <= windowEnd`), then on the run's own
- *   item: this resource in `trainerIds`, `status ≠ cancelled`; one event per meeting that intersects the window,
- *   converted with the RUN's `timezone` (never the tenant's current zone). `SUMMARY` = course name + `taken/capacity`
- *   (`taken` = held unexpired + confirmed seats, `activeSeats`).
- * - `UID` = `<bookingId>@<tenantId>` / `<runId>-<n>@<tenantId>` (n = 1-based position of the meeting in the stored,
- *   sorted list); `DTSTAMP` = now; `DTSTART`/`DTEND` in UTC (`…Z`), no `VTIMEZONE`.
+ * - Only slot bookings have `RESDAY#` entries, so a stored booking of the removed group shape (SCHED-GROUPS-REMOVE-1)
+ *   is never read here.
+ * - `UID` = `<bookingId>@<tenantId>`; `DTSTAMP` = now; `DTSTART`/`DTEND` in UTC (`…Z`), no `VTIMEZONE`.
  * - Guarantee (§ 12): no customer name, email or phone — the booking projection does not read `who`.
  * Answer: 200, `Content-Type: text/calendar; charset=utf-8`, `Cache-Control: private, max-age=300`.
  *
- * Deviations from § 6.3 (consumer row "Calendar feed"), recorded in the build report:
- * - the run capacity for `taken/capacity` is not in the AP6 projection; it is read by one `getRun` per run of this
- *   trainer in the window (display read) — DECISION SCHED-1G1-FEED-CAPACITY;
- * - course names are read by one `getCourse` per distinct course (the row names one BatchGet of `COURSE#`): same
- *   items, more requests; no store function batches courses;
- * - the tenant record is read only for the switch; no stored scheduling setting is parsed (the feed uses none).
+ * Deviation from § 6.3 (consumer row "Calendar feed"), recorded in the build report: the tenant record is read only
+ * for the switch; no stored scheduling setting is parsed (the feed uses none).
  *
  * Abstraction line: `feedCalendar` (pure) — users: this handler and its tests; axis: none (the one iCalendar writer);
  * rejected: building the text inside the handler (the clock and the line rules could not be tested without the store).
@@ -54,11 +47,11 @@
 import { timingSafeEqual } from "node:crypto";
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { z } from "zod";
-import { activeSeats, localToInstant, type Instant } from "@amodx/shared";
+import type { Instant } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { requireRole } from "../../auth/policy.js";
 import {
-    getBookingViews, getCourse, getResource, getRun, readIntervals, runsNotEndedBy, schedulingStoreFromEnv, sha256hex,
+    getBookingViews, getResource, readIntervals, schedulingStoreFromEnv, sha256hex,
     type BookingFeedView,
 } from "../../lib/scheduling-db.js";
 import { guarded, readTenantRecord, refusal, type Answer } from "../common.js";
@@ -79,8 +72,6 @@ const FeedBodySchema = z.object({
 
 /** One slot appointment in the feed: times and names from `BOOKING#` (no customer field exists in this type). */
 export type FeedSlot = { bookingId: string; ref: string; serviceName: string; start: Instant; end: Instant; held: boolean };
-/** One meeting of a run the resource trains. `n` = 1-based position in the run's stored meeting list. */
-export type FeedMeeting = { runId: string; n: number; courseName: string; start: Instant; end: Instant; taken: number; capacity: number };
 
 /** `YYYYMMDDTHHMMSSZ` (iCalendar UTC form, RFC 5545 § 3.3.5). */
 function icsTime(at: Instant): string {
@@ -116,19 +107,13 @@ function fold(line: string): string {
  * The iCalendar text (pure; `now` injected). Events sorted by start, then UID, so the same data gives the same text.
  * Lines end with CRLF (RFC 5545 § 3.1).
  */
-export function feedCalendar(input: { tenantId: string; now: Instant; slots: FeedSlot[]; meetings: FeedMeeting[] }): string {
+export function feedCalendar(input: { tenantId: string; now: Instant; slots: FeedSlot[] }): string {
     const { tenantId, now } = input;
     type Event = { uid: string; start: Instant; end: Instant; summary: string; status: "CONFIRMED" | "TENTATIVE" };
-    const events: Event[] = [
-        ...input.slots.map((s): Event => ({
-            uid: `${s.bookingId}@${tenantId}`, start: s.start, end: s.end, summary: `${s.serviceName} ${s.ref}`,
-            status: s.held ? "TENTATIVE" : "CONFIRMED",
-        })),
-        ...input.meetings.map((m): Event => ({
-            uid: `${m.runId}-${m.n}@${tenantId}`, start: m.start, end: m.end, summary: `${m.courseName} ${m.taken}/${m.capacity}`,
-            status: "CONFIRMED",
-        })),
-    ].sort((a, b) => a.start - b.start || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+    const events: Event[] = input.slots.map((s): Event => ({
+        uid: `${s.bookingId}@${tenantId}`, start: s.start, end: s.end, summary: `${s.serviceName} ${s.ref}`,
+        status: s.held ? "TENTATIVE" : "CONFIRMED",
+    })).sort((a, b) => a.start - b.start || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
     const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AMODX//Scheduling feed//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
     for (const e of events) {
         lines.push(
@@ -149,7 +134,7 @@ export function feedCalendar(input: { tenantId: string; now: Instant; slots: Fee
 /** The slot events of `views` for `resourceId` inside `window` (the rules of the header). */
 function feedSlots(views: BookingFeedView[], resourceId: string, window: { start: Instant; end: Instant }, now: Instant): FeedSlot[] {
     return views.flatMap((b): FeedSlot[] => {
-        if (b.what.kind !== "slot" || b.what.resourceId !== resourceId) return [];
+        if (b.what.resourceId !== resourceId) return [];
         if (!(b.what.start < window.end && window.start < b.what.end)) return [];
         let held: boolean;
         switch (b.state.kind) {
@@ -203,37 +188,11 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const views = await getBookingViews(store, tenantId, entries.map((e) => e.bookingId), "feed");
         if (!views.ok) return refusal(503, "busy", "Busy, please try again.");
 
-        const runs = await runsNotEndedBy(store, tenantId, window.start, window.end, false);
-        if (!runs.ok) return refusal(503, "busy", "Busy, please try again.");
-        const trained = runs.value.filter((r) => r.trainerIds.includes(resourceId) && r.status !== "cancelled");
-        const courseIds = [...new Set(trained.map((r) => r.courseId))];
-        const [courses, records] = await Promise.all([
-            Promise.all(courseIds.map((c) => getCourse(store, tenantId, c, false))),
-            Promise.all(trained.map((r) => getRun(store, tenantId, r.courseId, r.runId, false))),
-        ]);
-        const courseName = new Map(courseIds.map((c, i) => [c, courses[i]?.name ?? ""]));
-        const meetings: FeedMeeting[] = trained.flatMap((r, i) => {
-            const capacity = records[i]?.capacity;
-            if (capacity === undefined) return []; // a run is cancelled, never deleted: not reached
-            const taken = activeSeats(r.seats, now);
-            return r.meetings.flatMap((m, index): FeedMeeting[] => {
-                const start = localToInstant(m.date, m.start, r.timezone);
-                const end = localToInstant(m.date, m.end, r.timezone);
-                if (!start.ok || !end.ok) {
-                    // Validated in this zone when written; a time-zone rules update could remove the local time.
-                    console.error("[scheduling] visitor-feed meeting time does not exist", r.courseId, r.runId, index + 1);
-                    return [];
-                }
-                if (!(start.value < window.end && window.start < end.value)) return [];
-                return [{ runId: r.runId, n: index + 1, courseName: courseName.get(r.courseId) ?? "", start: start.value, end: end.value, taken, capacity }];
-            });
-        });
-
         // Not `answer()`: that writes JSON. The body is the calendar text itself.
         return {
             statusCode: 200,
             headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "private, max-age=300" },
-            body: feedCalendar({ tenantId, now, slots: feedSlots(views.value, resourceId, window, now), meetings }),
+            body: feedCalendar({ tenantId, now, slots: feedSlots(views.value, resourceId, window, now) }),
         };
     });
 };

@@ -21,7 +21,7 @@ import * as path from "node:path";
 import {
     BatchGetCommand, DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { activeEntries, tokenView, type Person } from "@amodx/shared";
+import { activeEntries, type Person } from "@amodx/shared";
 import * as sdb from "../../src/lib/scheduling-db";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -429,21 +429,6 @@ function holdSlot(store: sdb.SchedulingStore, start = MON_0900, who = person(), 
     return sdb.holdSlot(store, { tenantId: T, serviceId: "svc60", start, who, intentId: randomUUID(), fingerprint: "fp", settings, now: NOW, ...extra });
 }
 
-async function seedRun(store: sdb.SchedulingStore, opts: { capacity?: number; language?: string; meetings?: any[]; trainerId?: string; now?: number } = {}) {
-    await sdb.putCourse(store, T, { id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro", "en"] });
-    const trainerId = opts.trainerId ?? (await sdb.createResource(store, T, "Trainer")).id;
-    const run = must(await sdb.createRun(store, {
-        tenantId: T, courseId: "c1", timezone: TZ, capacity: opts.capacity ?? 8, trainerIds: [trainerId],
-        language: opts.language ? { kind: "set", tag: opts.language } : { kind: "notSet" },
-        meetings: opts.meetings ?? [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: opts.now ?? NOW,
-    }));
-    return { run, trainerId };
-}
-
-function holdSeat(store: sdb.SchedulingStore, runId: string, who = person(), extra: Partial<sdb.SeatHoldInput> = {}) {
-    return sdb.holdSeat(store, { tenantId: T, courseId: "c1", runId, who, intentId: randomUUID(), fingerprint: "fp", settings, now: NOW, ...extra });
-}
-
 const admin = { kind: "admin" as const, email: "owner@studio.example" };
 const customer = { kind: "customer" as const };
 
@@ -458,7 +443,7 @@ function itemSetViolations(fake: FakeTable): string[] {
     for (const i of items) {
         const sk: string = i.SK;
         const tail = sk.slice(sk.lastIndexOf("#") + 1);
-        if ((sk.startsWith("HELD#") || sk.startsWith("UNPLACED#")) && !bookings.has(tail)) out.push(`${sk} without BOOKING#`);
+        if (sk.startsWith("HELD#") && !bookings.has(tail)) out.push(`${sk} without BOOKING#`);
         if (sk.startsWith("TOKEN#") && !bookings.has(i.bookingId)) out.push(`${sk} without BOOKING#`);
         if (sk.startsWith("HELD#") && bookings.get(tail)?.heldUntil === undefined) out.push(`${sk} without heldUntil`);
     }
@@ -479,7 +464,6 @@ describe("§ 6.2 keys and codecs", () => {
         expect(k.pk("t1")).toBe("TENANT#t1");
         expect(k.resDay("r1", "2026-12-07")).toBe("RESDAY#r1#2026-12-07");
         expect(k.held(Date.parse("2026-12-01T10:30:00Z"), "b1")).toBe("HELD#2026-12-01T10:30:00.000Z#b1");
-        expect(k.runSpan("2026-12-12T11:00:00.000Z", "c1", "r1")).toBe("RUNSPAN#2026-12-12T11:00:00.000Z#c1#r1");
         expect(k.limitEmail("h", 491234)).toBe("LIMIT#EMAIL#h#491234");
         expect(k.cust("ana@example.com", "b1")).toBe("CUST#ana@example.com#b1");
         expect(() => k.booking("a#b")).toThrow();
@@ -515,6 +499,19 @@ describe("§ 6.2 keys and codecs", () => {
         expect(e.key).toBe("BOOKING#b1");
         expect(e.message).not.toContain("ana@example.com");
     });
+
+    it("SCHED-GROUPS-REMOVE-1: only `seat` and `unplaced` take the removed-shape path; a BOOKING# with a valid item set but no `what`, or an unknown `what.kind`, still throws storedDataInvalid (never read as absent)", async () => {
+        const { fake, store } = setup();
+        const itemSet = {
+            id: "b2", ref: "B-B2000000", rev: 1, state: { kind: "confirmed", at: 1 }, who: { email: "ana@example.com", name: "Ana" },
+            tokenHashes: [], source: { kind: "visitor" }, createdAt: 1, updatedAt: 1, history: [{ action: "confirmed", at: 1 }],
+        };
+        for (const what of [undefined, { kind: "slt", serviceId: "s" }, { kind: "slot" }]) {
+            fake.putRaw({ PK, SK: "BOOKING#b2", ...itemSet, ...(what === undefined ? {} : { what }) });
+            const e = await sdb.getBooking(store, T, "b2", true).catch((x) => x);
+            expect({ what, error: e instanceof sdb.StoredDataInvalidError }).toEqual({ what, error: true });
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -522,28 +519,12 @@ describe("§ 6.2 keys and codecs", () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe("§ 6.3 / § 6.4 reads", () => {
-    it("C17 — a run that started before a window, with a meeting inside it, is found by AP6", async () => {
-        const { store } = setup();
-        const { run } = await seedRun(store, {
-            meetings: [{ date: "2026-11-28", start: "10:00", end: "12:00" }, { date: "2026-12-12", start: "10:00", end: "12:00" }],
-            now: Date.parse("2026-11-01T00:00:00Z"),
-        });
-        const windowStart = Date.parse("2026-12-05T00:00:00Z");
-        const found = must(await sdb.runsNotEndedBy(store, T, windowStart, windowStart + 60 * DAY, false));
-        expect(found.map((r) => r.runId)).toEqual([run.id]);
-        expect(found[0].courseId).toBe("c1");
-        const ended = must(await sdb.runsNotEndedBy(store, T, Date.parse("2026-12-13T00:00:00Z"), Date.parse("2027-01-13T00:00:00Z"), false));
-        expect(ended).toEqual([]);
-    });
-
     it("C18 — a query with more than one page is read to the end", async () => {
         const { fake, store } = setup();
-        await seedRun(store);
-        await seedRun(store, { trainerId: (await sdb.createResource(store, T, "T2")).id });
-        await seedRun(store, { trainerId: (await sdb.createResource(store, T, "T3")).id });
+        await seedSlots(store, { services: [{ id: "s1", durationMin: 30 }, { id: "s2", durationMin: 60 }, { id: "s3", durationMin: 90 }] });
         fake.pageSize = 1;
-        expect(await sdb.listRuns(store, T, "c1", false)).toHaveLength(3);
-        expect(fake.ops("QueryCommand").filter((q) => q.ExpressionAttributeValues[":p"] === "RUN#c1#").length).toBeGreaterThanOrEqual(3);
+        expect(await sdb.listServices(store, T, false)).toHaveLength(3);
+        expect(fake.ops("QueryCommand").filter((q) => q.ExpressionAttributeValues[":p"] === "SERVICE#").length).toBeGreaterThanOrEqual(3);
         expect(fake.ops("QueryCommand").every((q) => typeof q.ProjectionExpression === "string" && q.Limit === undefined)).toBe(true);
     });
 
@@ -577,27 +558,14 @@ describe("§ 6.3 / § 6.4 reads", () => {
         expect(await sdb.getBookingByToken(store, T, "not-a-token", true)).toBeUndefined();
     });
 
-    it("AP8 — unplaced people are paged by 100 with an opaque cursor; a forged cursor is refused", async () => {
-        const { store } = setup();
-        await seedRun(store);
-        for (let i = 0; i < 3; i++) {
-            must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person(`p${i}@example.com`), channel: "phone", adminEmail: admin.email, now: NOW }));
-        }
-        const page = must(await sdb.listUnplacedPage(store, T, "c1"));
-        expect(page.bookingIds).toHaveLength(3);
-        expect(page.cursor).toBeUndefined();
-        const forged = Buffer.from(JSON.stringify({ PK: "TENANT#tenant-b", SK: "UNPLACED#c1#x" })).toString("base64url");
-        expect(await sdb.listUnplacedPage(store, T, "c1", forged)).toEqual({ ok: false, error: { kind: "invalidCursor" } });
-        expect(await sdb.listUnplacedPage(store, T, "c1", "%%%")).toEqual({ ok: false, error: { kind: "invalidCursor" } });
-    });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// Step 3: slot writes (§ 7.1-§ 7.3) and step 4: seat and run writes (§ 7.4-§ 7.6)
+// Step 3: slot writes (§ 7.1-§ 7.3)
 // ---------------------------------------------------------------------------------------------------------------
 
 describe("§ 7 transactions", () => {
-    it("§ 7.3 / § 7.4 item counts: hold ≤ 13 / 10, confirm ≤ 5 / 4, cancel ≤ 25 / 24, move ≤ 6 / 3 (seat → unplaced 4: + the course version, S1F1-COURSE-DELETE-GUARD), manual ≤ 6 / 5", async () => {
+    it("§ 7.3 item counts: hold ≤ 13, confirm ≤ 5, cancel ≤ 25, move ≤ 6, manual ≤ 6", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
         const midnight = Date.parse("2026-12-07T23:30:00Z"); // Tuesday 01:30 local, on the grid; crosses UTC midnight
@@ -615,28 +583,6 @@ describe("§ 7 transactions", () => {
         for (let i = 0; i < 19; i++) must(await sdb.mintToken(store, T, held.id, NOW, { countForEmail: false }));
         expect((await sizes(() => sdb.cancelBooking(store, { tenantId: T, bookingId: held.id, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBeLessThanOrEqual(25);
         expect((await sizes(() => sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: midnight, who: person("b@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })))[0]).toBeLessThanOrEqual(6);
-
-        const { run } = await seedRun(store);
-        const seat = await sizes(async () => must(await holdSeat(store, run.id, person("c@example.com"), { addressKey: "198.51.100.4" })));
-        expect(seat[0]).toBeLessThanOrEqual(10);
-        const seatId = [...fake.items.values()].find((i) => i.SK.startsWith("BOOKING#") && i.what.kind === "seat")!.id;
-        expect((await sizes(() => sdb.confirmBooking(store, T, seatId, NOW)))[0]).toBe(4);
-        expect((await sizes(() => sdb.moveSeat(store, { tenantId: T, bookingId: seatId, runId: null, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBe(4);
-        expect((await sizes(() => sdb.moveSeat(store, { tenantId: T, bookingId: seatId, runId: run.id, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBe(3);
-        expect((await sizes(() => sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("d@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })))[0]).toBeLessThanOrEqual(5);
-        expect((await sizes(() => sdb.updateRun(store, T, "c1", run.id, { capacity: 3 }, NOW)))[0]).toBe(1);
-    });
-
-    it("C1 — 20 parallel seat holds on the last seat: exactly 1 success, 19 runFull; active count = capacity", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store, { capacity: 1 });
-        const results = await Promise.all(Array.from({ length: 20 }, (_, i) => holdSeat(store, run.id, person(`v${i}@example.com`))));
-        expect(results.filter((r) => r.ok)).toHaveLength(1);
-        expect(results.filter((r) => !r.ok).map((r) => (r as any).error)).toEqual(Array(19).fill({ kind: "runFull", capacity: 1 }));
-        const stored = fake.get(PK, `RUN#c1#${run.id}`)!;
-        expect(Object.keys(stored.seats)).toHaveLength(1);
-        expect(itemSetViolations(fake)).toEqual([]);
-        expect(fake.sks("BOOKING#")).toHaveLength(1); // the losers' puts were in cancelled transactions
     });
 
     it("C2 — parallel slot holds 60 min at 09:00 and 30 min at 09:30 on one resource: exactly 1 success", async () => {
@@ -663,29 +609,6 @@ describe("§ 7 transactions", () => {
     describe("C3 — confirm and hold at expiry, both commit orders, clocks skewed ±2 s", () => {
         const holdAt = NOW;
         const X = holdAt + 30 * MIN;
-        it("C3 seat (a): A's confirm (clock X − 2 s) commits first → B (clock X + 2 s) re-reads → runFull", async () => {
-            const { fake, store } = setup();
-            const { run } = await seedRun(store, { capacity: 1 });
-            const A = must(await holdSeat(store, run.id, person("a@example.com"))).booking;
-            fake.on("TransactWriteCommand", "before", async () => {
-                must(await sdb.confirmBooking(store, T, A.id, X - 2000));
-            });
-            const B = await holdSeat(store, run.id, person("b@example.com"), { now: X + 2000 });
-            expect(B).toEqual({ ok: false, error: { kind: "runFull", capacity: 1 } });
-            expect(booking(fake, A.id)!.state.kind).toBe("confirmed");
-            expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).toEqual([A.id]);
-        });
-        it("C3 seat (b): B's hold (clock X + 2 s) commits first, removing A → A's confirm (clock X − 2 s) → expired (seatLost)", async () => {
-            const { fake, store } = setup();
-            const { run } = await seedRun(store, { capacity: 1 });
-            const A = must(await holdSeat(store, run.id, person("a@example.com"))).booking;
-            fake.on("TransactWriteCommand", "before", async () => {
-                must(await holdSeat(store, run.id, person("b@example.com"), { now: X + 2000 }));
-            });
-            expect(await sdb.confirmBooking(store, T, A.id, X - 2000)).toEqual({ ok: false, error: { kind: "expired", at: X } });
-            expect(booking(fake, A.id)!.state.kind).toBe("held");
-            expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).toHaveLength(1);
-        });
         it("C3 slot (a) and (b): never overlapping; the loser is slotTaken or expired", async () => {
             for (const order of ["confirmFirst", "holdFirst"] as const) {
                 const { fake, store } = setup();
@@ -725,11 +648,11 @@ describe("§ 7 transactions", () => {
 
     it("C4 — double submit: both holds read 'no intent'; one commits; the other fails on INTENT# → intentExists → replay answers the same booking", async () => {
         const { fake, store } = setup();
-        const { run } = await seedRun(store);
+        await seedSlots(store);
         const intentId = randomUUID();
         const [a, b] = await Promise.all([
-            holdSeat(store, run.id, person(), { intentId, fingerprint: "same" }),
-            holdSeat(store, run.id, person(), { intentId, fingerprint: "same" }),
+            holdSlot(store, MON_0900, person(), { intentId, fingerprint: "same" }),
+            holdSlot(store, MON_0900 + HOUR, person(), { intentId, fingerprint: "same" }),
         ]);
         const winner = (a.ok ? a : b) as { ok: true; value: sdb.Created };
         expect(a.ok ? b : a).toEqual({ ok: false, error: { kind: "intentExists" } });
@@ -796,56 +719,27 @@ describe("§ 7 transactions", () => {
         expect(sdb.replayIntent.length).toBe(6); // (store, tenant, intent, fingerprint, resend, now): no token parameter
     });
 
-    it("C8 — capacity lowered below taken: 200; a held booking then confirms; a new hold → runFull", async () => {
-        const { store } = setup();
-        const { run } = await seedRun(store, { capacity: 3 });
-        const held = must(await holdSeat(store, run.id, person("a@example.com"))).booking;
-        must(await holdSeat(store, run.id, person("b@example.com")));
-        must(await holdSeat(store, run.id, person("c@example.com")));
-        const lowered = must(await sdb.updateRun(store, T, "c1", run.id, { capacity: 1 }, NOW));
-        expect(lowered.capacity).toBe(1);
-        expect(must(await sdb.confirmBooking(store, T, held.id, NOW)).booking.state.kind).toBe("confirmed");
-        expect(await holdSeat(store, run.id, person("d@example.com"))).toEqual({ ok: false, error: { kind: "runFull", capacity: 1 } });
-    });
-
-    it("C9 — two first enrolments ro / en on a notSet run: one wins and sets the language; the other languageMismatch", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const [ro, en] = await Promise.all([
-            holdSeat(store, run.id, person("ro@example.com", "ro")),
-            holdSeat(store, run.id, person("en@example.com", "en")),
-        ]);
-        expect([ro.ok, en.ok].filter(Boolean)).toHaveLength(1);
-        const winner = ro.ok ? "ro" : "en";
-        expect(fake.get(PK, `RUN#c1#${run.id}`)!.language).toEqual({ kind: "set", tag: winner });
-        expect((ro.ok ? en : ro)).toEqual({ ok: false, error: { kind: "languageMismatch", run: winner, person: winner === "ro" ? "en" : "ro" } });
-    });
-
     it("C10 — two admin moves of one booking at once: one commits; the other re-reads and decides from the new what", async () => {
         const { fake, store } = setup();
-        const { run, trainerId } = await seedRun(store);
-        const { run: run2 } = await seedRun(store, { trainerId });
-        const { run: run3 } = await seedRun(store, { trainerId });
-        const b = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        const move = (runId: string, expectedRev?: number) => sdb.moveSeat(store, { tenantId: T, bookingId: b.id, runId, actor: admin, cutoffHours: 24, now: NOW, expectedRev });
-        const [m2, m3] = await Promise.all([move(run2.id), move(run3.id)]);
+        const [r] = await seedSlots(store);
+        const b = must(await sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        const move = (start: number) => sdb.moveSlot(store, { tenantId: T, bookingId: b.id, start, resourceIds: [r], actor: admin, settings, now: NOW });
+        const [m2, m3] = await Promise.all([move(MON_0900 + HOUR), move(MON_0900 + 2 * HOUR)]);
         expect(m2.ok && m3.ok).toBe(true);
         const stored = booking(fake, b.id)!;
         const moves = stored.history.filter((h: any) => h.action === "moved");
         expect(moves).toHaveLength(2);
         expect(moves[1].from).toEqual(moves[0].to); // the second decided from the first one's result
-        const seatsTaken = [run, run2, run3].map((r) => Object.keys(fake.get(PK, `RUN#c1#${r.id}`)!.seats).length);
-        expect(seatsTaken.reduce((a, n) => a + n, 0)).toBe(1);
+        expect(Object.keys(fake.get(PK, `RESDAY#${r}#2026-12-07`)!.entries)).toEqual([b.id]);
     });
 
     it("C10 — with a rev: the second admin move answers stale", async () => {
         const { store } = setup();
-        const { run, trainerId } = await seedRun(store);
-        const { run: run2 } = await seedRun(store, { trainerId });
-        const b = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        const [r] = await seedSlots(store);
+        const b = must(await sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
         const [m1, m2] = await Promise.all([
-            sdb.moveSeat(store, { tenantId: T, bookingId: b.id, runId: run2.id, actor: admin, cutoffHours: 24, now: NOW, expectedRev: b.rev }),
-            sdb.moveSeat(store, { tenantId: T, bookingId: b.id, runId: null, actor: admin, cutoffHours: 24, now: NOW, expectedRev: b.rev }),
+            sdb.moveSlot(store, { tenantId: T, bookingId: b.id, start: MON_0900 + HOUR, resourceIds: [r], actor: admin, settings, now: NOW, expectedRev: b.rev }),
+            sdb.moveSlot(store, { tenantId: T, bookingId: b.id, start: MON_0900 + 2 * HOUR, resourceIds: [r], actor: admin, settings, now: NOW, expectedRev: b.rev }),
         ]);
         expect([m1, m2].filter((r) => r.ok)).toHaveLength(1);
         expect([m1, m2].find((r) => !r.ok)).toEqual({ ok: false, error: { kind: "stale" } });
@@ -873,7 +767,7 @@ describe("C11 / C26 — resource removal against inventory writes (§ 13)", () =
         const { store } = setup();
         const [r] = await seedSlots(store);
         must(await holdSlot(store));
-        expect(await sdb.removeResource(store, T, r, NOW)).toEqual({ ok: false, error: { kind: "resourceInUse", activeBookings: 1, runs: 0 } });
+        expect(await sdb.removeResource(store, T, r, NOW)).toEqual({ ok: false, error: { kind: "resourceInUse", activeBookings: 1 } });
         expect(await sdb.getResource(store, T, r, true)).toMatchObject({ id: r });
         expect((await sdb.getResource(store, T, r, true))!.retiring).toBeUndefined();
     });
@@ -900,19 +794,6 @@ describe("C11 / C26 — resource removal against inventory writes (§ 13)", () =
             expect(fake.sks("BOOKING#")).toEqual([]);
             expect(fake.sks("RESOURCE#")).toEqual([]);
         }
-    });
-
-    it("C11 (c) a run trainer change naming the resource, both orders", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const r2 = (await sdb.createResource(store, T, "R2")).id;
-        must(await sdb.updateRun(store, T, "c1", run.id, { trainerIds: [r2] }, NOW));
-        expect(await sdb.removeResource(store, T, r2, NOW)).toMatchObject({ ok: false, error: { kind: "resourceInUse", runs: 1 } });
-
-        const r3 = (await sdb.createResource(store, T, "R3")).id;
-        fake.on("TransactWriteCommand", "before", async () => { must(await sdb.removeResource(store, T, r3, NOW)); });
-        expect(await sdb.updateRun(store, T, "c1", run.id, { trainerIds: [r3] }, NOW)).toEqual({ ok: false, error: { kind: "resourceUnavailable" } });
-        expect(fake.get(PK, `RUN#c1#${run.id}`)!.trainerIds).toEqual([r2]);
     });
 
     it("C11 (d) two removal requests at once: one 204, the other resourceRemovalInProgress", async () => {
@@ -943,112 +824,17 @@ describe("C11 / C26 — resource removal against inventory writes (§ 13)", () =
         expect(fake.get(PK, `RESOURCE#${r}`)!.retiring).toEqual({ attemptId: "B", at: NOW + 11 * MIN });
     });
 
-    it("C11 (g) a move of an ended run to future dates whose trainer is being removed, both commit orders", async () => {
-        const past = [{ date: "2026-11-21", start: "10:00", end: "12:00" }];
-        const future = [{ date: "2026-12-19", start: "10:00", end: "12:00" }];
-        {
-            const { store } = setup();
-            const { run, trainerId } = await seedRun(store, { meetings: past, now: Date.parse("2026-11-01T00:00:00Z") });
-            must(await sdb.moveRun(store, T, "c1", run.id, future, NOW));
-            expect(await sdb.removeResource(store, T, trainerId, NOW)).toMatchObject({ ok: false, error: { kind: "resourceInUse", runs: 1 } });
-        }
-        {
-            const { fake, store } = setup();
-            const { run, trainerId } = await seedRun(store, { meetings: past, now: Date.parse("2026-11-01T00:00:00Z") });
-            fake.on("TransactWriteCommand", "before", async () => { must(await sdb.removeResource(store, T, trainerId, NOW)); });
-            expect(await sdb.moveRun(store, T, "c1", run.id, future, NOW)).toEqual({ ok: false, error: { kind: "resourceUnavailable" } });
-            expect(fake.get(PK, `RUN#c1#${run.id}`)!.meetings).toEqual(past);
-        }
-    });
-
-    it("C26 — trainers change R1 → R2: removal of R1 is not refused by that run; R2 → resourceInUse", async () => {
-        const { store } = setup();
-        const { run, trainerId: r1 } = await seedRun(store);
-        const r2 = (await sdb.createResource(store, T, "R2")).id;
-        must(await sdb.updateRun(store, T, "c1", run.id, { trainerIds: [r2] }, NOW));
-        expect(await sdb.removeResource(store, T, r1, NOW)).toEqual({ ok: true, value: undefined });
-        expect(await sdb.removeResource(store, T, r2, NOW)).toMatchObject({ ok: false, error: { kind: "resourceInUse", runs: 1 } });
-    });
 });
 
-describe("unplaced, run cancel, erasure, tokens", () => {
-    it("C25 — cancel of an unplaced booking deletes UNPLACED#; admin seat → unplaced → seat puts / deletes it; AP8 lists exactly the unplaced", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const u = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        const s = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        expect(must(await sdb.listUnplacedPage(store, T, "c1")).bookingIds).toEqual([u.id]);
-        must(await sdb.cancelBooking(store, { tenantId: T, bookingId: u.id, actor: customer, cutoffHours: 24, now: NOW }));
-        expect(fake.sks("UNPLACED#")).toEqual([]);
-        const toUnplaced = fake.txSizes().length;
-        must(await sdb.moveSeat(store, { tenantId: T, bookingId: s.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(fake.ops("TransactWriteCommand")[toUnplaced].TransactItems.some((t: any) => t.Put?.Item.SK === `UNPLACED#c1#${s.id}`)).toBe(true);
-        expect(must(await sdb.listUnplacedPage(store, T, "c1")).bookingIds).toEqual([s.id]);
-        must(await sdb.moveSeat(store, { tenantId: T, bookingId: s.id, runId: run.id, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(fake.ops("TransactWriteCommand").at(-1).TransactItems.some((t: any) => t.Delete?.Key.SK === `UNPLACED#c1#${s.id}`)).toBe(true);
-        expect(must(await sdb.listUnplacedPage(store, T, "c1")).bookingIds).toEqual([]);
-        expect(itemSetViolations(fake)).toEqual([]);
-    });
-
-    it("C12 / C32 — cancel a run of 45: one transaction ≤ 93 items (S1F1-COURSE-DELETE-GUARD adds the course version); 45 changed with history; RUNSPAN# gone; held tokens cleared after commit", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store, { capacity: 45 });
-        const held: string[] = [];
-        for (let i = 0; i < 45; i++) {
-            if (i < 15) held.push(must(await holdSeat(store, run.id, person(`h${i}@example.com`))).booking.id);
-            else must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(`m${i}@example.com`), channel: "phone", adminEmail: admin.email, now: NOW }));
-        }
-        const before = fake.txSizes().length;
-        const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
-        expect(fake.txSizes().slice(before)).toEqual([2 + 2 * 30 + 15 + 1]); // cancelRun sends ONE transaction (S1F1-R02)
-        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [] });
-        const sizes = fake.txSizes().slice(before);
-        expect(sizes).toHaveLength(1 + 15);
-        expect(Math.max(...sizes)).toBeLessThanOrEqual(93);
-        expect(result.unplaced).toHaveLength(30);
-        expect(result.cancelled.sort()).toEqual(held.sort());
-        expect(fake.sks("RUNSPAN#")).toEqual([]);
-        expect(fake.get(PK, `RUN#c1#${run.id}`)).toMatchObject({ status: "cancelled", seats: {} });
-        for (const id of result.unplaced) {
-            const b = booking(fake, id)!;
-            expect(b.what).toEqual({ kind: "unplaced", courseId: "c1" });
-            expect(b.history.at(-1)).toMatchObject({ action: "moved", by: admin, from: { kind: "seat", runId: run.id }, to: { kind: "unplaced" } });
-        }
-        for (const id of held) {
-            const b = booking(fake, id)!;
-            expect(b.state).toMatchObject({ kind: "cancelled", by: admin });
-            expect(b.history.at(-1)).toMatchObject({ action: "cancelled", by: admin });
-            expect(b.tokenHashes).toEqual([]);
-            expect(tokenItems(fake, id)).toEqual([]);
-        }
-        expect(must(await sdb.listUnplacedPage(store, T, "c1")).bookingIds).toHaveLength(30);
-        expect(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW)).toEqual({ ok: false, error: { kind: "runCancelled" } });
-        expect(itemSetViolations(fake)).toEqual([]);
-    });
-
-    it("C24 — run cancel with a crash after commit, before the held tokens' cleanup; then erase of that email", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const { booking: h, token } = must(await holdSeat(store, run.id, person("h@example.com")));
-        fake.on("TransactWriteCommand", "after", crash);
-        await expect(sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW)).rejects.toThrow(/injected crash/);
-        const viaLink = await sdb.getBookingByToken(store, T, token, true);
-        expect(viaLink!.state.kind).toBe("cancelled");
-        expect(tokenView(viaLink!, null, NOW)).toBe("gone"); // → 404 linkNotValid
-        expect(tokenItems(fake, h.id)).toHaveLength(1); // still listed, still findable
-        expect(must(await sdb.eraseCustomer(store, T, "h@example.com", NOW))).toEqual({ removedBookings: 1, remainingBookings: 0 });
-        expect(tokenItems(fake, h.id)).toEqual([]);
-        expect(itemSetViolations(fake)).toEqual([]);
-    });
-
+describe("erasure, tokens", () => {
     it("C13 — erasure while a hold for the same email commits after step 1's read: remaining 1; a second run removes it", async () => {
         const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        must(await holdSeat(store, run.id, person("ana@example.com")));
-        fake.on("GetCommand", "before", async () => { must(await holdSeat(store, run.id, person("ana@example.com"))); }, (g) => g.Key.SK.startsWith("BOOKING#"));
+        const [r] = await seedSlots(store);
+        must(await holdSlot(store, MON_0900, person("ana@example.com")));
+        fake.on("GetCommand", "before", async () => { must(await holdSlot(store, MON_0900 + HOUR, person("ana@example.com"))); }, (g) => g.Key.SK.startsWith("BOOKING#"));
         expect(must(await sdb.eraseCustomer(store, T, "ana@example.com", NOW))).toEqual({ removedBookings: 1, remainingBookings: 1 });
         expect(must(await sdb.eraseCustomer(store, T, "Ana@Example.com", NOW))).toEqual({ removedBookings: 1, remainingBookings: 0 });
-        expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).toEqual([]);
+        expect(Object.keys(fake.get(PK, `RESDAY#${r}#2026-12-07`)!.entries)).toEqual([]);
         expect(itemSetViolations(fake)).toEqual([]);
     });
 
@@ -1073,7 +859,7 @@ describe("unplaced, run cancel, erasure, tokens", () => {
         expect(await sdb.getBookingByToken(store, T, token, true)).toBeUndefined();
         expect(await sdb.confirmBooking(store, T, "ghost", NOW)).toEqual({ ok: false, error: { kind: "notFound" } });
         expect(await sdb.cancelBooking(store, { tenantId: T, bookingId: "ghost", actor: customer, cutoffHours: 24, now: NOW })).toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(await sdb.moveSeat(store, { tenantId: T, bookingId: "ghost", runId: "r", actor: customer, cutoffHours: 24, now: NOW })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(await sdb.moveSlot(store, { tenantId: T, bookingId: "ghost", start: MON_0900, resourceIds: ["r"], actor: customer, settings, now: NOW })).toEqual({ ok: false, error: { kind: "notFound" } });
         expect(JSON.stringify([...fake.items.entries()])).toBe(before);
     });
 
@@ -1115,14 +901,15 @@ describe("unplaced, run cancel, erasure, tokens", () => {
 
     it("C20 — per-email (5/hour) and per-address (20/hour) counters in the hold transaction", async () => {
         const { fake, store } = setup();
-        const { run } = await seedRun(store, { capacity: 45 });
+        await seedSlots(store);
+        const TUE_0030 = Date.parse("2026-12-07T22:30:00Z"); // Tuesday 00:30 local: 23 hourly grid starts that day
         for (let i = 0; i < 5; i++) {
-            const b = must(await holdSeat(store, run.id, person())).booking;
+            const b = must(await holdSlot(store, MON_0900)).booking;
             must(await sdb.cancelBooking(store, { tenantId: T, bookingId: b.id, actor: customer, cutoffHours: 24, now: NOW }));
         }
-        expect(await holdSeat(store, run.id, person())).toEqual({ ok: false, error: { kind: "tooManyForEmail" } });
-        for (let i = 0; i < 20; i++) must(await holdSeat(store, run.id, person(`x${i}@example.com`), { addressKey: "2001:db8:1:2::/64" }));
-        expect(await holdSeat(store, run.id, person("y@example.com"), { addressKey: "2001:db8:1:2::/64" })).toEqual({ ok: false, error: { kind: "tooManyFromAddress" } });
+        expect(await holdSlot(store, MON_0900)).toEqual({ ok: false, error: { kind: "tooManyForEmail" } });
+        for (let i = 0; i < 20; i++) must(await holdSlot(store, TUE_0030 + i * HOUR, person(`x${i}@example.com`), { addressKey: "2001:db8:1:2::/64" }));
+        expect(await holdSlot(store, TUE_0030 + 20 * HOUR, person("y@example.com"), { addressKey: "2001:db8:1:2::/64" })).toEqual({ ok: false, error: { kind: "tooManyFromAddress" } });
         expect(fake.sks("LIMIT#ADDR#")).toHaveLength(1);
         expect(fake.sks("LIMIT#ADDR#")[0]).not.toContain("2001"); // a hash, no plaintext
     });
@@ -1203,15 +990,13 @@ describe("C16 / C32 — item-set invariant and history per operation (fault inje
     }
     const lastEntry = (fake: FakeTable, id: string) => booking(fake, id)!.history.at(-1);
 
-    it("C16 (1) / C32 create: hold, manual appointment, manual seat → BOOKING# with CUST#; one `created` entry", async () => {
+    it("C16 (1) / C32 create: hold, manual appointment → BOOKING# with CUST#; one `created` entry", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
-        const { run } = await seedRun(store);
         await withCrash(fake, () => holdSlot(store));
         await withCrash(fake, () => sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900 + HOUR, who: person("m@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
-        await withCrash(fake, () => sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
         const all = fake.sks("BOOKING#").map((sk) => fake.get(PK, sk)!);
-        expect(all).toHaveLength(3);
+        expect(all).toHaveLength(2);
         for (const b of all) {
             expect(b.history).toHaveLength(1);
             expect(b.history[0]).toMatchObject({ action: "created", state: b.state.kind, placement: { kind: b.what.kind } });
@@ -1230,35 +1015,23 @@ describe("C16 / C32 — item-set invariant and history per operation (fault inje
         expect(booking(fake, b.id)!.history).toHaveLength(2);
     });
 
-    it("C16 (3) / C32 move: slot, seat, unplaced → one `moved` entry with the old and new placement", async () => {
+    it("C16 (3) / C32 move: slot → one `moved` entry with the old and new placement", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
-        const { run, trainerId } = await seedRun(store);
-        const { run: run2 } = await seedRun(store, { trainerId });
         const slot = must(await sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
         await withCrash(fake, () => sdb.moveSlot(store, { tenantId: T, bookingId: slot.id, start: MON_0900 + HOUR, resourceIds: [r], actor: admin, settings, now: NOW }));
         expect(lastEntry(fake, slot.id)).toEqual({ action: "moved", at: NOW, by: admin,
             from: { kind: "slot", resourceId: r, start: MON_0900, end: MON_0900 + HOUR },
             to: { kind: "slot", resourceId: r, start: MON_0900 + HOUR, end: MON_0900 + 2 * HOUR } });
-        const seat = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        await withCrash(fake, () => sdb.moveSeat(store, { tenantId: T, bookingId: seat.id, runId: run2.id, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(lastEntry(fake, seat.id)).toMatchObject({ action: "moved", from: { kind: "seat", runId: run.id }, to: { kind: "seat", runId: run2.id } });
-        await withCrash(fake, () => sdb.moveSeat(store, { tenantId: T, bookingId: seat.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(lastEntry(fake, seat.id)).toMatchObject({ action: "moved", from: { kind: "seat", runId: run2.id }, to: { kind: "unplaced" } });
-        await withCrash(fake, () => sdb.moveSeat(store, { tenantId: T, bookingId: seat.id, runId: run.id, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(lastEntry(fake, seat.id)).toMatchObject({ action: "moved", from: { kind: "unplaced" }, to: { kind: "seat", runId: run.id } });
-        expect(booking(fake, seat.id)!.history).toHaveLength(4);
     });
 
-    it("C16 (4) / C32 cancel: held (HELD# kept), confirmed, unplaced → one `cancelled` entry", async () => {
+    it("C16 (4) / C32 cancel: held (HELD# kept), confirmed → one `cancelled` entry", async () => {
         const { fake, store } = setup();
         await seedSlots(store);
-        await seedRun(store);
         const held = must(await holdSlot(store, MON_0900, person("h@example.com"))).booking;
         const conf = must(await holdSlot(store, MON_0900 + HOUR, person("c@example.com"))).booking;
         must(await sdb.confirmBooking(store, T, conf.id, NOW));
-        const unp = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        for (const b of [held, conf, unp]) {
+        for (const b of [held, conf]) {
             await withCrash(fake, () => sdb.cancelBooking(store, { tenantId: T, bookingId: b.id, actor: customer, cutoffHours: 24, now: NOW }));
             expect(lastEntry(fake, b.id)).toEqual({ action: "cancelled", at: NOW, by: customer });
         }
@@ -1277,12 +1050,11 @@ describe("C16 / C32 — item-set invariant and history per operation (fault inje
     });
 
     it("C32 — a booking changed 51 times keeps 50 entries, the oldest gone; the stored item still parses", async () => {
-        const { fake, store } = setup();
-        const { run, trainerId } = await seedRun(store, { capacity: 45 });
-        const { run: run2 } = await seedRun(store, { trainerId, capacity: 45 });
-        const b = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        const { store } = setup();
+        const [r] = await seedSlots(store);
+        const b = must(await sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
         for (let i = 0; i < 51; i++) {
-            must(await sdb.moveSeat(store, { tenantId: T, bookingId: b.id, runId: i % 2 === 0 ? run2.id : run.id, actor: admin, cutoffHours: 24, now: NOW + i }));
+            must(await sdb.moveSlot(store, { tenantId: T, bookingId: b.id, start: i % 2 === 0 ? MON_0900 + HOUR : MON_0900, resourceIds: [r], actor: admin, settings, now: NOW + i }));
         }
         const stored = await sdb.getBooking(store, T, b.id, true);
         expect(stored!.history).toHaveLength(50);
@@ -1349,18 +1121,16 @@ describe("§ 14.1 daily cleanup, § 6.1 TTL rule", () => {
     it("C30 — only INTENT#, LIMIT#EMAIL#, LIMIT#ADDR#, HOLDS#, WEEKMAIL# carry ttl", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
-        const { run } = await seedRun(store);
         const b = must(await holdSlot(store, MON_0900, person(), { addressKey: "198.51.100.4" })).booking;
-        must(await holdSeat(store, run.id, person("s@example.com")));
+        must(await holdSlot(store, MON_0900 + HOUR, person("s@example.com")));
         must(await sdb.confirmBooking(store, T, b.id, NOW));
         must(await sdb.mintToken(store, T, b.id, NOW, { countForEmail: true }));
-        must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "x", adminEmail: admin.email, now: NOW }));
         must(await sdb.editResourceDays(store, T, r, { kind: "set", from: "2026-12-24", to: "2026-12-24", value: { kind: "dayOff" } }, "2026-12-01"));
         await sdb.claimWeekMail(store, T, "2026-12-07", NOW);
         const withTtl = [...fake.items.values()].filter((i) => "ttl" in i).map((i) => i.SK.split("#")[0] + (i.SK.startsWith("LIMIT#") ? `#${i.SK.split("#")[1]}` : ""));
         expect(new Set(withTtl)).toEqual(new Set(["INTENT", "LIMIT#EMAIL", "LIMIT#ADDR", "HOLDS", "WEEKMAIL"]));
         const kinds = new Set([...fake.items.values()].map((i) => i.SK.split("#")[0]));
-        for (const k of ["BOOKING", "CUST", "TOKEN", "HELD", "DAYS", "UNPLACED", "RESDAY", "RUN"]) expect(kinds.has(k)).toBe(true);
+        for (const k of ["BOOKING", "CUST", "TOKEN", "HELD", "DAYS", "RESDAY"]) expect(kinds.has(k)).toBe(true);
         const holds = fake.get(PK, fake.sks("HOLDS#")[0])!;
         expect(holds.ttl).toBeGreaterThanOrEqual(Math.floor((NOW + DAY) / 1000));
     });
@@ -1557,19 +1327,6 @@ describe("C35 — entry rev", () => {
     });
 });
 
-describe("§ 11.3 reminder marker (seat)", () => {
-    it("a seat reminder marks once; a run move between selection and mark → stale", async () => {
-        const { store } = setup();
-        const { run } = await seedRun(store);
-        const b = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        const first = Date.parse(run.firstStartIso);
-        must(await sdb.moveRun(store, T, "c1", run.id, [{ date: "2026-12-13", start: "10:00", end: "13:00" }], NOW));
-        expect(await sdb.markReminder(store, T, b.id, { kind: "seat", courseId: "c1", runId: run.id, firstStart: first })).toEqual({ kind: "stale" });
-        const moved = (await sdb.getRun(store, T, "c1", run.id, true))!;
-        expect(await sdb.markReminder(store, T, b.id, { kind: "seat", courseId: "c1", runId: run.id, firstStart: Date.parse(moved.firstStartIso) })).toEqual({ kind: "marked" });
-    });
-});
-
 // ---------------------------------------------------------------------------------------------------------------
 // Revision 1 — regressions for review-0 findings SCHED1C-R1…R4, each closed by one rule
 // ---------------------------------------------------------------------------------------------------------------
@@ -1606,7 +1363,6 @@ describe("review-0 regressions", () => {
     it("C21 — (R1 rule) every booking update sets only the attributes its change names (+ rev, updatedAt, history with an entry)", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
-        const { run } = await seedRun(store);
         const { booking: b } = must(await holdSlot(store));
         const check = async (op: () => Promise<unknown>, expected: string[]) => {
             const from = fake.ops("TransactWriteCommand").length;
@@ -1621,31 +1377,6 @@ describe("review-0 regressions", () => {
             ["what", "rev", "updatedAt", "history"]);
         await check(() => sdb.cancelBooking(store, { tenantId: T, bookingId: b.id, actor: admin, cutoffHours: 24, now: NOW }),
             ["state", "tokenHashes", "rev", "updatedAt", "history"]);
-        const s = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "x", adminEmail: admin.email, now: NOW })).booking;
-        await check(() => sdb.moveSeat(store, { tenantId: T, bookingId: s.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }), ["what", "rev", "updatedAt", "history"]);
-    });
-
-    it("C3 — (R2) a run move at X + 2 s counts A's hold as expired and removes it; A's confirm at X − 2 s → expired", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store, { capacity: 2 });
-        const A = must(await holdSeat(store, run.id, person("a@example.com"))).booking;
-        const C = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("c@example.com"), channel: "x", adminEmail: admin.email, now: NOW })).booking;
-        const X = A.heldUntil!;
-        const moved = must(await sdb.moveRun(store, T, "c1", run.id, [{ date: "2026-12-13", start: "10:00", end: "13:00" }], X + 2000));
-        expect(moved.activeBookingIds).toEqual([C.id]);
-        expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).toEqual([C.id]);
-        expect(moved.run.seats).toEqual({ [C.id]: {} });
-        expect(await sdb.confirmBooking(store, T, A.id, X - 2000)).toEqual({ ok: false, error: { kind: "expired", at: X } });
-    });
-
-    it("C8 — (R2) updateRun reads no seat and leaves seats as stored (an expired entry stays until the next seat writer)", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store, { capacity: 3 });
-        const A = must(await holdSeat(store, run.id, person("a@example.com"))).booking;
-        must(await sdb.updateRun(store, T, "c1", run.id, { capacity: 2 }, A.heldUntil! + 1));
-        expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).toEqual([A.id]);
-        must(await holdSeat(store, run.id, person("b@example.com"), { now: A.heldUntil! + 1 }));
-        expect(Object.keys(fake.get(PK, `RUN#c1#${run.id}`)!.seats)).not.toContain(A.id);
     });
 
     it("C10 — (R4) admin slot move: the current service duration (60 → 30 min); a deleted service keeps the stored duration", async () => {
@@ -1667,28 +1398,19 @@ describe("review-0 regressions", () => {
     it("§ 6.4 rule 4 — (R3 rule) every read sent by a write operation is ConsistentRead; display reads are not", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store); // eligibility "all": the hold enumerates RESOURCE#
-        const { run, trainerId } = await seedRun(store, { capacity: 10 });
-        const { run: run2 } = await seedRun(store, { trainerId, capacity: 10 });
         const reads = () => fake.calls.filter((c) => ["GetCommand", "QueryCommand", "BatchGetCommand"].includes(c.op));
         const consistentFlag = (c: { op: string; input: any }) => c.op === "BatchGetCommand"
             ? Object.values<any>(c.input.RequestItems)[0].ConsistentRead : c.input.ConsistentRead;
         const writeOps: [string, () => Promise<unknown>][] = [];
-        let slot: any, seat: any, unplaced: any;
+        let slot: any;
         writeOps.push(["holdSlot", async () => { slot = must(await holdSlot(store)).booking; }]);
-        writeOps.push(["holdSeat", async () => { seat = must(await holdSeat(store, run.id, person("s@example.com"))).booking; }]);
         writeOps.push(["confirm", () => sdb.confirmBooking(store, T, slot.id, NOW)]);
         writeOps.push(["mint", () => sdb.mintToken(store, T, slot.id, NOW, { countForEmail: true })]);
         writeOps.push(["moveSlot customer", () => sdb.moveSlot(store, { tenantId: T, bookingId: slot.id, start: MON_0900 + HOUR, resourceIds: [r], actor: customer, settings, now: NOW })]);
         writeOps.push(["moveSlot admin", () => sdb.moveSlot(store, { tenantId: T, bookingId: slot.id, start: MON_0900, resourceIds: [r], actor: admin, settings, now: NOW })]);
         writeOps.push(["manual appointment", () => sdb.createManualAppointment(store, { tenantId: T, serviceId: "svc60", resourceId: r, start: MON_0900 + 2 * HOUR, who: person("m@example.com"), channel: "x", adminEmail: admin.email, now: NOW })]);
-        writeOps.push(["manual seat unplaced", async () => { unplaced = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "x", adminEmail: admin.email, now: NOW })).booking; }]);
-        writeOps.push(["manual seat run", () => sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("v@example.com"), channel: "x", adminEmail: admin.email, now: NOW })]);
-        writeOps.push(["moveSeat", () => sdb.moveSeat(store, { tenantId: T, bookingId: unplaced.id, runId: run2.id, actor: admin, cutoffHours: 24, now: NOW })]);
-        writeOps.push(["cancel", () => sdb.cancelBooking(store, { tenantId: T, bookingId: seat.id, actor: customer, cutoffHours: 24, now: NOW })]);
-        writeOps.push(["updateRun", () => sdb.updateRun(store, T, "c1", run.id, { capacity: 9 }, NOW)]);
-        writeOps.push(["moveRun", () => sdb.moveRun(store, T, "c1", run.id, [{ date: "2026-12-13", start: "10:00", end: "13:00" }], NOW)]);
-        writeOps.push(["cancelRun", () => sdb.cancelRun(store, T, "c1", run2.id, admin.email, NOW)]);
-        writeOps.push(["removeResource", () => sdb.removeResource(store, T, trainerId, NOW)]);
+        writeOps.push(["cancel", () => sdb.cancelBooking(store, { tenantId: T, bookingId: slot.id, actor: customer, cutoffHours: 24, now: NOW })]);
+        writeOps.push(["removeResource", async () => { await sdb.removeResource(store, T, (await sdb.createResource(store, T, "Spare")).id, NOW); }]);
         writeOps.push(["editDays", () => sdb.editResourceDays(store, T, r, { kind: "set", from: "2026-12-24", to: "2026-12-24", value: { kind: "dayOff" } }, "2026-12-01")]);
         writeOps.push(["cleanup", () => sdb.cleanupExpiredHolds(store, T, NOW + 30 * DAY)]);
         writeOps.push(["erase", () => sdb.eraseCustomer(store, T, "ana@example.com", NOW)]);
@@ -1703,12 +1425,10 @@ describe("review-0 regressions", () => {
         const resourceQueries = fake.ops("QueryCommand").filter((q) => q.ExpressionAttributeValues[":p"] === "RESOURCE#");
         expect(resourceQueries.length).toBeGreaterThan(0);
         expect(resourceQueries.every((q) => q.ConsistentRead === true)).toBe(true);
-        expect(fake.ops("GetCommand").filter((g) => g.Key.SK === "COURSE#c1").every((g) => g.ConsistentRead === true)).toBe(true);
         // Display reads stay eventually consistent:
         const from = reads().length;
         await sdb.listResources(store, T, false);
         await sdb.readIntervals(store, T, r, { start: MON_0900 - HOUR, end: MON_0900 + 3 * HOUR }, NOW);
-        await sdb.listRuns(store, T, "c1", false);
         expect(reads().slice(from).every((c) => consistentFlag(c) === false)).toBe(true);
     });
 });
@@ -1737,22 +1457,14 @@ describe("S1D2-R02 — confirmBooking outcome (applied | alreadyConfirmed)", () 
     });
 
     it("S1D2-R02 two confirms at once, same clock: the one that commits is applied, the other re-reads → alreadyConfirmed", async () => {
-        for (const kind of ["slot", "seat"] as const) {
-            const { fake, store } = setup();
-            let id: string;
-            if (kind === "slot") {
-                await seedSlots(store);
-                id = must(await holdSlot(store)).booking.id;
-            } else {
-                const { run } = await seedRun(store);
-                id = must(await holdSeat(store, run.id)).booking.id;
-            }
-            let inner: any;
-            fake.on("TransactWriteCommand", "before", async () => { inner = await sdb.confirmBooking(store, T, id, NOW); });
-            const outer = must(await sdb.confirmBooking(store, T, id, NOW));
-            expect({ kind, inner: must(inner).kind, outer: outer.kind }).toEqual({ kind, inner: "applied", outer: "alreadyConfirmed" });
-            expect(booking(fake, id)!.history.filter((e: any) => e.action === "confirmed")).toHaveLength(1);
-        }
+        const { fake, store } = setup();
+        await seedSlots(store);
+        const id = must(await holdSlot(store)).booking.id;
+        let inner: any;
+        fake.on("TransactWriteCommand", "before", async () => { inner = await sdb.confirmBooking(store, T, id, NOW); });
+        const outer = must(await sdb.confirmBooking(store, T, id, NOW));
+        expect({ inner: must(inner).kind, outer: outer.kind }).toEqual({ inner: "applied", outer: "alreadyConfirmed" });
+        expect(booking(fake, id)!.history.filter((e: any) => e.action === "confirmed")).toHaveLength(1);
     });
 
     it("S1D2-R02 a token mint commits between the confirm's read and write: the confirm retries and is still applied", async () => {
@@ -1802,144 +1514,178 @@ describe("SCHED-1E1 store extension", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// SCHED-1F1 operator rulings after review-0: S1F1-STORE-ALLOCATION, S1F1-COURSE-DELETE-GUARD, S1F1-CANCEL-OUTCOME
+// SCHED-GROUPS-REMOVE-1 — stored items of the removed group shape (code on branch `archive/group-scheduling-2026-11`).
+// The fixtures are RAW items in the shape `main` wrote before the removal (`git show c79b3d9:backend/src/lib/
+// scheduling-db.ts`: `holdSeat`, `createManualSeat`, `createRun`, `putCourse`, `cancelRun`): a held seat booking (visitor,
+// expired 10 days ago), a confirmed seat booking (manual) and an unplaced booking (manual, moved out of its run), each with
+// its CUST#, listed TOKEN#; the held one with HELD#, INTENT#, HOLDS#; plus COURSE#, RUN# (seats map), RUNSPAN#, UNPLACED#.
 // ---------------------------------------------------------------------------------------------------------------
 
-describe("SCHED-1F1 store rulings", () => {
-    const course = { id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro", "en"] };
-    const courseItem = (fake: FakeTable) => fake.get(PK, "COURSE#c1");
+describe("SCHED-GROUPS-REMOVE-1 — stored items of the removed group shape", () => {
+    const ION = { email: "ion@example.com", name: "Ion Legacy", phone: "+40 700 000 001" };
+    const X = NOW - 10 * DAY;                                   // the held seat expired 10 days before NOW
+    const FIRST = "2026-12-12T08:00:00.000Z", LAST = "2026-12-12T11:00:00.000Z";
+    const tok = (c: string) => c.repeat(43);                   // § 8.1 format: 43 base64url characters
+    const LEGACY = { held: "seat-held", conf: "seat-conf", unp: "unplaced-1" } as const;
+    const PERSON_DATA = [ION.email, ION.name, ION.phone];
 
-    it("S1F1-STORE-ALLOCATION: listCourses and listRuns send ConsistentRead exactly as asked", async () => {
-        const { fake, store } = setup();
-        await seedRun(store);
-        for (const consistent of [true, false]) {
-            const from = fake.calls.length;
-            expect(await sdb.listCourses(store, T, consistent)).toEqual([course]);
-            expect(await sdb.listRuns(store, T, "c1", consistent)).toHaveLength(1);
-            const queries = fake.calls.slice(from).filter((c) => c.op === "QueryCommand").map((c) => c.input);
-            expect(queries).toHaveLength(2);
-            expect(queries.every((q) => q.ConsistentRead === consistent)).toBe(true);
+    function seedLegacy(fake: FakeTable, trainerId: string): void {
+        const at = X - 30 * MIN;
+        const person = { ...ION, language: "ro" };
+        const seatPlacement = { kind: "seat", runId: "r-old" };
+        fake.putRaw({ PK, SK: "COURSE#c-old", id: "c-old", name: "Pottery", defaultCapacity: 8, languages: ["ro"], v: 2 });
+        fake.putRaw({
+            PK, SK: "RUN#c-old#r-old", id: "r-old", courseId: "c-old", timezone: TZ, capacity: 8, trainerIds: [trainerId],
+            meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], language: { kind: "set", tag: "ro" }, status: "open",
+            v: 3, seats: { [LEGACY.held]: { x: X }, [LEGACY.conf]: {} }, firstStartIso: FIRST, lastEndIso: LAST,
+        });
+        fake.putRaw({ PK, SK: `RUNSPAN#${LAST}#c-old#r-old`, firstStartIso: FIRST });
+        fake.putRaw({
+            PK, SK: `BOOKING#${LEGACY.held}`, id: LEGACY.held, ref: "B-5EA7HE1D", rev: 1,
+            what: { kind: "seat", courseId: "c-old", runId: "r-old" }, state: { kind: "held", expiresAt: X, mail: "sent" },
+            source: { kind: "visitor" }, who: person, tokenHashes: [sdb.sha256hex(tok("h"))], intentId: "intent-old", heldUntil: X,
+            createdAt: at, updatedAt: at, history: [{ action: "created", at, state: "held", placement: seatPlacement }],
+        });
+        fake.putRaw({ PK, SK: `HELD#${sdb.iso(X)}#${LEGACY.held}` });
+        fake.putRaw({ PK, SK: "INTENT#intent-old", fingerprint: "f".repeat(64), bookingId: LEGACY.held, ttl: Math.floor((at + DAY) / 1000) });
+        fake.putRaw({ PK, SK: `HOLDS#${sdb.emailHash(ION.email)}`, v: 1, entries: { [LEGACY.held]: { x: X } }, ttl: Math.floor((X + DAY) / 1000) });
+        fake.putRaw({
+            PK, SK: `BOOKING#${LEGACY.conf}`, id: LEGACY.conf, ref: "B-5EA7C0AF", rev: 1,
+            what: { kind: "seat", courseId: "c-old", runId: "r-old" }, state: { kind: "confirmed", at },
+            source: { kind: "manual", adminEmail: admin.email, channel: "phone" }, who: person, tokenHashes: [sdb.sha256hex(tok("c"))],
+            createdAt: at, updatedAt: at, history: [{ action: "created", at, state: "confirmed", placement: seatPlacement }],
+        });
+        fake.putRaw({
+            PK, SK: `BOOKING#${LEGACY.unp}`, id: LEGACY.unp, ref: "B-0A1B2C3D", rev: 2,
+            what: { kind: "unplaced", courseId: "c-old" }, state: { kind: "confirmed", at },
+            source: { kind: "manual", adminEmail: admin.email, channel: "phone" }, who: person, tokenHashes: [sdb.sha256hex(tok("u"))],
+            createdAt: at, updatedAt: at + MIN, history: [
+                { action: "created", at, state: "confirmed", placement: seatPlacement },
+                { action: "moved", at: at + MIN, by: admin, from: seatPlacement, to: { kind: "unplaced" } },
+            ],
+        });
+        fake.putRaw({ PK, SK: `UNPLACED#c-old#${LEGACY.unp}` });
+        for (const [id, c] of [[LEGACY.held, "h"], [LEGACY.conf, "c"], [LEGACY.unp, "u"]] as const) {
+            fake.putRaw({ PK, SK: `CUST#${ION.email}#${id}` });
+            fake.putRaw({ PK, SK: `TOKEN#${sdb.sha256hex(tok(c))}`, bookingId: id, createdAt: at });
         }
-    });
+    }
 
-    it("S1F1-STORE-ALLOCATION: replaceCourse updates name, capacity and languages, keeps the dependent version; an unknown course or one deleted before the write → notFound and stays deleted", async () => {
+    /** Every read request (Get, Query, BatchGet) that names a key of the removed shape. */
+    const legacyReads = (fake: FakeTable) => fake.calls
+        .filter((c) => ["GetCommand", "QueryCommand", "BatchGetCommand"].includes(c.op))
+        .filter((c) => /"(COURSE|RUN|RUNSPAN|UNPLACED)#/.test(JSON.stringify(c.input)));
+
+    /** The appointment paths of G1, with ids made comparable across two tables. */
+    async function appointmentRun(withLegacy: boolean): Promise<string> {
         const { fake, store } = setup();
-        await seedRun(store);
-        const v = courseItem(fake)!.v;
-        expect(v).toBe(1);
-        expect(must(await sdb.replaceCourse(store, T, { ...course, name: "Clay", languages: ["ro"] }))).toEqual({ ...course, name: "Clay", languages: ["ro"] });
-        expect(courseItem(fake)).toMatchObject({ name: "Clay", languages: ["ro"], defaultCapacity: 8, v });
-        expect(await sdb.replaceCourse(store, T, { ...course, id: "nope" })).toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(fake.get(PK, "COURSE#nope")).toBeUndefined();
-        fake.on("UpdateCommand", "before", () => fake.deleteRaw(PK, "COURSE#c1"));
-        expect(await sdb.replaceCourse(store, T, course)).toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(courseItem(fake)).toBeUndefined();
+        const [r] = await seedSlots(store);
+        if (withLegacy) seedLegacy(fake, r);
+        const { booking: b } = must(await holdSlot(store, MON_0900, person(), { intentId: "intent-g1" }));
+        const confirmed = must(await sdb.confirmBooking(store, T, b.id, NOW));
+        const moved = must(await sdb.moveSlot(store, { tenantId: T, bookingId: b.id, start: MON_0900 + HOUR, resourceIds: [r], actor: admin, settings, now: NOW }));
+        const mark = await sdb.markReminder(store, T, b.id, { kind: "slot", start: MON_0900 + HOUR });
+        const span = { start: MON_0900 - HOUR, end: MON_0900 + 3 * HOUR };
+        const entries = await sdb.readIntervals(store, T, r, span, NOW);
+        const views = must(await sdb.getBookingViews(store, T, entries.map((e) => e.bookingId), "display"));
+        const cancelled = must(await sdb.cancelBooking(store, { tenantId: T, bookingId: b.id, actor: admin, cutoffHours: 24, now: NOW }));
+        const after = await sdb.readIntervals(store, T, r, span, NOW);
+        if (withLegacy) expect(legacyReads(fake)).toEqual([]);
+        return JSON.stringify({ b, confirmed, moved, mark, entries, views, cancelled, after })
+            .split(b.id).join("<booking>").split(b.ref).join("<ref>").split(r).join("<resource>")
+            .replace(/"tokenHashes":\[[^\]]*\]/g, '"tokenHashes":"<hashes>"');
+    }
+
+    it("G1 — with group items stored, a slot hold, confirm, move, reminder mark, planner read and cancel give exactly the results of a table without them", async () => {
+        expect(await appointmentRun(true)).toBe(await appointmentRun(false));
     });
 
-    it("S1F1-COURSE-DELETE-GUARD: every writer of a new course dependent raises the course version in its own transaction; the item counts stay within § 7", async () => {
+    it("G2 — eraseCustomer removes the seat and unplaced bookings (and a slot booking) of the person: no item keeps the email, name or phone", async () => {
+        // How the erase path finds items: AP9, one Query `begins_with(SK, "CUST#<normalized email>#")` (consistent, all
+        // pages). Every booking creator — slot and, before the removal, seat and unplaced — wrote that CUST# item.
         const { fake, store } = setup();
-        await sdb.putCourse(store, T, course);
-        expect(courseItem(fake)!.v).toBeUndefined();
-        const trainers = [];
-        for (let i = 0; i < 10; i++) trainers.push((await sdb.createResource(store, T, `T${i}`)).id);
-        let before = fake.txSizes().length;
-        const run = must(await sdb.createRun(store, {
-            tenantId: T, courseId: "c1", timezone: TZ, capacity: 45, trainerIds: trainers as [string, ...string[]], language: { kind: "notSet" },
-            meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW,
-        }));
-        expect(fake.txSizes().slice(before)).toEqual([2 + 10 + 1]);
-        expect(courseItem(fake)!.v).toBe(1);
-        before = fake.txSizes().length;
-        const u = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        expect(fake.txSizes().slice(before)).toEqual([5]);
-        expect(courseItem(fake)!.v).toBe(2);
-        const seated = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        expect(courseItem(fake)!.v).toBe(2); // a seat in a run is the run's dependent, not a new course dependent
-        before = fake.txSizes().length;
-        must(await sdb.moveSeat(store, { tenantId: T, bookingId: seated.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(fake.txSizes().slice(before)).toEqual([4]);
-        expect(courseItem(fake)!.v).toBe(3);
-        must(await sdb.moveSeat(store, { tenantId: T, bookingId: u.id, runId: run.id, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(courseItem(fake)!.v).toBe(3); // unplaced → seat removes a dependent: no raise
-        // A full run of 45 confirmed seats: 2 + 2 × 45 + 1 = 93 ≤ 100.
-        for (let i = 0; i < 44; i++) must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(`m${i}@example.com`), channel: "phone", adminEmail: admin.email, now: NOW }));
-        before = fake.txSizes().length;
-        const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
-        expect(result.unplaced).toHaveLength(45);
-        expect(fake.txSizes().slice(before)).toEqual([93]);
-        expect(courseItem(fake)!.v).toBe(4);
-        expect(itemSetViolations(fake)).toEqual([]);
-    });
+        const [r] = await seedSlots(store);
+        seedLegacy(fake, r);
+        const slot = must(await holdSlot(store, MON_0900, ION)).booking;
+        expect((await sdb.bookingIdsOfEmail(store, T, ION.email, true)).sort()).toEqual([...Object.values(LEGACY), slot.id].sort());
 
-    it("S1F1-COURSE-DELETE-GUARD: a dependent written between the delete's checks and its Delete → courseInUse, course and dependent kept (run create; unplaced manual entry); a dependent written after the delete is refused", async () => {
-        for (const kind of ["run", "unplaced"] as const) {
-            const { fake, store } = setup();
-            await sdb.putCourse(store, T, course);
-            const trainer = (await sdb.createResource(store, T, "T")).id;
-            fake.on("DeleteCommand", "before", async () => {
-                if (kind === "run") must(await sdb.createRun(store, { tenantId: T, courseId: "c1", timezone: TZ, capacity: 8, trainerIds: [trainer], language: { kind: "notSet" }, meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW }));
-                if (kind === "unplaced") must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
-            }, (d) => d.Key.SK === "COURSE#c1");
-            expect({ kind, r: await sdb.deleteCourse(store, T, "c1") }).toEqual({ kind, r: { ok: false, error: { kind: "courseInUse" } } });
-            expect(courseItem(fake)).toBeDefined();
-            expect(fake.sks(kind === "run" ? "RUN#c1#" : "UNPLACED#c1#")).toHaveLength(1);
+        expect(must(await sdb.eraseCustomer(store, T, ION.email, NOW))).toEqual({ removedBookings: 4, remainingBookings: 0 });
+
+        for (const item of fake.items.values()) {
+            const text = JSON.stringify(item);
+            for (const value of PERSON_DATA) expect(text, item.SK).not.toContain(value);
         }
-        // After a completed delete, a dependent writer finds no course and is refused.
-        const { fake, store } = setup();
-        await sdb.putCourse(store, T, course);
-        const trainer = (await sdb.createResource(store, T, "T")).id;
-        expect(must(await sdb.deleteCourse(store, T, "c1"))).toEqual(course);
-        expect(await sdb.createRun(store, { tenantId: T, courseId: "c1", timezone: TZ, capacity: 8, trainerIds: [trainer], language: { kind: "notSet" }, meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW }))
-            .toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person(), channel: "phone", adminEmail: admin.email, now: NOW }))
-            .toEqual({ ok: false, error: { kind: "notFound" } });
-        expect(fake.sks("RUN#")).toEqual([]);
-        expect(fake.sks("BOOKING#")).toEqual([]);
-        expect(await sdb.deleteCourse(store, T, "c1")).toEqual({ ok: false, error: { kind: "notFound" } });
+        for (const id of [...Object.values(LEGACY), slot.id]) {
+            expect(booking(fake, id)).toBeUndefined();
+            expect(fake.sks(`CUST#${ION.email}#${id}`)).toEqual([]);
+            expect(tokenItems(fake, id)).toEqual([]);
+        }
+        expect(fake.sks("HELD#")).toEqual([]);
+        expect(fake.get(PK, "INTENT#intent-old")).toBeUndefined();
+        expect(fake.get(PK, `INTENT#${slot.intentId}`)).toBeUndefined();
+        expect(Object.keys(fake.get(PK, `RESDAY#${r}#2026-12-07`)!.entries)).toEqual([]);   // the slot's place released
+        // Left in place by design: the RUN# seat entries and the UNPLACED# pointer — random booking ids, no person data.
+        expect(Object.keys(fake.get(PK, "RUN#c-old#r-old")!.seats).sort()).toEqual([LEGACY.conf, LEGACY.held].sort());
+        expect(fake.get(PK, `UNPLACED#c-old#${LEGACY.unp}`)).toEqual({ PK, SK: `UNPLACED#c-old#${LEGACY.unp}` });
+        expect(legacyReads(fake)).toEqual([]);
     });
 
-    it("S1F1-COURSE-DELETE-GUARD (review S1F1-R08, reachable preservation case): a person move out of a run, and a run cancel that unplaces people, need a run of the course — and while that run exists the delete is refused by its consistent check, before and after the move-out or the cancel (runs are never deleted)", async () => {
+    it("G3 — a stored seat or unplaced booking reads as absent (no throw); writers answer notFound / linkNotIssued and write nothing", async () => {
         const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const seated = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
-        must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("t@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
-        const refused = { ok: false, error: { kind: "courseInUse" } };
-        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
-        must(await sdb.moveSeat(store, { tenantId: T, bookingId: seated.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
-        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
-        must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
-        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
-        expect(fake.get(PK, `RUN#c1#${run.id}`)!.status).toBe("cancelled");
-        expect(fake.sks("UNPLACED#c1#")).toHaveLength(2);
-        expect(courseItem(fake)).toBeDefined();
-        // The version raises of these two writers are asserted in the item-count test above (v 3 and 4 there).
-    });
+        const [r] = await seedSlots(store);
+        seedLegacy(fake, r);
+        for (const id of Object.values(LEGACY)) expect(await sdb.getBooking(store, T, id, true)).toBeUndefined();
+        for (const c of ["h", "c", "u"]) expect(await sdb.getBookingByToken(store, T, tok(c), true)).toBeUndefined();
+        // Customer lookup reads AP9 then AP1: the ids are listed, each AP1 read is undefined, so the lookup skips them.
+        const ids = await sdb.bookingIdsOfEmail(store, T, ION.email, false);
+        expect(ids.sort()).toEqual(Object.values(LEGACY).sort());
+        for (const id of ids) expect(await sdb.getBooking(store, T, id, false)).toBeUndefined();
 
-    it("S1F1-CANCEL-OUTCOME (review S1F1-R02): cancelRun returns right after its ONE transaction with the run snapshot it decided on, and sends nothing after it; clearCancelledRunTokens, called later by the caller, reports a failed booking in `failed` and never throws", async () => {
-        const { fake, store } = setup();
-        const { run } = await seedRun(store);
-        const { booking: h } = must(await holdSeat(store, run.id, person("h@example.com")));
-        must(await sdb.moveRun(store, T, "c1", run.id, [{ date: "2026-12-19", start: "10:00", end: "13:00" }], NOW));
-        const from = fake.calls.length;
-        const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
-        const sent = fake.calls.slice(from);
-        expect(sent.at(-1)!.op).toBe("TransactWriteCommand");                    // the cancel itself is the LAST request
-        expect(sent.filter((c) => c.op === "TransactWriteCommand")).toHaveLength(1);
-        expect(Object.keys(result).sort()).toEqual(["cancelled", "run", "unplaced"]);
-        expect(result.run.meetings).toEqual([{ date: "2026-12-19", start: "10:00", end: "13:00" }]);
-        expect(result.run.id).toBe(run.id);
-        expect(result.cancelled).toEqual([h.id]);
-        expect(tokenItems(fake, h.id)).toHaveLength(1);                         // not yet cleaned: the caller decides when
-        // The cleanup transaction throws (it is the one that deletes a TOKEN#).
-        fake.on("TransactWriteCommand", "before", crash, (t) => t.TransactItems.some((i: any) => String(i.Delete?.Key.SK ?? "").startsWith("TOKEN#")));
-        const log = vi.spyOn(console, "error").mockImplementation(() => {});
-        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [h.id] });
+        const before = JSON.stringify([...fake.items.entries()]);
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        expect(await sdb.mintToken(store, T, LEGACY.conf, NOW, { countForEmail: false })).toEqual({ ok: false, error: { kind: "linkNotIssued" } });
         log.mockRestore();
-        expect(booking(fake, h.id)!.state.kind).toBe("cancelled");
-        expect(tokenItems(fake, h.id)).toHaveLength(1); // still listed: 404 by the view rule, found by erasure (C24)
-        // Without a failure: nothing failed and the tokens are gone.
-        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [] });
-        expect(tokenItems(fake, h.id)).toEqual([]);
-        expect(booking(fake, h.id)!.tokenHashes).toEqual([]);
+        expect(await sdb.confirmBooking(store, T, LEGACY.held, X - MIN)).toEqual({ ok: false, error: { kind: "notFound" } });
+        for (const id of Object.values(LEGACY)) {
+            expect(await sdb.cancelBooking(store, { tenantId: T, bookingId: id, actor: admin, cutoffHours: 24, now: NOW })).toEqual({ ok: false, error: { kind: "notFound" } });
+            expect(await sdb.moveSlot(store, { tenantId: T, bookingId: id, start: MON_0900, resourceIds: [r], actor: admin, settings, now: NOW })).toEqual({ ok: false, error: { kind: "notFound" } });
+        }
+        expect(fake.ops("TransactWriteCommand")).toEqual([]);
+        expect(JSON.stringify([...fake.items.entries()])).toBe(before);
+        expect(legacyReads(fake)).toEqual([]);
+    });
+
+    it("G3 — the daily cleanup removes the expired held seat booking's item set and leaves the confirmed seat and unplaced bookings untouched", async () => {
+        const { fake, store } = setup();
+        const [r] = await seedSlots(store);
+        seedLegacy(fake, r);
+        const untouched = (id: string) => [...fake.items.values()]
+            .filter((i) => i.SK.endsWith(`#${id}`) || i.bookingId === id).map((i) => JSON.stringify(i)).sort();
+        const confBefore = untouched(LEGACY.conf), unpBefore = untouched(LEGACY.unp);
+
+        expect(await sdb.cleanupExpiredHolds(store, T, NOW)).toEqual({ removed: 1, skipped: 0, busy: 0 });
+        expect(booking(fake, LEGACY.held)).toBeUndefined();
+        expect(fake.sks(`CUST#${ION.email}#${LEGACY.held}`)).toEqual([]);
+        expect(tokenItems(fake, LEGACY.held)).toEqual([]);
+        expect(fake.sks("HELD#")).toEqual([]);
+        expect(fake.get(PK, "INTENT#intent-old")).toBeUndefined();
+        expect(untouched(LEGACY.conf)).toEqual(confBefore);
+        expect(untouched(LEGACY.unp)).toEqual(unpBefore);
+        expect(await sdb.cleanupExpiredHolds(store, T, NOW + MIN)).toEqual({ removed: 0, skipped: 0, busy: 0 });
+        expect(legacyReads(fake)).toEqual([]);
+    });
+
+    it("G5 — course and run items stored: removeResource of a resource named as a run trainer completes; no code reads COURSE#, RUN#, RUNSPAN# or UNPLACED#", async () => {
+        const { fake, store } = setup();
+        const [r] = await seedSlots(store);
+        seedLegacy(fake, r);
+        expect(await sdb.listResources(store, T, false)).toHaveLength(1);
+        expect(await sdb.listServices(store, T, true)).toHaveLength(1);
+        expect(must(await sdb.getResourcePlans(store, T, [r]))[r].rules).toHaveLength(2);
+        expect(await sdb.removeResource(store, T, r, NOW)).toEqual({ ok: true, value: undefined });
+        expect(fake.sks("RESOURCE#")).toEqual([]);
+        expect(fake.get(PK, "RUN#c-old#r-old")!.trainerIds).toEqual([r]);   // stored, never read
+        expect(fake.get(PK, "COURSE#c-old")).toBeDefined();
+        expect(legacyReads(fake)).toEqual([]);
     });
 });

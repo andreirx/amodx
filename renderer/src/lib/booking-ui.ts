@@ -37,29 +37,20 @@ export type LocalDate = string;
 export type OfferDTO = {
     timezone: string;
     services: { id: string; name: string; durationMin: number }[];
-    courses: { id: string; name: string; languages: string[] }[];
 };
 export type SlotsDTO = {
     timezone: string; serviceId: string; durationMin: number; lastBookableDate: LocalDate;
     days: { date: LocalDate; starts: string[] }[];
 };
-export type RunDTO = {
-    runId: string; courseId: string; timezone: string; language: string | null;
-    meetings: { date: LocalDate; start: string; end: string }[]; seatsLeft: number;
-};
-export type ProposalDTO = { kind: "proposed"; run: RunDTO; othersCount: number } | { kind: "choose"; runs: RunDTO[] } | { kind: "noneOpen" };
 export type HoldResult =
     | { ref: string; state: "held"; expiresAt: string; emailMasked: string }
     | { ref: string; state: "confirmed"; emailMasked: string };
 export type BookingViewDTO = {
     ref: string; state: "held" | "confirmed"; expiresAt?: string;
-    what:
-        | { kind: "slot"; serviceId: string; serviceName: string; start: string; end: string; timezone: string }
-        | { kind: "seat"; courseName: string; run: Omit<RunDTO, "seatsLeft">; groupLink?: string }
-        | { kind: "unplaced"; courseName: string; proposal: ProposalDTO };
+    what: { kind: "slot"; serviceId: string; serviceName: string; start: string; end: string; timezone: string };
     who: { name: string; emailMasked: string };
     can: { confirm: boolean; cancel: boolean; move: boolean };
-    changeCutoff?: string;
+    changeCutoff: string;
 };
 
 // ── Refusal texts ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -75,18 +66,16 @@ export const REFUSAL_TEXT: Readonly<Record<string, BookingTextKey>> = {
     // reCAPTCHA (§ 9.1) and the proxy's configuration answer
     verificationRequired: "errVerificationRequired", verificationFailed: "errVerificationFailed",
     verificationUnavailable: "errUnavailable", unavailable: "errUnavailable",
-    // slot and seat decisions
+    // slot decisions
     slotTaken: "errSlotTaken", notOnGrid: "errNotOnGrid", inPast: "errInPast", beyondHorizon: "errBeyondHorizon",
     notEligible: "errNotEligible", outsideAvailability: "errOutsideAvailability", resourceUnavailable: "errResourceUnavailable",
-    runFull: "errRunFull", runClosed: "errRunClosed", runCancelled: "errRunCancelled", runStarted: "errRunStarted",
-    languageMismatch: "errLanguageMismatch",
     // intent replay (§ 7.2) and limits (§ 9)
     intentReused: "errIntentReused", intentClosed: "errIntentClosed",
     tooManyForEmail: "errTooManyForEmail", tooManyFromAddress: "errTooManyFromAddress",
     busy: "errBusy", mailFailed: "errMailFailed",
     // link answers (§ 8.4)
     linkNotValid: "errLinkNotValid", expired: "errExpired", cancelled: "errCancelled", tooLate: "errTooLate",
-    notConfirmed: "errNotConfirmed", paidContactTenant: "errPaidContactTenant", stale: "errStale",
+    notConfirmed: "errNotConfirmed", stale: "errStale",
     // slots range (a page defect, never a visitor input)
     rangeInverted: "errRange", rangeTooLong: "errRange",
     // server

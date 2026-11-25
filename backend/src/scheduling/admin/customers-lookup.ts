@@ -25,7 +25,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const found = await Promise.all(ids.map((id) => getBooking(store, tenantId, id, false)));
         const bookings = [];
         for (const b of found) {
-            if (b === undefined) continue; // removed between the two reads (§ 14)
+            if (b === undefined) continue; // removed between the two reads (§ 14), or a stored booking of the removed group shape
             bookings.push(bookingAdminDTO(b, await bookingNames(store, tenantId, b)));
         }
         bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

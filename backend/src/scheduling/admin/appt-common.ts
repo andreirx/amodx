@@ -78,8 +78,8 @@ export async function readTenantBeforeWrite(tenantId: string): Promise<{ ok: tru
  */
 export async function slotNames(store: SchedulingStore, tenantId: string, booking: Booking, known: { id: string; name: string } | undefined)
     : Promise<BookingNames> {
-    if (known !== undefined && booking.what.kind === "slot" && booking.what.resourceId === known.id) {
-        return { resourceName: known.name, courseName: null, firstStart: null, runTimezone: null };
+    if (known !== undefined && booking.what.resourceId === known.id) {
+        return { resourceName: known.name };
     }
     return bookingNames(store, tenantId, booking);
 }
@@ -107,10 +107,8 @@ export function appointmentEntry(e: ContainerEntry, view: BookingDisplayView): A
     let serviceName: string;
     switch (view.what.kind) {
         case "slot": serviceName = view.what.serviceName; break;
-        case "seat":
-        case "unplaced": serviceName = ""; break; // a RESDAY# entry belongs to a slot booking; kept total, not reached
         default: {
-            const never: never = view.what;
+            const never: never = view.what.kind;
             throw new Error(`Unhandled booking ${JSON.stringify(never)}`);
         }
     }
@@ -224,7 +222,6 @@ export function slotWriteAnswer(r: MoveSlotRefusal, notFound: Answer): Answer {
         case "notActive":
         case "notConfirmed":
         case "tooLate":
-        case "paidContactTenant":
         case "stale":
         case "busy":
             return changeFailureAnswer(r);

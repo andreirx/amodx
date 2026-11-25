@@ -1,7 +1,7 @@
 /**
  * SCHED-1D1 — DELETE /scheduling/admin/resources/{resourceId} (E+T; docs/slices/sched-1.md § 10.3, § 13): the three
  * steps of `removeResource` (fence, consistent check, release or delete with `AVAILABILITY#` and `DAYS#`).
- * 204; 404 `notFound`; 409 `resourceInUse { activeBookings, runs }`; 409 `resourceRemovalInProgress`; 503 `busy`.
+ * 204; 404 `notFound`; 409 `resourceInUse { activeBookings }`; 409 `resourceRemovalInProgress`; 503 `busy`.
  * Audit (§ 6.5 point 2) on a completed removal only: the resource name; no `ip`.
  */
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
@@ -15,8 +15,7 @@ function refusalAnswer(r: RemoveResourceRefusal): Answer {
     switch (r.kind) {
         case "notFound": return refusal(404, "notFound", "Resource not found.");
         case "resourceInUse":
-            return refusal(409, "resourceInUse", "The resource has future bookings or is a trainer of a group that has not ended.",
-                { activeBookings: r.activeBookings, runs: r.runs });
+            return refusal(409, "resourceInUse", "The resource has future bookings.", { activeBookings: r.activeBookings });
         case "resourceRemovalInProgress": return refusal(409, "resourceRemovalInProgress", "Another removal of this resource is in progress.");
         case "busy": return refusal(503, "busy", "Busy, please try again.");
         default: {

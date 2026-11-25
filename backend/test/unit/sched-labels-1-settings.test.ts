@@ -78,9 +78,9 @@ describe("PUT /settings — bookingStrings (SCHED-LABELS-1)", () => {
     it("placeholders: the same set in another order, repeated, or in another wording is accepted", async () => {
         const item = await expectStored({ bookingStrings: {
             checkMailHeld: "Până la {time}: confirmă rezervarea {ref} din mesajul trimis la {email} ({ref}).",
-            seatsLeft: "Mai sunt {n} locuri",
+            durationMinutes: "{n} de minute",
         } });
-        expect(Object.keys(item.bookingStrings as object)).toEqual(["checkMailHeld", "seatsLeft"]);
+        expect(Object.keys(item.bookingStrings as object)).toEqual(["checkMailHeld", "durationMinutes"]);
     });
 
     it("a missing placeholder → 400 naming the key and the placeholder", async () => {
@@ -89,8 +89,8 @@ describe("PUT /settings — bookingStrings (SCHED-LABELS-1)", () => {
     });
 
     it("an unknown placeholder → 400 naming the key and the placeholder (with and without placeholders in the standard text)", async () => {
-        await expectRefused({ bookingStrings: { seatsLeft: "{n} locuri, {price}" } },
-            "bookingStrings.seatsLeft has the unknown placeholder {price}; the text may use only {n}.");
+        await expectRefused({ bookingStrings: { durationMinutes: "{n} minute, {price}" } },
+            "bookingStrings.durationMinutes has the unknown placeholder {price}; the text may use only {n}.");
         await expectRefused({ bookingStrings: { bookTitle: "Programare la {name}" } },
             "bookingStrings.bookTitle has the unknown placeholder {name}; the text may use no placeholder.");
     });

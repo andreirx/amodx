@@ -1,5 +1,7 @@
 # SCHED-1 — scheduling with two booking shapes: a slot with a practitioner, a seat in a group (SPECIFICATION slice)
 
+> 2026-11-25: the group shape (a seat in a group) is removed from `main` by `sched-groups-remove-1` (build record at the end of § 25); its code is on branch `archive/group-scheduling-2026-11`.
+
 Status: **PLANNED (specification) — RATIFIED by the human 2026-11-21 (nine decisions, § 15); AMENDED 2026-11-21
 (SCHED-1R: ratification applied, week planner added, § 23; amendment reviewed, § 24).** Next: `sched-1a`. Track: D (Scheduling), prefix `sched-`. Written 2026-11-20 as `course-1` (seats only);
 rewritten 2026-11-21 after the human's directions of that day (§ 1); expanded the same day into a buildable
@@ -2649,3 +2651,87 @@ The Customers entry has not moved or changed.
   control check that the menu is found.)
 - Not in this slice (the human, 2026-11-22: clients stay their own page, outside Scheduling): the Customers page for
   a site with scheduling and no shop — it comes with the Clients work, when bookings feed the client list.
+
+### `sched-groups-remove-1` — BUILT 2026-11-25 (builder; not deployed)
+
+Direction of the human, 2026-11-25 (`docs/ROADMAP.md`, "Courses, payments and growth"): AMODX keeps only appointments
+with a practitioner. Builder `claude-opus-5-5`; reviewer `gpt-6.1-sol` (Codex). Evidence labels as in this file.
+
+- **Archive.** The complete group code, as it was in production, is on branch `archive/group-scheduling-2026-11`,
+  commit `dc23c4569a6040ae1fc81f9a8be6db5f8f4e2b03` (on `origin`, OBSERVED with `git ls-remote`). To bring it back: read
+  that branch; do not merge it. Its specification stays in this file (§§ 4.3, 5.4, 7.4, 7.6, 17 `sched-1f`).
+- **Removed** (no group code, route, function, text or test remains on `main`):
+  - kernel (`packages/shared/src/scheduling.ts`, exports in `index.ts`): `Course`, `Meeting`, `RunLanguage`,
+    `RunStatus`, `Run`, `SeatEntry` and their schemas; `activeSeats`, `seatDecision`, `propose`, `validateMeetings`,
+    `cancelRunEffects`; `SeatRefusal`, `Proposal`, `MeetingError`. `BookingWhat` and `Placement` keep one shape, the
+    slot (a plain object with `kind: "slot"`; the stored items carry it). `BookingSource` loses `order` and
+    `ChangeRefusal` loses `paidContactTenant`: basis — § 4.4 says `order` is "constructed only by sched-1h" (the paid
+    course pickup, withdrawn in the roadmap), and `git grep 'kind: "order"'` found no writer, only readers.
+    `changeDecision` and `tokenView` lose their seat parameters (`startOf`, `endOf`). `HoldRequest.what` and
+    `MoveBody.to` accept the slot only (a seat request → 400 `invalid`). The mail key `unplaced` is removed.
+    `Person.language` is KEPT: the appointment hold accepted it before, and removing it would turn an accepted
+    appointment request into a 400.
+  - storage (`backend/src/lib/scheduling-db.ts`): the keys `COURSE#`, `RUN#`, `RUNSPAN#`, `UNPLACED#`; course, run,
+    seat, roster, unplaced reads and writes (`holdSeat`, `createManualSeat`, `moveSeat`, `createRun`, `updateRun`,
+    `moveRun`, `cancelRun`, `clearCancelledRunTokens`, `listRuns`, `getRun`, `runsNotEndedBy`, `listUnplacedPage`,
+    course CRUD and its delete guard); the seat reminder target; the run check of `removeResource`
+    (`resourceInUse` is now `{ activeBookings }`).
+  - backend: the 13 `admin/group-*.ts` handlers, `visitor/runs.ts`, the group branches of offer, hold, view, confirm,
+    cancel, move, mail, DTOs, `booking-dto.ts`, reminders, feed; the `unplaced` mail.
+  - infra (`infra/lib/api-scheduling.ts`): 14 functions and their routes (13 group admin routes and
+    `GET /scheduling/visitor/courses/{courseId}/runs`); the nested stack description no longer says "and groups".
+    Nothing else in infra changed. Assertions in `infra/test/amodx-stack.test.ts` follow.
+  - renderer: the course, language and group steps, the seat and unplaced manage views, the `runs` proxy operation,
+    23 group-only booking text keys in every pack (en, ro, de, fr); `errNotFound` no longer names a group (a visitor
+    text change on the appointment path, by the naming rule). Serving coverage file and contract follow.
+  - admin: `SchedulingCourses`, `SchedulingRoster` and their tests, their routes, the "Groups" menu entry, the
+    `unplaced` mail texts, the group variables in the mail variable list.
+  - MCP `routes.json`: the 13 group admin routes (`localAdditions` 36 → 23).
+- **Stored data that may already exist** (the rule chosen per path; one test or more per row, all pass):
+
+  | Row | Rule | Tests |
+  |---|---|---|
+  | G1 no group item / group items present | appointments unchanged; the same slot sequence gives the same result with and without group items | `scheduling-db.test.ts` G1; every appointment test kept |
+  | G2 a seat booking of a person | erasure finds every booking by `CUST#<email>#` (AP9; every creator wrote it), reads the `BOOKING#` with a discriminator check (`readStoredBooking`: `what.kind` `"seat"` or `"unplaced"` → only its item set is parsed; any other value → the full schema, so a broken item is still `storedDataInvalid`) and deletes `BOOKING#`, `CUST#`, `HELD#`, `INTENT#`, listed `TOKEN#`. A `RUN#` seat entry or `UNPLACED#` pointer stays: a random booking id, no person data, never read | `scheduling-db.test.ts` G2 (no stored item keeps the email, name or phone) |
+  | G3 a seat booking | every read of a booking by id treats it as absent: admin read and slot move → 404 (same body as unknown), customer lookup skips it, confirm/cancel/move/mint → `notFound`/`linkNotIssued`, nothing written. The daily cleanup removes an expired held one by the same rule as a slot hold. The planner, appointments list, reminders, weekly mail and feed reach bookings only through `RESDAY#` entries, which only slot bookings have | `scheduling-db.test.ts` G3 ×2; `scheduling-admin.test.ts` G3 ×2; `scheduling-appt.test.ts` E8/G3 (real store reads); `scheduling-reminders.test.ts` G3, G3 G5; `scheduling-feed.test.ts` G3 G5 |
+  | G4 an old emailed link of a seat booking | 404 `linkNotValid`, the same body as an unknown token, on view, confirm, cancel, move; the page shows its "link not valid" screen | `scheduling-visitor.test.ts` G4 ×4 (real `getBookingByToken`); renderer `sched-1g-pages.test.ts` G4 |
+  | G5 course/run items | nothing reads them (asserted: no request names `COURSE#`, `RUN#`, `RUNSPAN#`, `UNPLACED#`); `removeResource` of a resource named as a run trainer completes | `scheduling-db.test.ts` G5; feed G3 G5 |
+  | G6 (added) a tenant's stored mail override of the key `unplaced`, or an override naming `{{courseName}}` / `{{groupLink}}` | EXECUTED: zod 4.6.7 `partialRecord` refuses an unknown key, and every scheduling route parses `schedulingEmailConfig` — so without a rule every scheduling route of that tenant would answer 500. Rule: the stored data keeps exactly the meaning it had before, on read and on write-back. The retired key is dropped wherever a stored `schedulingEmailConfig` is checked: on read (`storedOverrides`) and in PUT /settings (the General Settings page sends the loaded config back; review SGR-R1); any other unknown key is still refused. The retired variables render as "" in the booking mails, which passed them as "" before, and stay as written in the weekly mail, which never knew them (review SGR-R2; `renderSchedulingMail(key, …)`, exhaustive switch over the key). The defaults lost the two variables and render byte-identical to the pre-slice texts | `scheduling-email.test.ts` G6 ×4; `scheduling-admin.test.ts` G6; `scheduling-settings.test.ts` G6 ×2 (real GET and PUT /settings); `scheduling-reminders.test.ts` G6 (real weekly mail) |
+
+  Smallest read-only shapes kept (each named in the code): `StoredBooking` (`slot` | `removedGroupShape`, users `getBooking`,
+  `cleanupExpiredHolds`, `eraseCustomer`); `RETIRED_TEMPLATE_KEYS`; `RETIRED_VARIABLES`. No migration or deletion of
+  stored items (out of scope).
+- **Gates** (builder, EXECUTED, each run bare, exit code read; logs in the build report): `npm run build` 0;
+  `npm run typecheck` 0; shared 599/599; plugins 355/355; renderer unit 876/876; admin unit 398/398; backend unit
+  2035 passed + 1 skipped; serving suite 173/173; infra 80/80; MCP 0 (route coverage + 17/17); `git diff --check` 0.
+  Test counts before → after (only group cases gone, checked by a name diff against a baseline worktree at
+  `c79b3d9`): shared 619 → 599, admin 454 → 398, renderer 903 → 876, backend 2099 → 2036 (each with 1 skipped; the 37 cases of
+  `scheduling-group.test.ts` and the group cases of the mixed files). Added: 23 G-row tests (22 backend, 1 renderer; 4 of them for review findings SGR-R1 and SGR-R2)
+  and one store test that only `seat` and `unplaced` take the removed-shape path (a broken item stays `storedDataInvalid`).
+- **Not run:** `backend/test/scheduling-db.integration.test.ts` (staging table; edited the same way); staging deploy
+  and staging checks (operator).
+- Maturity: PROTOTYPE (unchanged).
+
+#### Operator closeout — `sched-groups-remove-1` (2026-11-25)
+
+- Models: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol`; three cycles (review-0: two compatibility findings — a
+  settings save with a stored retired mail key, and the weekly mail's placeholder behaviour — both fixed with tests;
+  review-1 and review-2: completeness of the removal inventory).
+- Archive: branch `archive/group-scheduling-2026-11`, commit `dc23c4569a6040ae1fc81f9a8be6db5f8f4e2b03` (on `origin`).
+- Operator gates on the approved candidate (log read, exit codes bare): build, typecheck, shared, plugins, renderer,
+  serving, serving bundle, admin unit, backend unit, infra, MCP, `git diff --check` — all 0.
+- Staging diff, read before the deploy: 98 resources removed = the 14 group functions with their role, policy, log
+  group, permission, integration and route; nothing added; no table, user pool or distribution change; every other
+  function changes by its code bundle only.
+- Staging, after the deploy (tenant `cm1-content`, left with scheduling off and an empty scheduling partition):
+  the admin menu shows "Appointments" and "Scheduling settings" and no "Groups"; `GET /scheduling/admin/courses`,
+  `POST /scheduling/admin/seats`, `GET /scheduling/visitor/courses/x/runs`, `GET /scheduling/admin/courses/x/unplaced`
+  answer 404 and a control appointment route answers 200; the planner link walk (rows E18–E20), the scheduled job
+  (one reminder, no second one, cleanup) and the calendar feed pass as before.
+- Personal data check by the operator: a stored seat entry of a `RUN#` item held only an optional time
+  (`SeatEntrySchema = { x?: Instant }` on the archive branch), so the entry left after an erase holds no name, email
+  or phone.
+- Finding, present before this slice: an admin address that matches no route (now also the old `/scheduling/courses`)
+  shows the router's default error screen ("Unexpected Application Error! 404 Not Found"). To `sched-appt-fixes-1`.
+- Not run: `backend/test/scheduling-db.integration.test.ts` (it writes to the staging table through the full backend
+  suite, which the operator does not run); the stored-data rows G2–G5 are proven by unit tests, not on staging.

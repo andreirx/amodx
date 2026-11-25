@@ -101,7 +101,6 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             label: "Scheduling",
             items: [
                 { name: "Appointments", href: "/scheduling/planner", icon: CalendarClock },
-                { name: "Groups", href: "/scheduling/courses", icon: Users },
                 { name: "Scheduling settings", href: "/scheduling", icon: Settings },
             ]
         }] : []),

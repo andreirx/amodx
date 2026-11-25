@@ -29,14 +29,14 @@ import { getTenantConfig } from "@/lib/dynamo";
 beforeEach(() => { process.env.TABLE_NAME = "sched-labels-1-unit"; });
 
 const RO_STANDARD = { ...EN_LANGUAGE_PACK.booking, ...RO_LANGUAGE_PACK.booking };
-const RO_TENANT = { locale: "ro-RO", bookingStrings: { bookTitle: "Programează-te", seatsLeft: "Mai sunt {n} locuri" } };
+const RO_TENANT = { locale: "ro-RO", bookingStrings: { bookTitle: "Programează-te", durationMinutes: "{n} de minute" } };
 
 describe("SCHED-LABELS-1 bookingTexts — the tenant's texts on its own-language page only", () => {
     it("shown on the page in the tenant's language (no ?lang=, and ?lang= naming that language)", () => {
         for (const lang of [undefined, "ro", "ro-MD"]) {
             const texts = bookingTexts(bookingLanguage(lang, RO_TENANT.locale).language, RO_TENANT);
             expect(texts.bookTitle, String(lang)).toBe("Programează-te");
-            expect(texts.seatsLeft, String(lang)).toBe("Mai sunt {n} locuri");
+            expect(texts.durationMinutes, String(lang)).toBe("{n} de minute");
             expect(texts.back, String(lang)).toBe(RO_STANDARD.back);          // a key without an override: the pack text
         }
     });

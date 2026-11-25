@@ -16,8 +16,8 @@ differ by kind (Products, Settings, WP Migration, Pricelist import) read `isCata
 
 **Scheduling navigation** (SCHED-MENU-1, `docs/slices/sched-1.md` § 25; PROTOTYPE): independent of site kind and
 commerce. `GET /tenants` adds only `schedulingEnabled` (strict `=== true`; absent/non-boolean → false), read by
-TenantContext. Only enabled sites have the Scheduling section: Appointments → `/scheduling/planner`, Groups →
-`/scheduling/courses`, Scheduling settings → `/scheduling`. Customers and other entries are unchanged. Settings
+TenantContext. Only enabled sites have the Scheduling section: Appointments → `/scheduling/planner`, Scheduling settings →
+`/scheduling` (the Groups entry was removed by SCHED-GROUPS-REMOVE-1). Customers and other entries are unchanged. Settings
 owns the scheduling switch next to Commerce (or Catalog) and a time-zone field when on: no inferred default zone,
 the backend still requires an IANA zone to enable. Saving Settings uses the existing `refreshTenants`, rather than
 the former browser reload, for both commerce and scheduling. TenantProvider selects directly from the fetched list
@@ -176,7 +176,7 @@ src/
     │                           #   on → Scheduling settings (time zone, hold, change cutoff,
     │                           #   reminder, booking horizon), Resources (GET/POST/PUT/DELETE
     │                           #   /scheduling/admin/resources; "Create calendar link" = feed secret, T only, URL shown
-    │                           #   once), Mail templates (the seven keys; defaults from GET
+    │                           #   once), Mail templates (the six keys; defaults from GET
     │                           #   /scheduling/admin/email-templates — no copy in the page). Saves through PUT /settings
     │                           #   with ONLY scheduling or schedulingEmailConfig, never schedulingEnabled
     │                           #   (settingsPayload: shared SchedulingSettingsSchema + required time zone;
@@ -191,7 +191,6 @@ src/
     │                           #   Scheduling.test.ts: pure-logic tests of the payload, error-text and warning helpers.
     │                           #   Sidebar: group "Scheduling" only when schedulingEnabled (SCHED-MENU-1, above)
     │                           #   SCHED-1E2: the header links to the week planner and to services/weekly hours.
-    │                           #   SCHED-1F2: and to "Courses and groups".
     ├── SchedulingPlanner.tsx   # SCHED-1E2 (docs/slices/sched-1.md § 23, § 10.3; PROTOTYPE): the week planner of one
     │                           #   resource. GET …/resources/{r}/week?start=<Monday> drawn as a Monday-Sunday grid:
     │                           #   open / taken / removed-by-a-day-edit / closed stretches (weekView: each ELAPSED
@@ -232,69 +231,9 @@ src/
     │                           #   Cancel (POST …/cancel) and Move (a confirmed appointment; the planner's
     │                           #   AppointmentDialog); the page reads the booking again after each. Opened from a
     │                           #   planner entry. SchedulingAppointments.test.ts (jsdom): pure helpers of both pages and
-    │                           #   the review-0 R1 regressions of both. SCHED-1F2: a confirmed group booking (seat or
-    │                           #   without a group) → "Move to another group" / "Place into a group": GET the course's
-    │                           #   runs, then SchedulingRoster's MoveSeatDialog (tested in SchedulingRoster.test.ts).
-    ├── SchedulingCourses.tsx   # SCHED-1F2 (docs/slices/sched-1.md § 4.3, § 5.4, § 10.3 routes of sched-1f; PROTOTYPE):
-    │                           #   courses (GET/POST/PUT/DELETE /scheduling/admin/courses; coursePayload = shared
-    │                           #   CourseSchema, capacity above 45 → the server's text; 409 languageInUse / courseInUse
-    │                           #   as plain text through groupErrorText) and the groups (runs) of the course in
-    │                           #   ?course= (GET …/runs: dates, taken/capacity, language, state words incl. derived
-    │                           #   full / over capacity / started / ended, trainers, group link). GroupDialog (also used
-    │                           #   by SchedulingRoster): create (POST …/runs) with the meetings editor (quickMeetings: N
-    │                           #   days in a row or picked dates, one time range for all, each row editable; meetingsBody
-    │                           #   runs the kernel's validateMeetings in the group's zone and keeps the rows' order, so a
-    │                           #   server index names the same row); edit (PUT …/runs/{r}, runUpdateBody sends ONLY the
-    │                           #   changed fields — a stored language no longer in the course list is never re-sent,
-    │                           #   ruling S1F1-LANGUAGE-CONSIST); move (POST …/move, runMoveText: the saved move, the
-    │                           #   people in the group, "Moved" mails ACCEPTED for sending (`mailed`), people whose place
-    │                           #   changed at the same time and got no notice from this move); cancel (confirmation
-    │                           #   counted from GET …/roster by cancelPreview, then POST …/cancel, runCancelText:
-    │                           #   unplaced / cancelled, notices attempted but not counted, notSentPlacementChanged,
-    │                           #   tokenCleanupFailed as a count of BOOKINGS). No text claims a mail was delivered: the
-    │                           #   answers do not report delivery (review-0 R3). New groups use GET /settings
-    │                           #   scheduling.timezone; shown times are each group's RunAdminDTO.timezone. Lists through
-    │                           #   useSelectionData (tenant; tenant + course). useSelectionLifetime(key) (review R1;
-    │                           #   also used by SchedulingRoster and SchedulingAppointmentsBooking): every other
-    │                           #   asynchronous effect (a course write, a read that opens a dialog, a further list
-    │                           #   page) and every dialog, open form and message lives ONE selection lifetime — it
-    │                           #   ends when the key changes or the page unmounts and never comes back (A → B → A
-    │                           #   starts a new one: an epoch counter, not a key comparison). lifetime() = true while
-    │                           #   that lifetime lasts; start() = also the latest action of its surface; invalidate()
-    │                           #   ends the pending start()s (a list refresh). Success, error and notice paths all test
-    │                           #   it; a dialog's completion closes only that dialog (identity check). So a course
-    │                           #   created or deleted while another course was chosen, or after the admin left the
-    │                           #   page, does not change the choice or navigate; a saved form closes without closing a
-    │                           #   form opened after it. The "Not set" language option: the first site booking with a
-    │                           #   language preference sets it; admin placements do not (§ 5.4 seatDecision).
-    │                           #   SchedulingCourses.test.ts (jsdom): rows F1, F4, F5, F6, F8 and
-    │                           #   S1F1-LANGUAGE-CONSIST (pure), the page mounted (late answer for another course
-    │                           #   dropped, a group created with 3 quick days, a cancel, a 409) and the R1
-    │                           #   deferred-answer cases (one-way and A → B → A changes, leaving the page, dialogs).
-    ├── SchedulingRoster.tsx    # SCHED-1F2: the people of one course (/scheduling/courses/:courseId/roster?group=<runId>):
-    │                           #   the group's roster (GET …/runs/{r}/roster: ref, name, email, phone, language, "Held
-    │                           #   until" in the group's zone or Confirmed, source and channel) with the group's edit /
-    │                           #   move / cancel (GroupDialog) and "Export CSV"; the people without a group (GET
-    │                           #   …/unplaced, "Show more" follows the cursor; a further page extends only the first
-    │                           #   page it was read after, and reading the list again (after any write) ends every
-    │                           #   pending further page — its answer and its error are dropped; held expiry in the
-    │                           #   site's zone). Move /
-    │                           #   "Place into a group": GET …/bookings/{id} for the rev, then MoveSeatDialog (POST
-    │                           #   …/move-seat { runId | null, rev }; targets = the course's groups that are not
-    │                           #   cancelled and not the person's own — closed, started, full and other-language groups
-    │                           #   are offered, § 5.4 admin rules). "Add a person" (POST /scheduling/admin/seats; no
-    │                           #   group → no runId). A held place shows no Move (the route answers notConfirmed).
-    │                           #   seatNotice (review-0 R2, R3): the notice after a move or a manual entry names the
-    │                           #   place of the booking the server RETURNED; when that differs from the request it says
-    │                           #   another change was saved at the same time and this move sent no notice; it never
-    │                           #   claims a mail was delivered.
-    │                           #   CSV (row F9, pure): csvCell (a leading = + - @ tab CR gets ', then RFC 4180 quoting),
-    │                           #   rosterCsv (UTF-8 BOM, CRLF, columns Reference, Name, Email, Phone, Language, State,
-    │                           #   Held until, Source, Channel), rosterCsvFileName (course, first meeting date, short
-    │                           #   group id). SchedulingRoster.test.ts (jsdom): rows F2, F3, F5, F7, F9, the booking
-    │                           #   page's group move, R2 (returned place ≠ requested place) and the R1 deferred-answer
-    │                           #   cases (two move reads, a move read across A → B → A, a further page answered or
-    │                           #   refused around a refresh, dialog completions).
+    │                           #   the review-0 R1 regressions of both.
+    │                           #   SCHED-GROUPS-REMOVE-1 removed the group pages (SchedulingCourses, SchedulingRoster) and
+    │                           #   their tests; their code is on branch archive/group-scheduling-2026-11.
     ├── AuditLog.tsx            # Activity feed with action icons
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
@@ -332,9 +271,7 @@ plain `/login` (no `next`).
 | `/scheduling` | Scheduling | Scheduling settings, resources, mail templates (SCHED-1D1); a short "not enabled" state when `schedulingEnabled` is off |
 | `/scheduling/appointments` | SchedulingAppointments | Services and weekly hours per resource (SCHED-1E2) |
 | `/scheduling/planner` | SchedulingPlanner | Week planner of one resource; query `tenant`, `week`, `resource`; the target of the weekly mail's link (SCHED-1E2) |
-| `/scheduling/bookings/:bookingId` | SchedulingAppointmentsBooking | One booking: details, history, cancel, move (SCHED-1E2); move a group booking to another group (SCHED-1F2) |
-| `/scheduling/courses` | SchedulingCourses | Courses, and the groups of the course in `?course=`: create, edit, move, cancel (SCHED-1F2) |
-| `/scheduling/courses/:courseId/roster` | SchedulingRoster | People of a course: the roster of the group in `?group=`, people without a group, move, manual entry, CSV export (SCHED-1F2) |
+| `/scheduling/bookings/:bookingId` | SchedulingAppointmentsBooking | One booking: details, history, cancel, move (SCHED-1E2) |
 | `/settings` | Settings | Site configuration |
 
 ## State Management

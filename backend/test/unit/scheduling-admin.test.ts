@@ -20,7 +20,7 @@ import { BookingSchema, type Booking } from "@amodx/shared";
  *   operations of D10 are `sched-1d2`.
  * - D12: the route's answers for "in use" and "free"; that the free removal deletes `AVAILABILITY#` and `DAYS#` in
  *   its transaction is `removeResource` (`scheduling-db.ts`, rows C11 of `sched-1c`).
- * - D13 (route part): defaults of all seven keys, an override used. The PUT /settings part: scheduling-settings.test.ts.
+ * - D13 (route part): defaults of all six keys, an override used. The PUT /settings part: scheduling-settings.test.ts.
  * - D16: the booking DTO lists `history` in stored order with instants as UTC ISO.
  */
 
@@ -33,7 +33,7 @@ const h = vi.hoisted(() => {
         sesSends: [] as any[],
         sesFail: { on: false },
         store: {
-            getBooking: vi.fn(), getResource: vi.fn(), getCourse: vi.fn(), getRun: vi.fn(), listResources: vi.fn(),
+            getBooking: vi.fn(), getResource: vi.fn(), listResources: vi.fn(),
             createResource: vi.fn(), renameResource: vi.fn(), removeResource: vi.fn(), setFeedSecretHash: vi.fn(),
             cancelBooking: vi.fn(), bookingIdsOfEmail: vi.fn(), eraseCustomer: vi.fn(),
         },
@@ -134,8 +134,6 @@ beforeEach(() => {
     for (const fn of Object.values(h.store)) fn.mockReset();
     h.store.getBooking.mockResolvedValue(booking());   // the cancel reads the booking before its write (R01)
     h.store.getResource.mockResolvedValue({ id: "res1", name: "Dr. Ionescu" });
-    h.store.getCourse.mockResolvedValue(undefined);
-    h.store.getRun.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -216,49 +214,14 @@ describe("D16 GET /scheduling/admin/bookings/{bookingId}", () => {
         expect([res.statusCode, res.json.code]).toEqual([404, "notFound"]);
     });
 
-});
+    it("G3 a stored booking of the removed group shape (the store's getBooking reads it as absent, scheduling-db.test.ts G3) → 404 notFound, the same answer as an unknown id", async () => {
+        h.store.getBooking.mockResolvedValue(undefined);
+        const legacy = await call(getBookingRoute, { path: { bookingId: "seat-booking-1" } });
+        const unknown = await call(getBookingRoute, { path: { bookingId: "nope" } });
+        expect([legacy.statusCode, legacy.json]).toEqual([unknown.statusCode, unknown.json]);
+        expect([legacy.statusCode, legacy.json.code]).toEqual([404, "notFound"]);
+    });
 
-/**
- * R03 (operator ruling S1D1-R03): in `BookingAdminDTO`, `courseName` and `firstStart` are `string | null`; `null`
- * ONLY when the course item, or the run item, no longer exists. One test per field for each case.
- */
-describe("R03 BookingAdminDTO nullable fields (S1D1-R03)", () => {
-    const seat = () => booking({ what: { kind: "seat", courseId: "c1", runId: "r1" } });
-    const COURSE = { id: "c1", name: "Pottery", defaultCapacity: 8, languages: [] };
-    const RUN = { firstStartIso: "2027-01-10T08:00:00.000Z", timezone: "Europe/Bucharest" };
-    const what = async () => (await call(getBookingRoute, { path: { bookingId: BOOKING_ID } })).json.what;
-
-    it("R03 courseName: the course exists → its name (a string)", async () => {
-        h.store.getBooking.mockResolvedValue(seat());
-        h.store.getCourse.mockResolvedValue(COURSE);
-        h.store.getRun.mockResolvedValue(RUN);
-        expect((await what()).courseName).toBe("Pottery");
-    });
-    it("R03 courseName: the course item no longer exists → null (the run still exists: firstStart stays a string)", async () => {
-        h.store.getBooking.mockResolvedValue(seat());
-        h.store.getCourse.mockResolvedValue(undefined);
-        h.store.getRun.mockResolvedValue(RUN);
-        expect(await what()).toEqual({ kind: "seat", courseId: "c1", courseName: null, runId: "r1", firstStart: "2027-01-10T08:00:00.000Z" });
-    });
-    it("R03 firstStart: the run exists → its first start as UTC ISO (a string)", async () => {
-        h.store.getBooking.mockResolvedValue(seat());
-        h.store.getCourse.mockResolvedValue(COURSE);
-        h.store.getRun.mockResolvedValue(RUN);
-        expect((await what()).firstStart).toBe("2027-01-10T08:00:00.000Z");
-    });
-    it("R03 firstStart: the run item no longer exists → null (the course still exists: courseName stays a string)", async () => {
-        h.store.getBooking.mockResolvedValue(seat());
-        h.store.getCourse.mockResolvedValue(COURSE);
-        h.store.getRun.mockResolvedValue(undefined);
-        expect(await what()).toEqual({ kind: "seat", courseId: "c1", courseName: "Pottery", runId: "r1", firstStart: null });
-    });
-    it("R03 courseName of an unplaced booking: present → string; course gone → null", async () => {
-        h.store.getBooking.mockResolvedValue(booking({ what: { kind: "unplaced", courseId: "c1" } }));
-        h.store.getCourse.mockResolvedValue(COURSE);
-        expect(await what()).toEqual({ kind: "unplaced", courseId: "c1", courseName: "Pottery" });
-        h.store.getCourse.mockResolvedValue(undefined);
-        expect(await what()).toEqual({ kind: "unplaced", courseId: "c1", courseName: null });
-    });
 });
 
 describe("D7 POST /scheduling/admin/bookings/{bookingId}/cancel", () => {
@@ -508,6 +471,14 @@ describe("customers: lookup and erasure (§ 10.3, § 14.2)", () => {
         expect((await call(lookupRoute, { body: {} })).statusCode).toBe(400);
     });
 
+    it("G3 lookup skips a stored booking of the removed group shape: CUST# lists its id, getBooking reads it as absent → only the appointment is answered, 200", async () => {
+        h.store.bookingIdsOfEmail.mockResolvedValue(["seat-booking-1", BOOKING_ID]);
+        h.store.getBooking.mockImplementation(async (_s: unknown, _t: string, id: string) => (id === BOOKING_ID ? booking() : undefined));
+        const res = await call(lookupRoute, { auth: EDITOR, body: { email: "ana.pop@example.test" } });
+        expect(res.statusCode).toBe(200);
+        expect(res.json.bookings.map((b: { id: string }) => b.id)).toEqual([BOOKING_ID]);
+    });
+
     it("D10 erasure: SCHEDULING_CUSTOMER_ERASED with the two counts only, the fixed title, the admin's email, no ip, no email in the event", async () => {
         h.store.eraseCustomer.mockResolvedValue({ ok: true, value: { removedBookings: 2, remainingBookings: 0 } });
         const res = await call(eraseRoute, { body: { email: CUSTOMER.email } });
@@ -590,10 +561,10 @@ describe("resources (§ 10.3)", () => {
         expect((await call(updateResourceRoute, { path: { resourceId: "gone" }, body: { name: "X" } })).statusCode).toBe(404);
     });
 
-    it("D12 delete with a future booking → 409 resourceInUse { activeBookings, runs }; no audit event", async () => {
-        h.store.removeResource.mockResolvedValue({ ok: false, error: { kind: "resourceInUse", activeBookings: 1, runs: 0 } });
+    it("D12 delete with a future booking → 409 resourceInUse { activeBookings }; no audit event", async () => {
+        h.store.removeResource.mockResolvedValue({ ok: false, error: { kind: "resourceInUse", activeBookings: 1 } });
         const res = await call(deleteResourceRoute, { path: { resourceId: "res1" } });
-        expect([res.statusCode, res.json.code, res.json.activeBookings, res.json.runs]).toEqual([409, "resourceInUse", 1, 0]);
+        expect([res.statusCode, res.json.code, res.json.activeBookings, Object.hasOwn(res.json, "runs")]).toEqual([409, "resourceInUse", 1, false]);
         expect(h.putEvents).toEqual([]);
     });
 
@@ -646,13 +617,20 @@ describe("resources (§ 10.3)", () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe("D13 GET /scheduling/admin/email-templates", () => {
-    it("D13 defaults for all seven keys; no overrides when none are stored", async () => {
+    it("D13 defaults for all six keys; no overrides when none are stored", async () => {
         const res = await call(templatesRoute, { auth: EDITOR });
         expect(res.statusCode).toBe(200);
         expect(res.json.defaults).toEqual(defaultSchedulingTemplates());
-        expect(Object.keys(res.json.defaults)).toHaveLength(7);
+        expect(Object.keys(res.json.defaults)).toHaveLength(6);
         expect(res.json.defaults.weekAhead.sendToAdmin).toBe(true);
         expect(res.json.overrides).toEqual({});
+    });
+
+    it("G6 a stored override of the retired group key `unplaced` → 200, not 500; it is not listed; the other overrides are", async () => {
+        tenantRecord!.schedulingEmailConfig = { templates: { unplaced: { subject: "u", body: "v" }, hold: { subject: "H {{ref}}", body: "{{link}}" } } };
+        const res = await call(templatesRoute, { auth: EDITOR });
+        expect(res.statusCode).toBe(200);
+        expect(Object.keys(res.json.overrides)).toEqual(["hold"]);
     });
 
     it("D13 an override is returned with both recipient flags resolved", async () => {

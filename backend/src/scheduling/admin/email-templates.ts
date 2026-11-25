@@ -1,6 +1,6 @@
 /**
  * SCHED-1D1 — GET /scheduling/admin/email-templates (E+T; docs/slices/sched-1.md § 10.3, § 11.1):
- * `{ defaults, overrides }` for the seven keys. `defaults` come from `scheduling-email.ts` (the admin screen holds no
+ * `{ defaults, overrides }` for the six keys. `defaults` come from `scheduling-email.ts` (the admin screen holds no
  * second copy); `overrides` are the tenant's `schedulingEmailConfig.templates`, each with both recipient flags
  * resolved (an absent flag shows the default's). Overrides are WRITTEN through the existing PUT /settings.
  * A stored scheduling attribute that fails its schema → 500 `storedDataInvalid` (never read as "no override", § 10.2;

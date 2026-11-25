@@ -63,7 +63,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const { booking, token } = created.value;
 
         try {
-            await sendVisitorMail({ key: "confirmed", tenantId, tenant, settings: settings.value, booking, place: {}, token });
+            await sendVisitorMail({ key: "confirmed", tenantId, tenant, settings: settings.value, booking, token });
         } catch (e) {
             console.error("[scheduling] appt-appointments-create mail step failed", booking.id, e instanceof Error ? e.name : "unknown");
         }

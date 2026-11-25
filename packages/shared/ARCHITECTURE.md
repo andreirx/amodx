@@ -19,10 +19,12 @@ src/
 ├── coupon.ts           # The coupon rule: evaluateCoupon(coupon, lines, now, customerUseCount?), amountInCents, isCouponType, CouponPrecheckItemSchema (coupon-fix-1)
 ├── payment-transition.ts # The payment-state rule: paymentTransition(previous, requested) (pay-1)
 ├── scheduling.ts       # SCHED-1A kernel (docs/slices/sched-1.md § 4, § 5; PROTOTYPE): the booking domain types as Zod
-│                       #   schemas (one definition for stored items and request bodies) and the pure rules of both
-│                       #   shapes and of the week planner (slotDecision, overlapCheck, seatDecision, confirmDecision,
-│                       #   changeDecision, activeEntries, planDay, editDays, …). No I/O, no clock. Persistence and
-│                       #   concurrency live in its first consumer, backend/src/lib/scheduling-db.ts (sched-1c)
+│                       #   schemas (one definition for stored items and request bodies) and the pure rules of the
+│                       #   appointment shape (a slot with a practitioner) and of the week planner (slotDecision,
+│                       #   overlapCheck, confirmDecision, changeDecision, activeEntries, planDay, editDays, …). No I/O,
+│                       #   no clock. Persistence and concurrency live in its first consumer,
+│                       #   backend/src/lib/scheduling-db.ts (sched-1c). The group shape was removed by
+│                       #   SCHED-GROUPS-REMOVE-1 (code on branch archive/group-scheduling-2026-11)
 ├── zoned-time.ts       # Local wall time ↔ UTC instant on Intl (spring gap refused, ambiguous = earlier), for scheduling.ts
 ├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1); booking texts: BOOKING_TEXT_KEYS, bookingStandardTexts, templatePlaceholders (sched-labels-1)
 ├── languages.ts        # LANG-1A (PROTOTYPE): readLanguageSettings, pageLanguageOf, languageTagOf, types PageLanguage, LanguageSettings, LanguageLink. Imports NOTHING (the renderer middleware will load dist/languages.js alone, lang-1b)
@@ -195,7 +197,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   by the product page and the facets. Users: backend `import/glam-pricelist.ts`, `interest/public.ts`. The RO values
   equal the literals the backend wrote before (`test/cdl-1.test.ts`).
 - **Booking texts** (`sched-labels-1`, amendment of `docs/slices/locale-1.md` dated 2026-11-22). The `booking` part of the
-  language packs (the 98 texts of the hosted booking pages, `BookingStrings` in `language-packs/types.ts`) is NOT a part
+  language packs (the 75 texts of the hosted booking pages, `BookingStrings` in `language-packs/types.ts`) is NOT a part
   of the table above, but a tenant overrides it in a fourth stored home, `bookingStrings` (`BookingStringsSchema`, one
   optional text per key; `TenantConfig.bookingStrings`). `BOOKING_TEXT_KEYS` = the keys of the English pack (the list is
   written once). `bookingStandardTexts(language)` = English ← the language's pack (a `""` or absent pack text gives

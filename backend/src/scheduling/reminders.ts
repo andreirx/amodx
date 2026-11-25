@@ -25,25 +25,20 @@
  * counts only.
  *
  * Reminders (§ 11.3), per tenant, window `[now, now + reminderHours]`:
- * - slots: per resource (AP10) `readIntervals` over the window (AP3 + `activeEntries`), confirmed entries (`x`
- *   absent) with `s` in the window → target `{ slot, start: s }`;
- * - seats: `runsNotEndedBy(t = now, windowEnd)` (AP6), runs with `status ≠ cancelled` and the first start in the
- *   window, confirmed seats (`x` absent) → target `{ seat, courseId, runId, firstStart }`;
- * - per target: `markReminder` (the stale guard: it commits only while the booking still starts at `S` — a slot's
- *   `what.start`; a seat's run, whose `firstStartIso` is checked in the same transaction — is confirmed and was not
- *   reminded for `S`) → `stale` = no mail; `mintToken` (a new token per mail, § 8.4; it returns the booking as saved)
- *   → no token = no mail; the mail is built FROM THAT BOOKING. One check after the mint (`samePlacement`): a slot is
- *   sent only when the saved booking still starts at `S`; a seat only when it still names the same course and run.
+ * - per resource (AP10) `readIntervals` over the window (AP3 + `activeEntries`), confirmed entries (`x` absent) with
+ *   `s` in the window → target `{ slot, start: s }`. Only slot bookings have `RESDAY#` entries, so a stored booking of
+ *   the removed group shape (SCHED-GROUPS-REMOVE-1) is never selected;
+ * - per target: `markReminder` (the stale guard: it commits only while the booking still starts at `S` — the slot's
+ *   `what.start` — is confirmed and was not reminded for `S`) → `stale` = no mail; `mintToken` (a new token per mail,
+ *   § 8.4; it returns the booking as saved) → no token = no mail; the mail is built FROM THAT BOOKING. One check after
+ *   the mint (`samePlacement`): sent only when the saved booking still starts at `S`.
  *   Nothing is checked after that, and the send is not atomic with any later change.
  * - Limits (recorded):
  *   - a committed mark stays when a later step fails, so a mint or SES failure after the mark loses that reminder
  *     (§ 11.3: chosen over a duplicate every 15 minutes);
  *   - a token minted for a mail that is then not sent stays valid until the 20-token cap drops it (§ 8.4); no one
  *     holds it;
- *   - SEAT (review S1G1-R04, operator ruling: kept, no post-mark recheck): a run moved between the mark and the send
- *     keeps its run id, so the reminder goes out with the start read before the mark (the earlier start); the run
- *     move's own `moved` mail carries the new time, and the next run reminds the new start (a new `S`);
- *   - a slot moved after the post-mint check and before SES accepts gets a reminder for the earlier start; its `moved`
+ * *   - a slot moved after the post-mint check and before SES accepts gets a reminder for the earlier start; its `moved`
  *     mail carries the new time.
  * - Two runs at once (an EventBridge retry, or a run longer than 15 minutes; nothing prevents it): reminders — the
  *   conditional mark lets exactly one of them commit per booking and start, so ONE mail (test "two runs at once" in
@@ -54,7 +49,7 @@
  * - The reminder is a customer mail: with the template's `sendToCustomer` off, nothing is marked or sent for the
  *   tenant. With `sendToAdmin` on, an owner copy WITHOUT the link goes to `integrations.contactEmail` (the rule of
  *   `visitor/mail.ts`: a link gives control of the booking).
- * - `{{when}}` = `whenText`: a slot in `scheduling.timezone`; a seat at the run's first start in the RUN's zone.
+ * - `{{when}}` = `whenText`: the slot's start in `scheduling.timezone`.
  *
  * Weekly planner mail (§ 11.4; SCHED-WEEKMAIL-DELIVERY = B), per due tenant, target week `W` = `weekStart`: the
  * `weekAhead` template with `sendToAdmin` off → none; no `contactEmail` → none and the log line
@@ -87,8 +82,8 @@ import {
 import { db, TABLE_NAME } from "../lib/db.js";
 import { formatFromHeader } from "../lib/email-from.js";
 import {
-    claimWeekMail, cleanupExpiredHolds, getCourse, getResourcePlans, listResources, markReminder, markWeekMailSent,
-    mintToken, readIntervals, runsNotEndedBy, schedulingStoreFromEnv,
+    claimWeekMail, cleanupExpiredHolds, getResourcePlans, listResources, markReminder, markWeekMailSent,
+    mintToken, readIntervals, schedulingStoreFromEnv,
     type ReminderTarget, type SchedulingStore,
 } from "../lib/scheduling-db.js";
 import { renderSchedulingMail, resolveTemplate, whenText } from "../lib/scheduling-email.js";
@@ -200,20 +195,18 @@ async function send(tenant: SchedulingTenant, to: string, mail: { subject: strin
     }));
 }
 
-/** A reminder target with what its mail shows besides the booking. */
-type Target = { bookingId: string; target: ReminderTarget; runTimezone: string | null; courseName: string };
+/** A reminder target: one booking and the start it is reminded for. */
+type Target = { bookingId: string; target: ReminderTarget };
 
 /**
- * The saved booking still matches the target (the rule of SCHED-1F1: a notice is about one placement): a slot still
- * starts at `S` and is confirmed; a seat still names the same course and run and is confirmed. For a seat this does
- * NOT compare the run's start: a run moved after the mark passes (limit S1G1-R04 of the header).
+ * The saved booking still matches the target (the rule of SCHED-1F1: a notice is about one placement): the slot still
+ * starts at `S` and is confirmed.
  */
 function samePlacement(b: Booking, t: ReminderTarget): boolean {
     switch (t.kind) {
-        case "slot": return b.what.kind === "slot" && b.what.start === t.start && b.state.kind === "confirmed";
-        case "seat": return b.what.kind === "seat" && b.what.courseId === t.courseId && b.what.runId === t.runId && b.state.kind === "confirmed";
+        case "slot": return b.what.start === t.start && b.state.kind === "confirmed";
         default: {
-            const never: never = t;
+            const never: never = t.kind;
             throw new Error(`Unhandled target ${JSON.stringify(never)}`);
         }
     }
@@ -228,23 +221,8 @@ async function reminderTargets(store: SchedulingStore, tenantId: string, window:
         const entries = await readIntervals(store, tenantId, resource.id, { start: window.start, end: window.end + 1 }, now);
         for (const e of entries) {
             if (e.x === undefined && inWindow(e.s)) {
-                targets.push({ bookingId: e.bookingId, target: { kind: "slot", start: e.s }, runTimezone: null, courseName: "" });
+                targets.push({ bookingId: e.bookingId, target: { kind: "slot", start: e.s } });
             }
-        }
-    }
-    const runs = await runsNotEndedBy(store, tenantId, window.start, window.end, false);
-    if (!runs.ok) return "busy";
-    const names = new Map<string, string>();
-    for (const run of runs.value) {
-        const firstStart = Date.parse(run.firstStartIso);
-        if (run.status === "cancelled" || !inWindow(firstStart)) continue;
-        if (!names.has(run.courseId)) names.set(run.courseId, (await getCourse(store, tenantId, run.courseId, false))?.name ?? "");
-        for (const [bookingId, seat] of Object.entries(run.seats)) {
-            if (seat.x !== undefined) continue;
-            targets.push({
-                bookingId, target: { kind: "seat", courseId: run.courseId, runId: run.runId, firstStart },
-                runTimezone: run.timezone, courseName: names.get(run.courseId) ?? "",
-            });
         }
     }
     return targets;
@@ -286,17 +264,15 @@ async function reminders(store: SchedulingStore, tenantId: string, tenant: Sched
             summary.reminders.placementChanged++;
             continue;
         }
-        const firstStart = t.target.kind === "seat" ? t.target.firstStart : null;
         const vars = (link: string) => ({
             ref: b.ref, customerName: b.who.name,
-            serviceName: b.what.kind === "slot" ? b.what.serviceName : "",
-            courseName: t.courseName,
-            when: whenText(b, { firstStart, runTimezone: t.runTimezone }, tz),
-            expiresAt: "", link, groupLink: "", siteName: tenant.name ?? "",
+            serviceName: b.what.serviceName,
+            when: whenText(b, tz),
+            expiresAt: "", link, siteName: tenant.name ?? "",
         });
         const link = `${bookingBase({ id: tenantId, domain: tenant.domain }, origin)}/_booking/manage#t=${token}`;
         try {
-            await send(tenant, b.who.email, renderSchedulingMail(template, vars(link)), from);
+            await send(tenant, b.who.email, renderSchedulingMail("reminder", template, vars(link)), from);
             summary.reminders.sent++;
         } catch (e) {
             console.error("[scheduling] reminder mail failed", tenantId, b.id, errorName(e));
@@ -305,7 +281,7 @@ async function reminders(store: SchedulingStore, tenantId: string, tenant: Sched
         }
         if (template.sendToAdmin && tenant.contactEmail !== undefined) {
             try {
-                await send(tenant, tenant.contactEmail, renderSchedulingMail(template, vars("")), from);
+                await send(tenant, tenant.contactEmail, renderSchedulingMail("reminder", template, vars("")), from);
             } catch (e) {
                 console.error("[scheduling] reminder owner copy failed", tenantId, b.id, errorName(e));
             }
@@ -361,7 +337,7 @@ async function weekMail(store: SchedulingStore, tenantId: string, tenant: Schedu
     }
     const adminUrl = process.env.ADMIN_URL ?? "";
     if (!adminUrl) console.error("[scheduling] weekly mail: ADMIN_URL not set", tenantId);
-    const mail = renderSchedulingMail(template, {
+    const mail = renderSchedulingMail("weekAhead", template, {
         weekStart: week, weekEnd: dates[6], summary: weekSummary(planned),
         plannerLink: adminUrl ? `${adminUrl}/scheduling/planner?tenant=${encodeURIComponent(tenantId)}&week=${week}` : "",
         siteName: tenant.name ?? "",

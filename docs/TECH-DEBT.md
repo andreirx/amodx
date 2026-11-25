@@ -1505,3 +1505,17 @@ renderer adapter to `@opennextjs/aws` 4.1.9. Findings and residuals carried forw
   that moves `@node-minify/core` off glob 10.3.3.
 - **B-NO30D record and the seed:** the seed branch has no STALE response; no 4.1.9 STALE emission of the 300-second window was observed (the `4-noseed` negative control's STALE response carries no `Cache-Control` at all, so it cannot prove the window); what is proven: `(c2)` checks the installed source and the guard checks the bundle literals. B-NO30D's STALE-path positive control applies
   only on the `4-noseed` branch.
+
+## sched-groups-remove-1 residuals (2026-11-25)
+
+The group shape of scheduling was removed from `main` (code on branch `archive/group-scheduling-2026-11`,
+`docs/slices/sched-1.md` § 25 `sched-groups-remove-1`). Deliberately deferred:
+- **Stored group items stay in the scheduling table.** `COURSE#`, `RUN#` (with seat entries), `RUNSPAN#`, `UNPLACED#`
+  and `BOOKING#` items of seats or unplaced bookings written before the removal are not migrated or deleted (out of
+  the slice's scope). No code reads `COURSE#`/`RUN#`/`RUNSPAN#`/`UNPLACED#`; a group `BOOKING#` reads as absent, and
+  the erasure and the daily cleanup remove its item set. A `RUN#` seat entry or `UNPLACED#` pointer keeps only a random
+  booking id. Fix path, if wanted: an operator-run, per-tenant Query by key prefix and delete (no scan).
+- **Shapes kept for stored data:** `StoredBooking` (`scheduling-db.ts`), `RETIRED_TEMPLATE_KEYS` with
+  `withoutRetiredTemplateKeys` (read in `storedOverrides`, write-back in PUT /settings) and `RETIRED_VARIABLES` (booking
+  mails only) (`scheduling-email.ts`). Remove them only after a read of every tenant shows no group
+  `BOOKING#`, no stored `unplaced` mail override and no override naming `{{courseName}}` or `{{groupLink}}`.

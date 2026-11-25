@@ -1194,7 +1194,7 @@ export default function SettingsPage() {
                     <Card data-scheduling-switch>
                         <CardHeader>
                             <CardTitle>Scheduling</CardTitle>
-                            <CardDescription>Enable individual appointments and group bookings, confirmed by an emailed link.</CardDescription>
+                            <CardDescription>Enable individual appointments, confirmed by an emailed link.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <label className="flex items-center gap-3 cursor-pointer">

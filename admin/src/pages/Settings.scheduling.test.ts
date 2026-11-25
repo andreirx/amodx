@@ -36,7 +36,7 @@ vi.mock("@/lib/api", async (original) => ({
         if (path === "/scheduling/admin/resources") return { resources: [{ id: "r1", name: "Dr A", hasFeed: false }] };
         if (path === "/scheduling/admin/services") return { services: [] };
         if (path === "/scheduling/admin/email-templates") return {
-            defaults: Object.fromEntries(["hold", "confirmed", "cancelled", "moved", "unplaced", "reminder", "weekAhead"]
+            defaults: Object.fromEntries(["hold", "confirmed", "cancelled", "moved", "reminder", "weekAhead"]
                 .map(key => [key, { subject: key, body: key, sendToCustomer: true, sendToAdmin: true }])), overrides: {},
         };
         if (path === "/scheduling/admin/resources/r1/week?start=2026-12-07") return {
@@ -92,11 +92,11 @@ const nav = () => [...host.querySelectorAll("a")].filter(a => !main().contains(a
 const saves = () => state.calls.filter(c => c.method === "PUT");
 
 describe("SCHED-MENU-1 — settings saves update both menu switches through the real TenantProvider", () => {
-    it("fresh browser: switch on, set the required time zone, save → three scheduling links; switch off and save → no links", async () => {
+    it("fresh browser: switch on, set the required time zone, save → two scheduling links; switch off and save → no links", async () => {
         await mount(SettingsPage);
         expect(localStorage.getItem("AMODX_TENANT_ID")).toBe("a");
         expect(nav().some(([, href]) => href?.startsWith("/scheduling"))).toBe(false);
-        expect(main().textContent).toContain("Enable individual appointments and group bookings, confirmed by an emailed link.");
+        expect(main().textContent).toContain("Enable individual appointments, confirmed by an emailed link.");
         const cards = [...main().querySelectorAll(".rounded-xl")];
         const commerce = cards.findIndex(c => c.textContent?.includes("Enable Commerce"));
         expect(cards[commerce + 1].textContent).toContain("Enable scheduling");
@@ -107,7 +107,7 @@ describe("SCHED-MENU-1 — settings saves update both menu switches through the 
         await click(button("Save Changes"));
         expect(saves()[0].body).toMatchObject({ schedulingEnabled: true, scheduling: { timezone: "Europe/Bucharest" } });
         expect(nav()).toEqual(expect.arrayContaining([
-            ["Appointments", "/scheduling/planner"], ["Groups", "/scheduling/courses"], ["Scheduling settings", "/scheduling"],
+            ["Appointments", "/scheduling/planner"], ["Scheduling settings", "/scheduling"],
         ]));
         expect(state.calls.filter(c => c.path === "/tenants")).toHaveLength(2);
         await click(checkbox("Enable scheduling"));

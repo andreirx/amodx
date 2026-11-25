@@ -6,13 +6,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
     TenantConfigSchema, SchedulingSettingsSchema,
-    PersonSchema, RunSchema, ServiceSchema, DayOverrideSchema, DayOverridesSchema, HistoryEntrySchema, BookingSchema,
+    PersonSchema, ServiceSchema, DayOverrideSchema, DayOverridesSchema, HistoryEntrySchema, BookingSchema,
     availableSlots, slotDecision, overlapCheck, pickResource,
     isActive, holdExpiry, confirmDecision, changeDecision, tokenView, appendHistory, bookingBase,
-    activeSeats, seatDecision, propose, validateMeetings, cancelRunEffects,
     dayWindows, lastBookableDate, activeEntries, planDay, editDays, weekMailDue, localDaySpan,
     type AvailabilityRule, type Booking, type ContainerEntry, type DayOverride, type DayOverrides, type HistoryEntry,
-    type Meeting, type Person, type Resource, type Run, type SeatEntry, type Service,
+    type Resource, type Service,
 } from "../src/index.js";
 
 /**
@@ -56,15 +55,6 @@ function booking(over: Partial<Booking> = {}): Booking {
         ...over,
     };
 }
-
-function run(over: Partial<Run> = {}): Run {
-    return {
-        id: "R1", courseId: "c1", meetings: [{ date: "2026-12-05", start: "10:00", end: "13:00" }], timezone: TZ,
-        capacity: 8, trainerIds: ["r1"], language: { kind: "notSet" }, status: "open", ...over,
-    };
-}
-
-const person = (language?: string): Person => ({ email: "ann@example.test", name: "Ann", ...(language ? { language } : {}) });
 
 /** Field paths of every issue of a failed parse, joined with "." (e.g. "windows.0.end"). */
 function issuePaths(result: { success: boolean; error?: { issues: { path: PropertyKey[] }[] } }): string[] {
@@ -216,114 +206,6 @@ describe("overlapCheck and pickResource (§ 5.2)", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// Group shape (§ 5.4)
-// ---------------------------------------------------------------------------------------------------------------
-
-describe("seats (§ 5.4)", () => {
-    const now = at("2026-12-01T10:00:00.000Z");
-    const firstStart = at("2026-12-05T08:00:00.000Z");
-    const later = "2026-12-01T10:30:00.000Z";
-    const earlier = "2026-12-01T09:30:00.000Z";
-    const seats: Record<string, SeatEntry> = {
-        c1: {}, c2: {}, c3: {}, c4: {}, c5: {}, h1: { x: at(later) }, h2: { x: at(later) }, e1: { x: at(earlier) },
-    };
-
-    it("A5 capacity 8, 5 confirmed + 2 held + 1 expired → taken 7 → ok; the next one → runFull(8)", () => {
-        const taken = activeSeats(seats, now);
-        expect(taken).toBe(7);
-        expect(seatDecision(run(), taken, firstStart, person(), "visitor", now).ok).toBe(true);
-        const taken8 = activeSeats({ ...seats, c6: {} }, now);
-        expect(seatDecision(run(), taken8, firstStart, person(), "visitor", now)).toEqual({ ok: false, error: { kind: "runFull", capacity: 8 } });
-    });
-
-    it("A5 admin into a closed run with 6/8 → ok", () => {
-        expect(seatDecision(run({ status: "closed" }), 6, firstStart, person(), "admin", now)).toEqual({ ok: true, value: { languageAfter: { kind: "notSet" } } });
-    });
-
-    it("A5 admin into a cancelled run → runCancelled", () => {
-        expect(seatDecision(run({ status: "cancelled" }), 0, firstStart, person(), "admin", now)).toEqual({ ok: false, error: { kind: "runCancelled" } });
-    });
-
-    it("a visitor into a closed run → runClosed; activeSeats excludes the moving booking", () => {
-        expect(seatDecision(run({ status: "closed" }), 0, firstStart, person(), "visitor", now)).toEqual({ ok: false, error: { kind: "runClosed" } });
-        expect(activeSeats(seats, now, "h1")).toBe(6);
-    });
-
-    it("A7 notSet run + person ro (visitor) → languageAfter set(ro)", () => {
-        expect(seatDecision(run(), 0, firstStart, person("ro"), "visitor", now)).toEqual({ ok: true, value: { languageAfter: { kind: "set", tag: "ro" } } });
-    });
-
-    it("A7 admin placement across languages → ok, language unchanged", () => {
-        expect(seatDecision(run({ language: { kind: "set", tag: "en" } }), 0, firstStart, person("ro"), "admin", now))
-            .toEqual({ ok: true, value: { languageAfter: { kind: "set", tag: "en" } } });
-        expect(seatDecision(run(), 0, firstStart, person("ro"), "admin", now)).toEqual({ ok: true, value: { languageAfter: { kind: "notSet" } } });
-        expect(seatDecision(run({ language: { kind: "set", tag: "en" } }), 0, firstStart, person("ro"), "visitor", now))
-            .toEqual({ ok: false, error: { kind: "languageMismatch", run: "en", person: "ro" } });
-    });
-
-    it("A8 visitor on a started run → runStarted; admin → ok", () => {
-        expect(seatDecision(run(), 0, firstStart, person(), "visitor", firstStart)).toEqual({ ok: false, error: { kind: "runStarted" } });
-        expect(seatDecision(run(), 0, firstStart, person(), "admin", firstStart).ok).toBe(true);
-    });
-});
-
-describe("propose (§ 5.4)", () => {
-    const now = at("2026-12-01T10:00:00.000Z");
-    const c = (id: string, lang: string | null, day: string, taken: number, capacity: number) => ({
-        run: run({ id, capacity, language: lang === null ? { kind: "notSet" as const } : { kind: "set" as const, tag: lang } }),
-        taken, firstStart: at(`2026-12-${day}T08:00:00.000Z`),
-    });
-
-    it("A6 person ro; R1 ro 3/8, R2 notSet 0/8, R3 en 5/6, R4 ro 6/8 → proposed(R4), others [R1, R2], R3 absent", () => {
-        const runs = [c("R1", "ro", "05", 3, 8), c("R2", null, "12", 0, 8), c("R3", "en", "06", 5, 6), c("R4", "ro", "19", 6, 8)];
-        expect(propose(runs, "ro", now)).toEqual({ kind: "proposed", run: "R4", others: ["R1", "R2"] });
-    });
-
-    it("all candidates empty → choose by first meeting; none open → noneOpen", () => {
-        expect(propose([c("R2", null, "12", 0, 8), c("R1", "ro", "05", 0, 8)], "ro", now)).toEqual({ kind: "choose", runs: ["R1", "R2"] });
-        expect(propose([c("R3", "en", "06", 5, 6)], "ro", now)).toEqual({ kind: "noneOpen" });
-        expect(propose([{ ...c("R1", "ro", "05", 3, 8), run: run({ id: "R1", status: "closed" }) }], undefined, now)).toEqual({ kind: "noneOpen" });
-    });
-});
-
-describe("validateMeetings and cancelRunEffects (§ 5.4)", () => {
-    const m = (date: string, start: string, end: string): Meeting => ({ date, start, end });
-
-    it("A11 empty → empty", () => {
-        expect(validateMeetings([], TZ)).toEqual({ ok: false, error: { kind: "empty" } });
-    });
-
-    it("A11 [{12-05 10:00-13:00}, {12-06 10:00-09:00}] → endNotAfterStart(1)", () => {
-        expect(validateMeetings([m("2026-12-05", "10:00", "13:00"), m("2026-12-06", "10:00", "09:00")], TZ)).toEqual({ ok: false, error: { kind: "endNotAfterStart", index: 1 } });
-    });
-
-    it("A11 two meetings that overlap → overlap(a, b) with input indexes", () => {
-        expect(validateMeetings([m("2026-12-05", "12:00", "14:00"), m("2026-12-06", "10:00", "11:00"), m("2026-12-05", "10:00", "13:00")], TZ))
-            .toEqual({ ok: false, error: { kind: "overlap", a: 2, b: 0 } });
-    });
-
-    it("A11 a meeting in the spring gap → nonexistentLocalTime(index)", () => {
-        expect(validateMeetings([m("2027-03-27", "10:00", "11:00"), m("2027-03-28", "03:15", "05:00")], TZ)).toEqual({ ok: false, error: { kind: "nonexistentLocalTime", index: 1 } });
-    });
-
-    it("A11 61 meetings → tooMany(60)", () => {
-        const many = Array.from({ length: 61 }, (_, i) => m(`2027-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, "0")}`, "10:00", "11:00"));
-        expect(validateMeetings(many, TZ)).toEqual({ ok: false, error: { kind: "tooMany", max: 60 } });
-    });
-
-    it("valid meetings come back sorted by start", () => {
-        expect(validateMeetings([m("2026-12-06", "10:00", "13:00"), m("2026-12-05", "10:00", "13:00")], TZ))
-            .toEqual({ ok: true, value: [m("2026-12-05", "10:00", "13:00"), m("2026-12-06", "10:00", "13:00")] });
-    });
-
-    it("A12 A confirmed, B held, C expired → toUnplace [A], toCancel [B]", () => {
-        const now = at("2026-12-01T10:00:00.000Z");
-        const seats: Record<string, SeatEntry> = { C: { x: at("2026-12-01T09:00:00.000Z") }, B: { x: at("2026-12-01T10:30:00.000Z") }, A: {} };
-        expect(cancelRunEffects(seats, now)).toEqual({ toUnplace: ["A"], toCancel: ["B"] });
-    });
-});
-
-// ---------------------------------------------------------------------------------------------------------------
 // Common rules (§ 5.3)
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -331,34 +213,25 @@ describe("changeDecision (§ 5.3)", () => {
     const cutoff = at("2026-12-06T07:00:00.000Z"); // start 2026-12-07T07:00Z − 24 h
 
     it("A9 customer cancel at cutoff − 1 ms → ok; at cutoff → tooLate(cutoff)", () => {
-        expect(changeDecision(booking(), null, cutoff - 1, 24, "cancel", "customer")).toEqual({ ok: true, value: undefined });
-        expect(changeDecision(booking(), null, cutoff, 24, "cancel", "customer")).toEqual({ ok: false, error: { kind: "tooLate", cutoff } });
-    });
-
-    it("A9 order source, customer → paidContactTenant", () => {
-        const b = booking({ source: { kind: "order", orderId: "o1", line: 0 } });
-        expect(changeDecision(b, null, at("2026-12-01T10:00:00.000Z"), 24, "cancel", "customer")).toEqual({ ok: false, error: { kind: "paidContactTenant" } });
+        expect(changeDecision(booking(), cutoff - 1, 24, "cancel", "customer")).toEqual({ ok: true, value: undefined });
+        expect(changeDecision(booking(), cutoff, 24, "cancel", "customer")).toEqual({ ok: false, error: { kind: "tooLate", cutoff } });
     });
 
     it("A9 customer move of a held booking → notConfirmed", () => {
         const b = booking({ state: { kind: "held", expiresAt: at("2026-12-01T10:30:00.000Z"), mail: "sent" } });
-        expect(changeDecision(b, null, at("2026-12-01T10:00:00.000Z"), 24, "move", "customer")).toEqual({ ok: false, error: { kind: "notConfirmed" } });
-        expect(changeDecision(b, null, at("2026-12-01T10:00:00.000Z"), 24, "cancel", "customer").ok).toBe(true);
+        expect(changeDecision(b, at("2026-12-01T10:00:00.000Z"), 24, "move", "customer")).toEqual({ ok: false, error: { kind: "notConfirmed" } });
+        expect(changeDecision(b, at("2026-12-01T10:00:00.000Z"), 24, "cancel", "customer").ok).toBe(true);
     });
 
-    it("a seat counts from the run's first start (`startOf`); unplaced has no window; admin has no window", () => {
-        const seat = booking({ what: { kind: "seat", courseId: "c1", runId: "R1" } });
-        expect(changeDecision(seat, at("2026-12-07T07:00:00.000Z"), cutoff, 24, "move", "customer")).toEqual({ ok: false, error: { kind: "tooLate", cutoff } });
-        const unplaced = booking({ what: { kind: "unplaced", courseId: "c1" } });
-        expect(changeDecision(unplaced, null, at("2030-01-01T00:00:00.000Z"), 24, "move", "customer").ok).toBe(true);
-        expect(changeDecision(booking(), null, at("2026-12-07T06:00:00.000Z"), 24, "move", "admin").ok).toBe(true);
+    it("admin has no window", () => {
+        expect(changeDecision(booking(), at("2026-12-07T06:00:00.000Z"), 24, "move", "admin").ok).toBe(true);
     });
 
     it("not active → notActive for every actor (cancelled; held and expired)", () => {
         const cancelled = booking({ state: { kind: "cancelled", at: 1, by: { kind: "customer" } } });
-        expect(changeDecision(cancelled, null, 2, 24, "cancel", "admin")).toEqual({ ok: false, error: { kind: "notActive", state: "cancelled" } });
+        expect(changeDecision(cancelled, 2, 24, "cancel", "admin")).toEqual({ ok: false, error: { kind: "notActive", state: "cancelled" } });
         const expired = booking({ state: { kind: "held", expiresAt: 5, mail: "sent" } });
-        expect(changeDecision(expired, null, 5, 24, "cancel", "customer")).toEqual({ ok: false, error: { kind: "notActive", state: "expired" } });
+        expect(changeDecision(expired, 5, 24, "cancel", "customer")).toEqual({ ok: false, error: { kind: "notActive", state: "expired" } });
     });
 });
 
@@ -377,15 +250,10 @@ describe("confirmDecision (§ 5.3)", () => {
 });
 
 describe("tokenView, isActive, holdExpiry (§ 5.3)", () => {
-    it("token view: valid until the slot end + 30 days; a seat until its run's end + 30 days; unplaced while unplaced; cancelled → gone", () => {
-        const end = at("2026-12-07T08:00:00.000Z");
-        expect(tokenView(booking(), null, at("2027-01-06T07:59:59.999Z"))).toBe("valid");
-        expect(tokenView(booking(), null, at("2027-01-06T08:00:00.000Z"))).toBe("gone");
-        const seat = booking({ what: { kind: "seat", courseId: "c1", runId: "R1" } });
-        expect(tokenView(seat, end, end + 30 * 86_400_000 - 1)).toBe("valid");
-        expect(tokenView(seat, end, end + 30 * 86_400_000)).toBe("gone");
-        expect(tokenView(booking({ what: { kind: "unplaced", courseId: "c1" } }), null, at("2030-01-01T00:00:00.000Z"))).toBe("valid");
-        expect(tokenView(booking({ state: { kind: "cancelled", at: 1, by: { kind: "customer" } } }), null, 2)).toBe("gone");
+    it("token view: valid until the slot end + 30 days; cancelled → gone", () => {
+        expect(tokenView(booking(), at("2027-01-06T07:59:59.999Z"))).toBe("valid");
+        expect(tokenView(booking(), at("2027-01-06T08:00:00.000Z"))).toBe("gone");
+        expect(tokenView(booking({ state: { kind: "cancelled", at: 1, by: { kind: "customer" } } }), 2)).toBe("gone");
     });
 
     it("isActive: held before expiry or confirmed; holdExpiry = now + holdMinutes", () => {
@@ -466,11 +334,15 @@ describe("A14 exhaustive switches (compile errors in a temporary copy)", () => {
         expect(errorSites((s) => s)).toEqual([]);
     }, 120_000);
 
-    it("A14 a fourth BookingWhat variant → errors at both switches over BookingWhat", () => {
-        expect(errorSites(insertAfter(
-            'z.object({ kind: z.literal("unplaced"), courseId: IdSchema }),',
-            '\n    z.object({ kind: z.literal("waitlisted"), courseId: IdSchema }),',
-        ))).toEqual(["changeWindowStart", "viewEnd"]);
+    it("A14 a second BookingWhat variant → errors where the kernel reads the slot's start and end", () => {
+        // SCHED-GROUPS-REMOVE-1: BookingWhat has one shape (a plain object); a mutation that makes it a union again breaks
+        // every kernel read of `what.start` / `what.end`.
+        const slot = 'z.object({\n    kind: z.literal("slot"), serviceId: IdSchema, serviceName: NameSchema, resourceId: IdSchema, start: InstantSchema, end: InstantSchema,\n})';
+        expect(errorSites((source) => {
+            expect(source.split(`BookingWhatSchema = ${slot};`).length - 1).toBe(1); // the mutation is real
+            return source.replace(`BookingWhatSchema = ${slot};`,
+                `BookingWhatSchema = z.discriminatedUnion("kind", [${slot}, z.object({ kind: z.literal("waitlisted"), serviceId: IdSchema })]);`);
+        })).toEqual(["changeDecision", "tokenView"]);
     }, 120_000);
 
     it("A14 a third DayOverride kind → errors at the three switches over DayOverride (DaySetting includes it)", () => {
@@ -504,11 +376,6 @@ describe("A14 exhaustive switches (compile errors in a temporary copy)", () => {
 
     it("exhaustiveness (review R2): a new change action → error in actionAllowed", () => {
         expect(errorSites(replaceEvery('"cancel" | "move"', '"cancel" | "move" | "rebook"'))).toEqual(["actionAllowed"]);
-    }, 120_000);
-
-    it("exhaustiveness (review R2): a new RunStatus → errors in seatDecision and offeredToVisitors (propose)", () => {
-        expect(errorSites(replaceEvery('z.enum(["open", "closed", "cancelled"])', 'z.enum(["open", "closed", "cancelled", "draft"])')))
-            .toEqual(["offeredToVisitors", "seatDecision"]);
     }, 120_000);
 });
 
@@ -581,7 +448,7 @@ describe("Clock-change days: slot containment on instants (review R1)", () => {
 // Zod schemas (§ 4; field evidence inventory § 17.3)
 // ---------------------------------------------------------------------------------------------------------------
 
-describe("Zod: person, run, service (§ 4)", () => {
+describe("Zod: person, service (§ 4)", () => {
     it("A15 email valid only after normalization → accepted in normalized form", () => {
         // Fullwidth at sign U+FF20: refused by `.email()` raw, valid after NFKC (normalizeEmail's pinned case).
         const parsed = PersonSchema.parse({ email: "  Ann＠Example.TEST ", name: "Ann" });
@@ -589,18 +456,9 @@ describe("Zod: person, run, service (§ 4)", () => {
         expect(PersonSchema.safeParse({ email: "not an email", name: "Ann" }).success).toBe(false);
     });
 
-    it("A15 capacity 46 refused", () => {
-        expect(issuePaths(RunSchema.safeParse({ ...run(), capacity: 46 }))).toContain("capacity");
-        expect(RunSchema.safeParse({ ...run(), capacity: 45 }).success).toBe(true);
-    });
-
     it("A15 duration 7 refused", () => {
         expect(issuePaths(ServiceSchema.safeParse({ ...svc60, durationMin: 7 }))).toContain("durationMin");
         expect(ServiceSchema.safeParse({ ...svc60, durationMin: 485 }).success).toBe(false);
-    });
-
-    it("A15 trainerIds [] refused", () => {
-        expect(issuePaths(RunSchema.safeParse({ ...run(), trainerIds: [] }))).toContain("trainerIds");
     });
 });
 
@@ -902,7 +760,7 @@ describe("Zod HistoryEntry and appendHistory (§ 4.4; evidence taxonomy of Booki
         created,
         { action: "confirmed", at: 3 },
         { action: "cancelled", at: 4, by: admin },
-        { action: "moved", at: 5, by: { kind: "customer" }, from: slot, to: { kind: "seat", runId: "R1" } },
+        { action: "moved", at: 5, by: { kind: "customer" }, from: slot, to: { kind: "slot", resourceId: "r2", start: 3, end: 4 } },
     ];
 
     it("A24 absent history and history [] are refused (the stored list is non-empty)", () => {

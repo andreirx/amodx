@@ -24,10 +24,10 @@ const h = vi.hoisted(() => {
         sesFail: { on: false },
         verifyRecaptcha: vi.fn(),
         store: {
-            getBookingByToken: vi.fn(), confirmBooking: vi.fn(), cancelBooking: vi.fn(), moveSlot: vi.fn(), moveSeat: vi.fn(),
-            mintToken: vi.fn(), holdSlot: vi.fn(), holdSeat: vi.fn(), replayIntent: vi.fn(), markHoldMail: vi.fn(),
-            getCourse: vi.fn(), getRun: vi.fn(), getService: vi.fn(), listServices: vi.fn(), listCourses: vi.fn(),
-            listResources: vi.fn(), getResourcePlans: vi.fn(), readIntervals: vi.fn(), listRuns: vi.fn(),
+            getBookingByToken: vi.fn(), confirmBooking: vi.fn(), cancelBooking: vi.fn(), moveSlot: vi.fn(),
+            mintToken: vi.fn(), holdSlot: vi.fn(), replayIntent: vi.fn(), markHoldMail: vi.fn(),
+            getService: vi.fn(), listServices: vi.fn(),
+            listResources: vi.fn(), getResourcePlans: vi.fn(), readIntervals: vi.fn(),
         },
     };
 });
@@ -58,7 +58,6 @@ vi.mock("../../src/lib/scheduling-db.js", async (importOriginal) => {
 
 import { handler as offerRoute } from "../../src/scheduling/visitor/offer.js";
 import { handler as slotsRoute } from "../../src/scheduling/visitor/slots.js";
-import { handler as runsRoute } from "../../src/scheduling/visitor/runs.js";
 import { handler as holdRoute } from "../../src/scheduling/visitor/holds.js";
 import { handler as viewRoute } from "../../src/scheduling/visitor/bookings-view.js";
 import { handler as confirmRoute } from "../../src/scheduling/visitor/bookings-confirm.js";
@@ -105,18 +104,6 @@ function booking(over: Partial<Booking> = {}): Booking {
 }
 const confirmed = (over: Partial<Booking> = {}) => booking({ state: { kind: "confirmed", at: NOW - MIN }, heldUntil: undefined, ...over });
 
-const COURSE = { id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro", "en"] };
-function run(over: Record<string, unknown> = {}) {
-    return {
-        id: "r1", courseId: "c1", timezone: "Europe/Bucharest", capacity: 8, trainerIds: ["trainer-secret-9"],
-        language: { kind: "notSet" }, groupLink: "https://chat.example/secret-group", status: "open",
-        meetings: [{ date: "2026-12-05", start: "10:00", end: "13:00" }, { date: "2026-12-12", start: "10:00", end: "13:00" }],
-        firstStartIso: "2026-12-05T08:00:00.000Z", lastEndIso: "2026-12-12T11:00:00.000Z", v: 3,
-        seats: { "bk-aaaa-1": {}, "bk-aaaa-2": { x: NOW + 10 * MIN }, "bk-aaaa-3": { x: NOW - MIN } },
-        ...over,
-    };
-}
-
 type Res = { statusCode: number; body: string; headers?: Record<string, string> };
 async function call(route: any, opts: {
     auth?: any; body?: unknown; rawBody?: string; tenant?: string | null; query?: Record<string, string>;
@@ -136,7 +123,7 @@ const holdBody = (over: Record<string, unknown> = {}) => ({
     intentId: INTENT, recaptchaToken: "captcha-token",
     what: { kind: "slot", serviceId: "svc1", start: "2026-12-07T07:00:00.000Z" }, who: CUSTOMER, ...over,
 });
-const WRITES = ["confirmBooking", "cancelBooking", "moveSlot", "moveSeat", "mintToken", "holdSlot", "holdSeat", "markHoldMail"] as const;
+const WRITES = ["confirmBooking", "cancelBooking", "moveSlot", "mintToken", "holdSlot", "markHoldMail"] as const;
 
 beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -156,8 +143,6 @@ beforeEach(() => {
     h.verifyRecaptcha.mockReset().mockResolvedValue({ success: true, score: 0.9 });
     h.store.replayIntent.mockResolvedValue({ kind: "new" });
     h.store.markHoldMail.mockResolvedValue(true);
-    h.store.getCourse.mockResolvedValue(COURSE);
-    h.store.getRun.mockResolvedValue(run());
     h.store.getService.mockResolvedValue(SERVICE);
     h.store.listResources.mockResolvedValue([{ id: RESOURCE_ID, name: RESOURCE_NAME, hasFeed: false }]);
     h.store.mintToken.mockImplementation(async (_s: any, _t: string, _id: string, _now: number) => ({ ok: true, value: { booking: confirmed({ rev: 9 }), token: NEW_TOKEN } }));
@@ -174,7 +159,6 @@ const ownerMails = () => h.sesSends.filter((m) => m.Destination.ToAddresses[0] =
 const ALL_ROUTES: [string, any, Parameters<typeof call>[1]][] = [
     ["offer", offerRoute, {}],
     ["slots", slotsRoute, { query: { serviceId: "svc1", from: "2026-12-07", to: "2026-12-08" } }],
-    ["runs", runsRoute, { path: { courseId: "c1" } }],
     ["hold", holdRoute, { body: holdBody() }],
     ["view", viewRoute, { body: { token: TOKEN } }],
     ["confirm", confirmRoute, { body: { token: TOKEN } }],
@@ -214,7 +198,6 @@ describe("D2 role oracle of the visitor routes (§ 10.2)", () => {
 
     it("D2 GLOBAL_ADMIN passes requireRole and is handled like the renderer, with the x-tenant-id it sent", async () => {
         h.store.listServices.mockResolvedValue([]);
-        h.store.listCourses.mockResolvedValue([]);
         const res = await call(offerRoute, { auth: GLOBAL });
         expect(res.statusCode).toBe(200);
         expect(h.store.listServices.mock.calls[0][1]).toBe("t1");
@@ -226,7 +209,6 @@ describe("D2 role oracle of the visitor routes (§ 10.2)", () => {
 
     it("D2 the renderer passes; the tenant is the x-tenant-id header (no header → 400)", async () => {
         h.store.listServices.mockResolvedValue([]);
-        h.store.listCourses.mockResolvedValue([]);
         expect((await call(offerRoute)).statusCode).toBe(200);
         const none = await call(offerRoute, { tenant: null });
         expect([none.statusCode, none.json.code]).toEqual([400, "invalid"]);
@@ -251,29 +233,24 @@ describe("stored settings (§ 10.2 storedDataInvalid)", () => {
 describe("read routes", () => {
     beforeEach(() => {
         h.store.listServices.mockResolvedValue([SERVICE]);
-        h.store.listCourses.mockResolvedValue([COURSE]);
         h.store.getResourcePlans.mockResolvedValue({
             ok: true, value: { [RESOURCE_ID]: { rules: [{ weekday: 1, start: "09:00", end: "12:00" }], days: {} } },
         });
         h.store.readIntervals.mockResolvedValue([{ bookingId: "bk-busy", s: START + HOUR, e: START + 2 * HOUR, rev: 1 }]);
-        h.store.listRuns.mockResolvedValue([run(), run({ id: "r2", seats: {}, firstStartIso: "2026-12-19T08:00:00.000Z", lastEndIso: "2026-12-19T11:00:00.000Z" })]);
     });
 
-    const PRIVATE = [RESOURCE_ID, RESOURCE_NAME, "trainer-secret-9", "secret-group", "bk-aaaa", "bk-busy", CUSTOMER.email, CUSTOMER.name, CUSTOMER.phone];
+    const PRIVATE = [RESOURCE_ID, RESOURCE_NAME, "bk-busy", CUSTOMER.email, CUSTOMER.name, CUSTOMER.phone];
 
-    it("D9 offer, slots and runs carry no resource id or name, trainer, group link, booking id, email, phone or customer name", async () => {
+    it("D9 offer and slots carry no resource id or name, booking id, email, phone or customer name", async () => {
         const offer = await call(offerRoute);
         const slots = await call(slotsRoute, { query: { serviceId: "svc1", from: "2026-12-07", to: "2026-12-07" } });
-        const runs = await call(runsRoute, { path: { courseId: "c1" } });
-        const all = await call(runsRoute, { path: { courseId: "c1" }, query: { all: "1" } });
-        for (const res of [offer, slots, runs, all]) {
+        for (const res of [offer, slots]) {
             expect(res.statusCode).toBe(200);
             for (const secret of PRIVATE) expect({ body: res.body, secret, found: res.body.includes(secret) }).toMatchObject({ found: false });
         }
         expect(offer.json).toEqual({
             timezone: "Europe/Bucharest",
             services: [{ id: "svc1", name: "Consultation", durationMin: 60 }],
-            courses: [{ id: "c1", name: "Pottery", languages: ["ro", "en"] }],
         });
     });
 
@@ -343,33 +320,9 @@ describe("read routes", () => {
         expect([res.statusCode, res.json.code]).toEqual([503, "busy"]);
     });
 
-    it("runs: the partly filled run is proposed (D6), seatsLeft counts active seats; all=1 → choose; unknown course → 404", async () => {
-        const res = await call(runsRoute, { path: { courseId: "c1" } });
-        expect(res.json).toEqual({
-            kind: "proposed", othersCount: 1,
-            run: {
-                runId: "r1", courseId: "c1", timezone: "Europe/Bucharest", language: null, seatsLeft: 6,
-                meetings: [{ date: "2026-12-05", start: "10:00", end: "13:00" }, { date: "2026-12-12", start: "10:00", end: "13:00" }],
-            },
-        });
-        const all = await call(runsRoute, { path: { courseId: "c1" }, query: { all: "1" } });
-        expect(all.json.kind).toBe("choose");
-        expect(all.json.runs.map((r: any) => r.runId)).toEqual(["r1", "r2"]);
-        h.store.getCourse.mockResolvedValueOnce(undefined);
-        const missing = await call(runsRoute, { path: { courseId: "zz" } });
-        expect([missing.statusCode, missing.json.code]).toEqual([404, "notFound"]);
-    });
-
-    it("runs: a person language filters runs set to another language (D7)", async () => {
-        h.store.listRuns.mockResolvedValue([run({ language: { kind: "set", tag: "en" } })]);
-        expect((await call(runsRoute, { path: { courseId: "c1" }, query: { language: "ro" } })).json).toEqual({ kind: "noneOpen" });
-        expect((await call(runsRoute, { path: { courseId: "c1" }, query: { language: "en" } })).json.kind).toBe("proposed");
-    });
-
-    it("§ 8.3 a GET never changes state: offer, slots and runs call no write function", async () => {
+    it("§ 8.3 a GET never changes state: offer and slots call no write function", async () => {
         await call(offerRoute);
         await call(slotsRoute, { query: { serviceId: "svc1", from: "2026-12-07", to: "2026-12-07" } });
-        await call(runsRoute, { path: { courseId: "c1" } });
         for (const name of WRITES) expect({ name, calls: h.store[name].mock.calls.length }).toEqual({ name, calls: 0 });
         expect(h.sesSends).toEqual([]);
     });
@@ -382,9 +335,6 @@ describe("read routes", () => {
 describe("POST /scheduling/visitor/holds", () => {
     beforeEach(() => {
         h.store.holdSlot.mockImplementation(async (_s: any, input: any) => ({ ok: true, value: { booking: booking({ rev: 1, intentId: input.intentId }), token: TOKEN } }));
-        h.store.holdSeat.mockImplementation(async () => ({
-            ok: true, value: { booking: booking({ rev: 1, what: { kind: "seat", courseId: "c1", runId: "r1" } }), token: TOKEN },
-        }));
     });
 
     it("D5 hold → 201 without token or id; one mail whose link has #t=<token>; mail marked sent", async () => {
@@ -452,7 +402,6 @@ describe("POST /scheduling/visitor/holds", () => {
             expect([res.statusCode, res.json.code]).toEqual([403, "verificationFailed"]);
         }
         expect(h.store.holdSlot).not.toHaveBeenCalled();
-        expect(h.store.holdSeat).not.toHaveBeenCalled();
         expect(h.sesSends).toEqual([]);
         warn.mockRestore();
     });
@@ -519,27 +468,16 @@ describe("POST /scheduling/visitor/holds", () => {
         }
         h.store.holdSlot.mockResolvedValueOnce({ ok: false, error: { kind: "beyondHorizon", lastBookableDate: "2027-01-26" } });
         expect((await call(holdRoute, { body: holdBody() })).json.lastBookableDate).toBe("2027-01-26");
-        const seatCases: [any, string][] = [
-            [{ kind: "runFull", capacity: 8 }, "runFull"], [{ kind: "runClosed" }, "runClosed"], [{ kind: "runCancelled" }, "runCancelled"],
-            [{ kind: "runStarted" }, "runStarted"], [{ kind: "languageMismatch", run: "ro", person: "en" }, "languageMismatch"],
-        ];
-        for (const [error, code] of seatCases) {
-            h.store.holdSeat.mockResolvedValueOnce({ ok: false, error });
-            const res = await call(holdRoute, { body: holdBody({ what: { kind: "seat", courseId: "c1", runId: "r1" } }) });
-            expect({ code: res.json.code, status: res.statusCode }).toEqual({ code, status: 409 });
-        }
         expect(h.sesSends).toEqual([]);
     });
 
-    it("seat hold: a person language outside the course's languages → 400 invalid before reCAPTCHA; a listed one passes", async () => {
-        const res = await call(holdRoute, { body: holdBody({ what: { kind: "seat", courseId: "c1", runId: "r1" }, who: { ...CUSTOMER, language: "de" } }) });
-        expect([res.statusCode, res.json.code, res.json.issues[0].path]).toEqual([400, "invalid", "who.language"]);
+    it("a hold of the removed group shape (`what.kind: \"seat\"`) → 400 invalid at the body schema: no intent read, no reCAPTCHA, nothing held, no mail", async () => {
+        const res = await call(holdRoute, { body: holdBody({ what: { kind: "seat", courseId: "c1", runId: "r1" } }) });
+        expect([res.statusCode, res.json.code]).toEqual([400, "invalid"]);
+        expect(h.store.replayIntent).not.toHaveBeenCalled();
         expect(h.verifyRecaptcha).not.toHaveBeenCalled();
-        const ok = await call(holdRoute, { body: holdBody({ what: { kind: "seat", courseId: "c1", runId: "r1" }, who: { ...CUSTOMER, language: "ro" } }) });
-        expect(ok.statusCode).toBe(201);
-        expect(h.store.holdSeat.mock.calls[0][1]).toMatchObject({ courseId: "c1", runId: "r1", who: { language: "ro" } });
-        // The seat hold mail names the course and the run's first meeting in the run's zone.
-        expect(h.sesSends[0].Message.Body.Text.Data).toContain("Pottery, 2026-12-05 10:00 (Europe/Bucharest)");
+        for (const name of WRITES) expect({ name, calls: h.store[name].mock.calls.length }).toEqual({ name, calls: 0 });
+        expect(h.sesSends).toEqual([]);
     });
 
     it("body schema: unknown key, bad intent id, email invalid after normalization → 400 invalid, nothing read", async () => {
@@ -697,18 +635,6 @@ describe("token routes", () => {
         expect([res.statusCode, res.json.code]).toEqual([409, "cancelled"]);
     });
 
-    it("D6 confirm of a seat: the confirmed mail carries the group link (D10 of § 2); the view shows it", async () => {
-        const seat = { what: { kind: "seat" as const, courseId: "c1", runId: "r1" } };
-        h.store.getBookingByToken.mockResolvedValue(booking(seat));
-        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "applied", booking: booking({ ...seat, rev: 3, state: { kind: "confirmed", at: NOW }, heldUntil: undefined }) } });
-        h.store.mintToken.mockResolvedValue({ ok: true, value: { booking: booking({ ...seat, rev: 4, state: { kind: "confirmed", at: NOW }, heldUntil: undefined }), token: NEW_TOKEN } });
-        const res = await call(confirmRoute, { body: { token: TOKEN } });
-        expect(res.json.what).toMatchObject({ kind: "seat", courseName: "Pottery", groupLink: "https://chat.example/secret-group" });
-        expect(res.json.what.run).not.toHaveProperty("seatsLeft");
-        expect(res.json.what.run).not.toHaveProperty("trainerIds");
-        expect(customerMails()[0].Message.Body.Text.Data).toContain("https://chat.example/secret-group");
-    });
-
     it("view: held → DTO with Confirm; S1D2-R05 past expiresAt → 410 expired (§ 8.4); changes nothing (§ 8.3)", async () => {
         h.store.getBookingByToken.mockResolvedValue(booking());
         const res = await call(viewRoute, { body: { token: TOKEN } });
@@ -746,14 +672,6 @@ describe("token routes", () => {
         expect(move.json.what).toMatchObject({ kind: "slot", serviceId: "svc-own", start: "2026-12-07T09:00:00.000Z" });
     });
 
-    it("view: an unplaced booking shows the course's proposal in the person's language", async () => {
-        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: { kind: "unplaced", courseId: "c1" }, who: { ...CUSTOMER, language: "ro" } }));
-        h.store.listRuns.mockResolvedValue([run()]);
-        const res = await call(viewRoute, { body: { token: TOKEN } });
-        expect(res.json.what).toMatchObject({ kind: "unplaced", courseName: "Pottery", proposal: { kind: "proposed", run: { runId: "r1" } } });
-        expect(res.json.changeCutoff).toBeUndefined();
-    });
-
     it("D7 (token part) a link whose booking is cancelled, or past its 30-day view window, → 404 linkNotValid", async () => {
         h.store.getBookingByToken.mockResolvedValue(booking({ state: { kind: "cancelled", at: NOW - MIN, by: { kind: "admin", email: "a@t1.test" } }, tokenHashes: ["a".repeat(64)] }));
         expect((await call(viewRoute, { body: { token: TOKEN } })).json.code).toBe("linkNotValid");
@@ -775,10 +693,10 @@ describe("token routes", () => {
         expect(h.store.mintToken).not.toHaveBeenCalled();
     });
 
-    it("cancel refusals: tooLate (with cutoff), paidContactTenant, expired → 410; the cancel mail failure keeps the 200", async () => {
+    it("cancel refusals: tooLate (with cutoff), expired → 410; the cancel mail failure keeps the 200", async () => {
         h.store.getBookingByToken.mockResolvedValue(confirmed());
         const cases: [any, number, string][] = [
-            [{ kind: "tooLate", cutoff: START - 24 * HOUR }, 409, "tooLate"], [{ kind: "paidContactTenant" }, 409, "paidContactTenant"],
+            [{ kind: "tooLate", cutoff: START - 24 * HOUR }, 409, "tooLate"],
             [{ kind: "notActive", state: "expired" }, 410, "expired"], [{ kind: "notActive", state: "cancelled" }, 409, "cancelled"],
             [{ kind: "notFound" }, 404, "linkNotValid"], [{ kind: "busy" }, 503, "busy"],
         ];
@@ -815,34 +733,20 @@ describe("token routes", () => {
         expect(customerMails()[0].Message.Body.Text.Data).toContain("2026-12-07 11:00 (Europe/Bucharest)");
     });
 
-    it("move refusals: held → notConfirmed; tooLate; slotTaken; a slot target for a seat booking → 400; unknown run → 404", async () => {
+    it("move refusals: held → notConfirmed; tooLate; slotTaken; a target of the removed group shape (`seat`) → 400 invalid", async () => {
         h.store.getBookingByToken.mockResolvedValue(booking());
         for (const [error, code] of [[{ kind: "notConfirmed" }, "notConfirmed"], [{ kind: "tooLate", cutoff: START }, "tooLate"], [{ kind: "slotTaken" }, "slotTaken"]] as const) {
             h.store.moveSlot.mockResolvedValueOnce({ ok: false, error });
             const res = await call(moveRoute, { body: { token: TOKEN, to: { kind: "slot", start: "2026-12-07T09:00:00.000Z" } } });
             expect([res.statusCode, res.json.code]).toEqual([409, code]);
         }
-        const mismatch = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "r1" } } });
-        expect([mismatch.statusCode, mismatch.json.code]).toEqual([400, "invalid"]);
-        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: { kind: "unplaced", courseId: "c1" } }));
-        h.store.getRun.mockResolvedValueOnce(undefined);
-        const missing = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "nope" } } });
-        expect([missing.statusCode, missing.json.code]).toEqual([404, "notFound"]);
-        expect(h.store.moveSeat).not.toHaveBeenCalled();
+        h.store.moveSlot.mockClear();
+        const seatTarget = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "r1" } } });
+        expect([seatTarget.statusCode, seatTarget.json.code]).toEqual([400, "invalid"]);
+        expect(h.store.moveSlot).not.toHaveBeenCalled();
         expect(h.sesSends).toEqual([]);
     });
 
-    it("move unplaced → seat (the proposal): moveSeat with the customer actor; runFull → 409", async () => {
-        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: { kind: "unplaced", courseId: "c1" } }));
-        h.store.moveSeat.mockResolvedValueOnce({ ok: false, error: { kind: "runFull", capacity: 8 } });
-        const full = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "r1" } } });
-        expect([full.statusCode, full.json.code, full.json.capacity]).toEqual([409, "runFull", 8]);
-        h.store.moveSeat.mockResolvedValueOnce({ ok: true, value: confirmed({ rev: 3, what: { kind: "seat", courseId: "c1", runId: "r1" } }) });
-        const res = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "r1" } } });
-        expect(res.statusCode).toBe(200);
-        expect(res.json.what).toMatchObject({ kind: "seat", run: { runId: "r1" } });
-        expect(h.store.moveSeat.mock.calls[1][1]).toEqual({ tenantId: "t1", bookingId: BOOKING_ID, runId: "r1", actor: { kind: "customer" }, cutoffHours: 24, now: NOW });
-    });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -899,101 +803,19 @@ describe("S1D2-R01 reCAPTCHA fails closed", () => {
     });
 });
 
-describe("S1D2-R03 every answer and mail is built for the place of the booking it describes", () => {
-    const seatOn = (runId: string, over: Partial<Booking> = {}) => booking({ what: { kind: "seat", courseId: "c1", runId }, ...over });
-    const confirmedOn = (runId: string, rev: number) => seatOn(runId, { rev, state: { kind: "confirmed", at: NOW }, heldUntil: undefined });
-    beforeEach(() => {
-        h.store.getRun.mockImplementation(async (_s: any, _t: string, _c: string, runId: string) =>
-            run({ id: runId, groupLink: `https://chat.example/group-${runId}` }));
-    });
-
-    it("S1D2-R03 confirm on run A, a concurrent move to run B before the mint: the mail names B and carries B's group link, never A's", async () => {
-        h.store.getBookingByToken.mockResolvedValue(seatOn("rA"));
-        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "applied", booking: confirmedOn("rA", 3) } });
-        h.store.mintToken.mockResolvedValue({ ok: true, value: { booking: confirmedOn("rB", 5), token: NEW_TOKEN } });
-        const res = await call(confirmRoute, { body: { token: TOKEN } });
-        expect(res.statusCode).toBe(200);
-        expect(res.json.what.run.runId).toBe("rA");                      // the answer: the booking the confirm returned
-        expect(res.json.what.groupLink).toBe("https://chat.example/group-rA");
-        const body = customerMails()[0].Message.Body.Text.Data;
-        expect(body).toContain("https://chat.example/group-rB");          // the mail: the booking the mint returned
-        expect(body).not.toContain("group-rA");
-        expect(h.store.getRun.mock.calls.some((c: any[]) => c[3] === "rB")).toBe(true);
-    });
-
-    it("S1D2-R03 confirm returns alreadyConfirmed on another run than the link opened: the answer shows that run", async () => {
-        h.store.getBookingByToken.mockResolvedValue(seatOn("rA"));
-        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "alreadyConfirmed", booking: confirmedOn("rC", 6) } });
-        const res = await call(confirmRoute, { body: { token: TOKEN } });
-        expect([res.json.what.run.runId, res.json.what.groupLink]).toEqual(["rC", "https://chat.example/group-rC"]);
-    });
-
-    it("S1D2-R03 move to run B, a competing move to run C before the mint: the mail names C; the answer shows B", async () => {
-        h.store.getBookingByToken.mockResolvedValue(confirmedOn("rA", 3));
-        h.store.moveSeat.mockResolvedValue({ ok: true, value: confirmedOn("rB", 4) });
-        h.store.mintToken.mockResolvedValue({ ok: true, value: { booking: confirmedOn("rC", 6), token: NEW_TOKEN } });
-        h.store.getRun.mockImplementation(async (_s: any, _t: string, _c: string, runId: string) =>
-            run({ id: runId, meetings: [{ date: runId === "rC" ? "2026-12-20" : "2026-12-13", start: "10:00", end: "13:00" }],
-                firstStartIso: runId === "rC" ? "2026-12-20T08:00:00.000Z" : "2026-12-13T08:00:00.000Z" }));
-        const res = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "rB" } } });
-        expect([res.statusCode, res.json.what.run.runId]).toEqual([200, "rB"]);
-        const body = customerMails()[0].Message.Body.Text.Data;
-        expect(body).toContain("2026-12-20 10:00");
-        expect(body).not.toContain("2026-12-13");
-    });
-
-    it("S1D2-R03 a failure of the mail step's place read after the commit keeps the committed answer (200), logged by booking id", async () => {
-        h.store.getBookingByToken.mockResolvedValue(seatOn("rA"));
-        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "applied", booking: confirmedOn("rA", 3) } });
-        h.store.mintToken.mockResolvedValue({ ok: true, value: { booking: confirmedOn("rB", 5), token: NEW_TOKEN } });
-        h.store.getRun.mockImplementation(async (_s: any, _t: string, _c: string, runId: string) => {
-            if (runId === "rB") throw Object.assign(new Error("throttled"), { name: "ProvisionedThroughputExceededException" });
-            return run({ id: runId });
-        });
-        const log = vi.spyOn(console, "error").mockImplementation(() => {});
-        const res = await call(confirmRoute, { body: { token: TOKEN } });
-        expect(res.statusCode).toBe(200);
-        expect(h.sesSends).toEqual([]);
-        expect(log.mock.calls.flat().map(String).join(" ")).toContain(BOOKING_ID);
-        log.mockRestore();
-    });
-});
-
 describe("S1D2-R04 reads that decide whether a write runs are consistent", () => {
-    it("S1D2-R04 the token lookup and the booking's course and run are read consistently on every token route", async () => {
-        const seat = confirmed({ what: { kind: "seat", courseId: "c1", runId: "r1" } });
-        h.store.getBookingByToken.mockResolvedValue(seat);
-        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "alreadyConfirmed", booking: seat } });
+    it("S1D2-R04 the token lookup is read consistently on every token route", async () => {
+        const b = confirmed();
+        h.store.getBookingByToken.mockResolvedValue(b);
+        h.store.confirmBooking.mockResolvedValue({ ok: true, value: { kind: "alreadyConfirmed", booking: b } });
         h.store.cancelBooking.mockResolvedValue({ ok: false, error: { kind: "tooLate", cutoff: NOW } });
-        h.store.moveSeat.mockResolvedValue({ ok: false, error: { kind: "runFull", capacity: 8 } });
+        h.store.moveSlot.mockResolvedValue({ ok: false, error: { kind: "slotTaken" } });
         for (const [route, body] of [[viewRoute, { token: TOKEN }], [confirmRoute, { token: TOKEN }], [cancelRoute, { token: TOKEN }],
-            [moveRoute, { token: TOKEN, to: { kind: "seat", runId: "r1" } }]] as const) {
-            h.store.getBookingByToken.mockClear(); h.store.getRun.mockClear(); h.store.getCourse.mockClear();
+            [moveRoute, { token: TOKEN, to: { kind: "slot", start: "2026-12-07T09:00:00.000Z" } }]] as const) {
+            h.store.getBookingByToken.mockClear();
             await call(route, { body });
             expect(h.store.getBookingByToken.mock.calls[0][3]).toBe(true);
-            expect(h.store.getRun.mock.calls[0][4]).toBe(true);
-            expect(h.store.getCourse.mock.calls[0][3]).toBe(true);
         }
-    });
-
-    it("S1D2-R04 a run an eventual read would miss (stale absence) does not refuse the move: the target is read consistently", async () => {
-        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: { kind: "unplaced", courseId: "c1" } }));
-        h.store.getRun.mockImplementation(async (_s: any, _t: string, _c: string, runId: string, consistent: boolean) =>
-            consistent ? run({ id: runId }) : undefined);
-        h.store.moveSeat.mockResolvedValue({ ok: true, value: confirmed({ rev: 3, what: { kind: "seat", courseId: "c1", runId: "r9" } }) });
-        const res = await call(moveRoute, { body: { token: TOKEN, to: { kind: "seat", runId: "r9" } } });
-        expect(res.statusCode).toBe(200);
-        expect(h.store.moveSeat).toHaveBeenCalledTimes(1);
-    });
-
-    it("S1D2-R04 a stale run end on an eventual read does not close a valid link: the place behind tokenView is consistent", async () => {
-        // An eventual read would see an old run whose last meeting ended 40 days ago (link `gone`); the consistent read
-        // sees the run moved into the future.
-        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: { kind: "seat", courseId: "c1", runId: "r1" } }));
-        h.store.getRun.mockImplementation(async (_s: any, _t: string, _c: string, runId: string, consistent: boolean) =>
-            consistent ? run({ id: runId }) : run({ id: runId, firstStartIso: "2026-10-20T08:00:00.000Z", lastEndIso: "2026-10-20T11:00:00.000Z" }));
-        const res = await call(viewRoute, { body: { token: TOKEN } });
-        expect([res.statusCode, res.json.what?.kind]).toEqual([200, "seat"]);
     });
 });
 
@@ -1100,5 +922,47 @@ describe("S1D2-R05 malformed tokens and the switch-first rule", () => {
         const res = await call(offerRoute);
         expect([res.statusCode, res.json.code]).toEqual([500, "storedDataInvalid"]);
         log.mockRestore();
+    });
+});
+
+/**
+ * SCHED-GROUPS-REMOVE-1 row G4: a visitor opens an old emailed link of a seat booking (the group shape, removed). The
+ * lookup here is the REAL `getBookingByToken` over a fake DynamoDB client that holds the stored items exactly as they
+ * were written before the slice (`TOKEN#<sha256(token)>` → booking id; a `BOOKING#` with `what.kind: "seat"`). Every
+ * token route answers exactly as for an unknown token (404 `linkNotValid`, same body), never 500; nothing is written,
+ * no mail is sent.
+ */
+describe("G4 an old emailed link of a stored seat booking of the removed group shape", () => {
+    const SEAT_ID = "5ea70000-1111-4222-8333-444455556666";
+    const SEAT_TOKEN = "S".repeat(43);
+    const UNKNOWN_TOKEN = "U".repeat(43);
+    const TOKEN_ROUTES: [string, any, Record<string, unknown>][] = [
+        ["view", viewRoute, {}], ["confirm", confirmRoute, {}], ["cancel", cancelRoute, {}],
+        ["move", moveRoute, { to: { kind: "slot", start: "2026-12-07T08:00:00.000Z" } }],
+    ];
+    it.each(TOKEN_ROUTES)("G4 %s: the seat booking's link → 404 linkNotValid, the same answer as an unknown token; no write, no mail", async (_n, route, rest) => {
+        const real = await vi.importActual<typeof import("../../src/lib/scheduling-db.js")>("../../src/lib/scheduling-db.js");
+        const hash = real.sha256hex(SEAT_TOKEN);
+        const stored: Record<string, Record<string, unknown>> = {
+            [`TOKEN#${hash}`]: { PK: "TENANT#t1", SK: `TOKEN#${hash}`, bookingId: SEAT_ID, createdAt: NOW - MIN },
+            [`BOOKING#${SEAT_ID}`]: {
+                PK: "TENANT#t1", SK: `BOOKING#${SEAT_ID}`, id: SEAT_ID, ref: "B-5EA70000", rev: 3,
+                what: { kind: "seat", courseId: "c1", runId: "r1" }, state: { kind: "confirmed", at: NOW - MIN },
+                source: { kind: "visitor" }, who: { ...CUSTOMER, language: "ro" }, tokenHashes: [hash],
+                createdAt: NOW - 2 * MIN, updatedAt: NOW - MIN,
+                history: [{ action: "created", at: NOW - 2 * MIN, state: "held", placement: { kind: "seat", runId: "r1" } }, { action: "confirmed", at: NOW - MIN }],
+            },
+        };
+        const sent: any[] = [];
+        const fakeStore = { db: { send: async (c: any) => { sent.push(c); return { Item: stored[c.input?.Key?.SK] }; } }, table: "sched-table", sleep: async () => {} };
+        h.store.getBookingByToken.mockImplementation((_s: unknown, tenantId: string, token: string, consistent: boolean) =>
+            real.getBookingByToken(fakeStore as any, tenantId, token, consistent));
+        const legacy = await call(route, { body: { token: SEAT_TOKEN, ...rest } });
+        const unknown = await call(route, { body: { token: UNKNOWN_TOKEN, ...rest } });
+        expect([legacy.statusCode, legacy.json]).toEqual([404, unknown.json]);
+        expect(unknown.json.code).toBe("linkNotValid");
+        expect(sent.map((c) => c.input.Key.SK)).toContain(`BOOKING#${SEAT_ID}`);   // control: the stored seat booking WAS read
+        for (const name of WRITES) expect({ name, calls: h.store[name].mock.calls.length }).toEqual({ name, calls: 0 });
+        expect(h.sesSends).toEqual([]);
     });
 });

@@ -4013,10 +4013,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // already differ in bytes — React streams the font hint row, the script tags and the <title> in a timing-dependent order — so
         // byte equality would test the stream, not the cookie. Compared: status, cache-control, content-type, the visible
         // text (locale-1 § 8.5 extraction), the set of script sources, the client components the payload mounts.
-        // S1G2-R3: the server half of the ?service / ?course selectors — what the book page's query reader passes to the
-        // browser flow (props `initialServiceId` / `initialCourseId` in the payload). The browser half (unknown ids → the
-        // offer, both → the service) is test/unit/sched-1g-pages.test.ts "S1G2-R3".
-        test("(sched1g-selectors) ?service and ?course: absent → no value; valid → passed as is; repeated → absent; empty and malformed → passed and matched by the flow; both → both passed", async () => {
+        // S1G2-R3: the server half of the ?service selector — what the book page's query reader passes to the browser flow
+        // (prop `initialServiceId` in the payload). The browser half (unknown ids → the offer) is
+        // test/unit/sched-1g-pages.test.ts "S1G2-R3". SCHED-GROUPS-REMOVE-1: the page no longer reads `?course` (the group
+        // shape was removed); a link that still carries it is served as the book page and passes no course value.
+        test("(sched1g-selectors) ?service: absent → no value; valid → passed as is; repeated → absent; empty and malformed → passed and matched by the flow; ?course is not read", async () => {
             const props = async (q) => {
                 const body = (await at(S1G.host, `/_booking${q}`)).body;
                 const prop = (name) => {
@@ -4025,12 +4026,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 };
                 return { service: prop("initialServiceId"), course: prop("initialCourseId") };
             };
-            assert.deepEqual(await props(""), { service: "$undefined", course: "$undefined" }, "absent");
-            assert.deepEqual(await props("?service=svc1"), { service: "svc1", course: "$undefined" }, "valid service");
-            assert.deepEqual(await props("?course=c1"), { service: "$undefined", course: "c1" }, "valid course");
-            assert.deepEqual(await props("?service=a&service=b&course=c&course=d"), { service: "$undefined", course: "$undefined" }, "repeated → absent");
-            assert.deepEqual(await props("?service=&course=x%23y"), { service: "", course: "x#y" }, "empty and malformed are passed; the flow matches them against the offer");
-            assert.deepEqual(await props("?service=svc1&course=c1"), { service: "svc1", course: "c1" }, "both passed (the flow takes the service)");
+            assert.deepEqual(await props(""), { service: "$undefined", course: null }, "absent");
+            assert.deepEqual(await props("?service=svc1"), { service: "svc1", course: null }, "valid service");
+            assert.deepEqual(await props("?service=a&service=b"), { service: "$undefined", course: null }, "repeated → absent");
+            assert.deepEqual(await props("?service="), { service: "", course: null }, "empty is passed; the flow matches it against the offer");
+            assert.deepEqual(await props("?service=x%23y"), { service: "x#y", course: null }, "malformed is passed; the flow matches it against the offer");
+            assert.deepEqual(await props("?course=c1"), { service: "$undefined", course: null }, "an old ?course link: the book page, no course value");
         });
 
         test("(sched1g-g4) the session cookie does not change the answer: same status, cache headers, visible text, scripts and components; no twin", async () => {
@@ -4135,7 +4136,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.equal(res.header("allow"), "POST");
                 assertNeverStored(res, `GET ${op}`);
             }
-            for (const op of ["offer", "slots", "runs"]) {
+            for (const op of ["offer", "slots"]) {
                 const res = await postJson(S1G.host, `/_booking/api/${op}`, "{}");
                 assert.equal(res.status, 405, `POST ${op}`);
                 assert.equal(res.header("allow"), "GET");
@@ -4165,9 +4166,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 ["hold absent body", () => post("hold", ""), 400, "invalid"],
                 ["hold not JSON", () => post("hold", "{"), 400, "invalid"],
                 ["hold valid slot", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "slot", serviceId: "svc", start: "2026-12-01T09:00:00.000Z" }, who })), 503, "unavailable"],
-                ["hold valid seat + token", () => post("hold", JSON.stringify({ intentId: intent, recaptchaToken: "r", resend: true, what: { kind: "seat", courseId: "c", runId: "r" }, who: { ...who, phone: "+40 700", language: "ro" } })), 503, "unavailable"],
-                ["hold bad email", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "seat", courseId: "c", runId: "r" }, who: { email: "nope", name: "A" } })), 400, "invalid"],
-                ["hold extra field", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "seat", courseId: "c", runId: "r" }, who, tenantId: "other" })), 400, "invalid"],
+                ["hold valid slot + token", () => post("hold", JSON.stringify({ intentId: intent, recaptchaToken: "r", resend: true, what: { kind: "slot", serviceId: "svc", start: "2026-12-01T09:00:00.000Z" }, who: { ...who, phone: "+40 700", language: "ro" } })), 503, "unavailable"],
+                ["hold bad email", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "slot", serviceId: "svc", start: "2026-12-01T09:00:00.000Z" }, who: { email: "nope", name: "A" } })), 400, "invalid"],
+                ["hold extra field", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "slot", serviceId: "svc", start: "2026-12-01T09:00:00.000Z" }, who, tenantId: "other" })), 400, "invalid"],
                 ["hold too large", () => post("hold", JSON.stringify({ pad: "x".repeat(9000) })), 413, "tooLarge"],
                 ["view absent token", () => post("view", "{}"), 404, "linkNotValid"],
                 ["view malformed token", () => post("view", JSON.stringify({ token: "short" })), 404, "linkNotValid"],
@@ -4177,13 +4178,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 ["cancel malformed", () => post("cancel", JSON.stringify({ token: 5 })), 404, "linkNotValid"],
                 ["move valid slot", () => post("move", JSON.stringify({ token: T, to: { kind: "slot", start: "2026-12-01T09:00:00Z" } })), 503, "unavailable"],
                 ["move absent to", () => post("move", JSON.stringify({ token: T })), 400, "invalid"],
-                ["move malformed to", () => post("move", JSON.stringify({ token: T, to: { kind: "seat", runId: "a#b" } })), 400, "invalid"],
+                ["move malformed to", () => post("move", JSON.stringify({ token: T, to: { kind: "slot", start: "tomorrow" } })), 400, "invalid"],
                 ["slots absent query", () => at(S1G.host, "/_booking/api/slots"), 400, "invalid"],
                 ["slots valid", () => at(S1G.host, "/_booking/api/slots?serviceId=svc&from=2026-12-01&to=2026-12-07"), 503, "unavailable"],
                 ["slots malformed date", () => at(S1G.host, "/_booking/api/slots?serviceId=svc&from=12/01/2026&to=2026-12-07"), 400, "invalid"],
-                ["runs absent courseId", () => at(S1G.host, "/_booking/api/runs"), 400, "invalid"],
-                ["runs valid", () => at(S1G.host, "/_booking/api/runs?courseId=c1&language=ro&all=1"), 503, "unavailable"],
-                ["runs malformed all", () => at(S1G.host, "/_booking/api/runs?courseId=c1&all=yes"), 400, "invalid"],
                 ["offer unknown parameter", () => at(S1G.host, "/_booking/api/offer?tenant=other"), 400, "invalid"],
                 ["feed malformed secret", () => at(S1G.host, "/_booking/feed/r1/short.ics"), 404, "linkNotValid"],
                 ["feed malformed resource", () => at(S1G.host, `/_booking/feed/a%23b/${FEED_SECRET}.ics`), 404, "linkNotValid"],

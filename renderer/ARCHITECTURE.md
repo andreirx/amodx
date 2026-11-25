@@ -27,7 +27,7 @@ src/
 │   ├── %5Fbook/[siteId]/                      # sched-1g2: SECOND root layout — the hosted booking pages (URL segment `_book`,
 │   │   │                                      #   reached only by the middleware rewrite of `/_booking…`; see "Hosted booking pages")
 │   │   ├── layout.tsx                         # <html lang>/<body> + BookingTheme; NO site scripts or chrome
-│   │   ├── page.tsx                           # book page (`/_booking`; ?frame=1 ?lang= ?service= ?course=); 404 when scheduling is off
+│   │   ├── page.tsx                           # book page (`/_booking`; ?frame=1 ?lang= ?service=); 404 when scheduling is off
 │   │   ├── manage/page.tsx                    # manage page (`/_booking/manage#t=<token>`); 404 when scheduling is off
 │   │   ├── api/[op]/route.ts                  # proxy: one op → one backend visitor route (lib/booking-proxy.ts)
 │   │   ├── feed/[resourceId]/[file]/route.ts  # calendar feed proxy (`<secret>.ics`)
@@ -833,7 +833,8 @@ not empty (and, for the head, when the page holds a set key), so a one-language 
 ## Hosted booking pages — slice `sched-1g2` (PROTOTYPE)
 
 Specification: `docs/slices/sched-1.md` § 8, § 9, § 10.1, § 12, § 16.3 (PD-002 booking-token variant). The booking
-screens for both shapes (a slot with a practitioner, a seat in a group), on the tenant's own domain or — for a tenant
+screens for appointments (a slot with a practitioner; the group shape was removed by `sched-groups-remove-1`, its
+code is on branch `archive/group-scheduling-2026-11`), on the tenant's own domain or — for a tenant
 without one — on the preview host. The browser talks only to the renderer; the renderer calls the scheduling visitor
 routes of the backend with the `RENDERER` key (`backend/src/scheduling/visitor/*.ts`, deployed by `sched-1d2`/`1g1`).
 
@@ -874,28 +875,27 @@ with `fillText`, a copy of `fillTemplate`) apart from `lib/booking-text.ts` (ser
 packs). `test/unit/sched-1g-pure.test.ts` checks the rule on the sources.
 
 **Pages.** Book (`_components/BookFlow.tsx`): offer → service (free starts week by week up to `lastBookableDate`,
-`Pickers.tsx` `SlotWeek`) or course (language when the course has several, then the proposal of the partly filled
-group, the others on request, `RunList`) → name, email, phone → hold (one intent id per choice, kept across retries and
+`Pickers.tsx` `SlotWeek`) → name, email, phone → hold (one intent id per chosen time, kept across retries and
 the resend) → "check your email". Manage (`_components/ManageView.tsx`): reads `#t=<token>`, removes the fragment
 (`history.replaceState`), keeps the token in memory, `POST view`; Confirm (only the button sends `POST confirm`), Cancel
 (asked once more), Move (slot: the free starts of the booking's OWN service — the slot view carries its stored
 `serviceId`, ruling SCHED-1G2-SLOT-MOVE-ID = A; a service that no longer exists → "cannot be changed here, please contact
-us"; seat/unplaced: the groups of its course). Every refusal code maps to a visitor text (`lib/booking-ui.ts`
+us"). Every refusal code maps to a visitor text (`lib/booking-ui.ts`
 `REFUSAL_TEXT`, unknown → `errGeneric`) and, where the visitor must act, to an action of the page (`refusalRecovery`):
 a token-free "new booking" link or button (expired, used or closed form), or "show the current booking" with the
 token kept in memory (stale); no text asks the visitor to reload the page. Writes (hold, resend, confirm, cancel, move,
 refresh) follow ONE lifetime rule (`_components/operation.ts` `useOperation`): one at a time, every control (pickers
-included) disabled meanwhile, an answer applied only to the screen it was started for. `?service=` / `?course=` start
-the flow on that service or course when the offer lists it (both → the service; unknown → the offer). Texts: the `booking`
+included) disabled meanwhile, an answer applied only to the screen it was started for. `?service=` starts
+the flow on that service when the offer lists it (unknown → the offer); `?course=` is not read. Texts: the `booking`
 part of the language packs (`packages/shared/src/language-packs/`, EN + RO complete), selected by `?lang=` (a language
 with a pack) else the tenant locale; `sched-labels-1`: over them the site's own texts (`bookingStrings`, admin Labels
 "Booking"), ONLY on a page in the tenant's own language — the language of its page without `?lang=` (ruling
 LANG1-OVERRIDES = A); `lib/booking-text.ts` `bookingTexts(language, config)`, used by both pages and their metadata.
-Texts are rendered as React text (escaped). Times in the tenant's (or the run's) zone with the zone named. `?frame=1`: no
+Texts are rendered as React text (escaped). Times in the tenant's zone with the zone named. `?frame=1`: no
 header, transparent background (the frame chrome is `sched-frame-1`).
 
-**Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`): op table `BOOKING_OPS` (offer, slots,
-runs: GET; hold, view, confirm, cancel, move: POST) → exactly one backend route each; method (405 + `Allow`), body
+**Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`): op table `BOOKING_OPS` (offer, slots:
+GET; hold, view, confirm, cancel, move: POST) → exactly one backend route each; method (405 + `Allow`), body
 ≤ 8 KB (413), JSON (400), input check with the backend route's OWN schema, imported from `@amodx/shared` (`HoldRequestSchema`, `MoveBodySchema`,
 `KeyPart`, `LocalDateSchema`; moved there from the backend handlers by ruling SCHED-1G2-ZOD-DEP = C; the renderer
 imports no `zod` itself) — 400 in the backend's issue form; a malformed or absent link token → 404 `linkNotValid`, the

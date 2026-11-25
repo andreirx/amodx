@@ -6,7 +6,7 @@
 //      while `busy`;
 //   2. an answer is applied only to the screen it was started for: `invalidate()` (called on every navigation) and
 //      unmount move the epoch, and an answer that comes back for an older epoch is dropped.
-// The pickers' own reads (free times, groups) follow the same rule 2 through their effect cleanup (`live` flag): the
+// The picker's own reads (free times) follow the same rule 2 through their effect cleanup (`live` flag): the
 // answer of an earlier week or filter never replaces the current one.
 //
 // Abstraction line: users — the book flow (hold, resend) and the manage view (confirm, cancel, move); axis: none (one

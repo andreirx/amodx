@@ -12,7 +12,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 import { settingsFormOf, settingsPayload, editableTemplates, templatesPayload, schedulingErrorText, needsContactAddressWarning, type EmailTemplate } from "./Scheduling";
 import { ApiError } from "@/lib/api";
 
-const KEYS = ["hold", "confirmed", "cancelled", "moved", "unplaced", "reminder", "weekAhead"] as const;
+const KEYS = ["hold", "confirmed", "cancelled", "moved", "reminder", "weekAhead"] as const;
 const tpl = (k: string, over: Partial<EmailTemplate> = {}): EmailTemplate =>
     ({ subject: `S ${k}`, body: `B ${k}`, sendToCustomer: k !== "weekAhead", sendToAdmin: k === "weekAhead" || k === "confirmed", ...over });
 const DEFAULTS = Object.fromEntries(KEYS.map((k) => [k, tpl(k)])) as Record<(typeof KEYS)[number], EmailTemplate>;
@@ -96,7 +96,7 @@ describe("templatesPayload — the PUT /settings body of the templates card", ()
 
 describe("schedulingErrorText — the text shown for a refusal", () => {
     it("resourceInUse names the counts; removal in progress and busy have their own text; another refusal shows the server's reason", () => {
-        expect(schedulingErrorText(new ApiError(409, { code: "resourceInUse", error: "x", activeBookings: 2, runs: 1 }, "API Error (409): x")))
+        expect(schedulingErrorText(new ApiError(409, { code: "resourceInUse", error: "x", activeBookings: 2 }, "API Error (409): x")))
             .toContain("2 future booking(s)");
         expect(schedulingErrorText(new ApiError(409, { code: "resourceRemovalInProgress", error: "x" }, "m"))).toContain("in progress");
         expect(schedulingErrorText(new ApiError(503, { code: "busy", error: "x" }, "m"))).toContain("busy");

@@ -47,8 +47,6 @@ import SchedulingPage from "@/pages/Scheduling";
 import SchedulingAppointments from "@/pages/SchedulingAppointments";
 import SchedulingAppointmentsBooking from "@/pages/SchedulingAppointmentsBooking";
 import SchedulingPlanner from "@/pages/SchedulingPlanner";
-import SchedulingCourses from "@/pages/SchedulingCourses";
-import SchedulingRoster from "@/pages/SchedulingRoster";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -139,8 +137,6 @@ const router = createBrowserRouter([
             { path: "scheduling/appointments", element: <SchedulingAppointments /> },
             { path: "scheduling/planner", element: <SchedulingPlanner /> },
             { path: "scheduling/bookings/:bookingId", element: <SchedulingAppointmentsBooking /> },
-            { path: "scheduling/courses", element: <SchedulingCourses /> },
-            { path: "scheduling/courses/:courseId/roster", element: <SchedulingRoster /> },
             { path: "settings", element: <SettingsPage /> },
         ],
     },

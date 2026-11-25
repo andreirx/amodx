@@ -71,9 +71,9 @@ describe("SCHED-1G2 bookingRoute — the middleware branch (G1, G2, G5, rule 1)"
 describe("SCHED-1G2 booking-ui — texts, time, link token", () => {
     it("every refusal code of § 10.2, § 8.4 and the proxy has a visitor text (not the generic one); an unknown code → errGeneric", () => {
         const codes = ["invalid", "notAvailable", "forbidden", "notFound", "verificationRequired", "verificationFailed", "verificationUnavailable",
-            "slotTaken", "notOnGrid", "inPast", "beyondHorizon", "notEligible", "outsideAvailability", "resourceUnavailable", "runFull", "runClosed",
-            "runCancelled", "runStarted", "languageMismatch", "intentReused", "intentClosed", "tooManyForEmail", "tooManyFromAddress", "busy",
-            "mailFailed", "linkNotValid", "expired", "cancelled", "tooLate", "notConfirmed", "paidContactTenant", "stale", "rangeInverted",
+            "slotTaken", "notOnGrid", "inPast", "beyondHorizon", "notEligible", "outsideAvailability", "resourceUnavailable",
+            "intentReused", "intentClosed", "tooManyForEmail", "tooManyFromAddress", "busy",
+            "mailFailed", "linkNotValid", "expired", "cancelled", "tooLate", "notConfirmed", "stale", "rangeInverted",
             "rangeTooLong", "storedDataInvalid", "internal", "unavailable", "tooLarge"];
         for (const code of codes) {
             expect(refusalTextKey(code), code).not.toBe("errGeneric");

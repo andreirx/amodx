@@ -70,23 +70,21 @@ const post = (op: string, body: unknown, headers: Record<string, string> = {}, s
     }), siteId, op);
 
 describe("SCHED-1G2 proxy — one backend route per op, renderer key, tenant from the route segment", () => {
-    it("the op table is exactly the eight visitor routes of § 10.2", () => {
-        expect(Object.keys(BOOKING_OPS).sort()).toEqual(["cancel", "confirm", "hold", "move", "offer", "runs", "slots", "view"]);
+    it("the op table is exactly the seven visitor routes of § 10.2", () => {
+        expect(Object.keys(BOOKING_OPS).sort()).toEqual(["cancel", "confirm", "hold", "move", "offer", "slots", "view"]);
     });
     it("each valid request → exactly one call, to its route, with x-api-key and x-tenant-id = the record's id", async () => {
         const cases: [() => Promise<Response>, string, string, unknown][] = [
             [() => get("offer"), "GET", "/scheduling/visitor/offer", undefined],
             [() => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07"), "GET", "/scheduling/visitor/slots?serviceId=s1&from=2026-12-01&to=2026-12-07", undefined],
-            [() => get("runs", "?courseId=c%2F1&language=ro&all=1"), "GET", "/scheduling/visitor/courses/c%2F1/runs?language=ro&all=1", undefined],
-            [() => get("runs", "?courseId=c1"), "GET", "/scheduling/visitor/courses/c1/runs", undefined],
             [() => post("hold", { intentId: INTENT, recaptchaToken: "r", what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: WHO }),
                 "POST", "/scheduling/visitor/holds", { intentId: INTENT, recaptchaToken: "r", what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: WHO }],
-            [() => post("hold", { intentId: INTENT, resend: true, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: { email: "a@b.test", name: "A" } }),
-                "POST", "/scheduling/visitor/holds", { intentId: INTENT, resend: true, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: { email: "a@b.test", name: "A" } }],
+            [() => post("hold", { intentId: INTENT, resend: true, what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: { email: "a@b.test", name: "A" } }),
+                "POST", "/scheduling/visitor/holds", { intentId: INTENT, resend: true, what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: { email: "a@b.test", name: "A" } }],
             [() => post("view", { token: TOKEN }), "POST", "/scheduling/visitor/bookings/view", { token: TOKEN }],
             [() => post("confirm", { token: TOKEN }), "POST", "/scheduling/visitor/bookings/confirm", { token: TOKEN }],
             [() => post("cancel", { token: TOKEN }), "POST", "/scheduling/visitor/bookings/cancel", { token: TOKEN }],
-            [() => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }), "POST", "/scheduling/visitor/bookings/move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }],
+            [() => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00.000Z" } }), "POST", "/scheduling/visitor/bookings/move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00.000Z" } }],
         ];
         for (const [send, method, route, body] of cases) {
             calls = [];
@@ -120,7 +118,7 @@ describe("SCHED-1G2 proxy — one backend route per op, renderer key, tenant fro
     });
     it("the backend answer is passed through (status, body, Retry-After), always `private, no-store`", async () => {
         reply = () => new Response(JSON.stringify({ error: "x", code: "tooManyForEmail" }), { status: 429, headers: { "content-type": "application/json", "retry-after": "120", "set-cookie": "a=b" } });
-        const res = await post("hold", { intentId: INTENT, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: WHO });
+        const res = await post("hold", { intentId: INTENT, what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: WHO });
         expect(res.status).toBe(429);
         expect(await res.json()).toEqual({ error: "x", code: "tooManyForEmail" });
         expect(res.headers.get("retry-after")).toBe("120");
@@ -165,9 +163,9 @@ describe("SCHED-1G2 proxy — inputs refused before forwarding (absent / valid /
         expect((await post("confirm", { token: TOKEN, extra: 1 })).status).toBe(400);
         expect(calls).toHaveLength(0);
     });
-    it("move target: absent, unknown kind, bad start, bad runId, extra key → 400", async () => {
+    it("move target: absent, unknown kind, bad start, extra key → 400", async () => {
         for (const to of [undefined, { kind: "x" }, { kind: "slot", start: "tomorrow" }, { kind: "slot", start: "2026-12-01T09:00:00+02:00" },
-            { kind: "seat", runId: "" }, { kind: "seat", runId: "a#b" }, { kind: "seat", runId: "r", extra: 1 }]) {
+            { kind: "slot", start: "2026-12-01T09:00:00Z", extra: 1 }]) {
             expect((await post("move", { token: TOKEN, ...(to === undefined ? {} : { to }) })).status, JSON.stringify(to)).toBe(400);
         }
         expect(calls).toHaveLength(0);
@@ -178,7 +176,7 @@ describe("SCHED-1G2 proxy — inputs refused before forwarding (absent / valid /
             [{ ...ok, intentId: undefined }, "intentId"], [{ ...ok, intentId: "nope" }, "intentId"],
             [{ ...ok, recaptchaToken: 5 }, "recaptchaToken"], [{ ...ok, recaptchaToken: "x".repeat(4001) }, "recaptchaToken"],
             [{ ...ok, resend: "yes" }, "resend"], [{ ...ok, what: undefined }, "what"], [{ ...ok, what: { kind: "slot", serviceId: "a#b", start: "2026-12-01T09:00:00Z" } }, "what.serviceId"],
-            [{ ...ok, what: { kind: "seat", courseId: "c", runId: "" } }, "what.runId"], [{ ...ok, who: undefined }, "who"],
+            [{ ...ok, what: { kind: "slot", serviceId: "s1", start: "tomorrow" } }, "what.start"], [{ ...ok, who: undefined }, "who"],
             [{ ...ok, who: { name: "A" } }, "who.email"], [{ ...ok, who: { email: "a@b.test", name: "" } }, "who.name"],
             [{ ...ok, who: { ...WHO, phone: "1".repeat(41) } }, "who.phone"], [{ ...ok, who: { ...WHO, tenantId: "x" } }, "who"],
             [{ ...ok, tenantId: "x" }, ""],
@@ -193,7 +191,7 @@ describe("SCHED-1G2 proxy — inputs refused before forwarding (absent / valid /
     it("GET ops: absent, malformed, repeated or unknown query parameters → 400; a POST to a GET op → 405 Allow GET", async () => {
         for (const [op, qs] of [["slots", ""], ["slots", "?serviceId=s&from=2026-12-01"], ["slots", "?serviceId=s&from=2026-1-1&to=2026-12-07"],
             ["slots", "?serviceId=s&from=2026-12-01&to=2026-12-07&x=1"], ["slots", "?serviceId=s&serviceId=t&from=2026-12-01&to=2026-12-07"],
-            ["runs", ""], ["runs", "?courseId=c&all=2"], ["runs", "?courseId=c&language=" + "x".repeat(36)], ["offer", "?tenant=x"]] as const) {
+            ["offer", "?tenant=x"]] as const) {
             expect((await get(op, qs)).status, `${op}${qs}`).toBe(400);
         }
         const wrong = await post("offer", {});
@@ -215,12 +213,11 @@ describe("SCHED-1G3 proxy — no client address, no browser header (ruling SCHED
         const sends: [string, () => Promise<Response>, boolean][] = [
             ["offer", () => get("offer", "", BROWSER), false],
             ["slots", () => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07", BROWSER), false],
-            ["runs", () => get("runs", "?courseId=c1", BROWSER), false],
-            ["hold", () => post("hold", { intentId: INTENT, recaptchaToken: "r", what: { kind: "seat", courseId: "c1", runId: "r1" }, who: WHO }, BROWSER), true],
+            ["hold", () => post("hold", { intentId: INTENT, recaptchaToken: "r", what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: WHO }, BROWSER), true],
             ["view", () => post("view", { token: TOKEN }, BROWSER), true],
             ["confirm", () => post("confirm", { token: TOKEN }, BROWSER), true],
             ["cancel", () => post("cancel", { token: TOKEN }, BROWSER), true],
-            ["move", () => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }, BROWSER), true],
+            ["move", () => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00.000Z" } }, BROWSER), true],
         ];
         expect(sends.map(([op]) => op).sort(), "precondition: every op of the table").toEqual(Object.keys(BOOKING_OPS).sort());
         for (const [op, send, isPost] of sends) {
@@ -359,14 +356,14 @@ describe("SCHED-1G2 S1G2-R2 — zero forwarding for impossible dates, invalid in
     });
     it("hold intentId: each invalid UUID → 400, nothing forwarded", async () => {
         for (const intentId of BAD_UUIDS) {
-            expect((await post("hold", { intentId, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: WHO })).status, intentId).toBe(400);
+            expect((await post("hold", { intentId, what: { kind: "slot", serviceId: "s1", start: "2026-12-01T09:00:00.000Z" }, who: WHO })).status, intentId).toBe(400);
         }
         expect(calls).toHaveLength(0);
     });
 });
 
 // ── S1G2-R3 / packet rule 7: the input inventory — every new input, absent / valid / malformed, each a named test ──
-// Page inputs (`?frame`, `?lang`, `?service`, `?course`) and the fragment `#t=` are bound in contract.test.mjs
+// Page inputs (`?frame`, `?lang`, `?service`) and the fragment `#t=` are bound in contract.test.mjs
 // (rows sched1g-g3, sched1g-selectors), sched-1g-pure.test.ts (takeLinkToken) and sched-1g-pages.test.ts.
 type Inventory = { input: string; absent: () => Promise<Response>; valid: () => Promise<Response>; malformed: () => Promise<Response>; absentStatus: number; malformedStatus: number };
 const holdWith = (patch: (b: any) => void) => () => {
@@ -374,18 +371,10 @@ const holdWith = (patch: (b: any) => void) => () => {
     patch(b);
     return post("hold", b);
 };
-const seatWith = (patch: (b: any) => void) => () => {
-    const b: any = { intentId: INTENT, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: { ...WHO } };
-    patch(b);
-    return post("hold", b);
-};
 const INVENTORY: Inventory[] = [
     { input: "slots ?serviceId", absent: () => get("slots", "?from=2026-12-01&to=2026-12-07"), valid: () => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07"), malformed: () => get("slots", "?serviceId=a%23b&from=2026-12-01&to=2026-12-07"), absentStatus: 400, malformedStatus: 400 },
     { input: "slots ?from", absent: () => get("slots", "?serviceId=s1&to=2026-12-07"), valid: () => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07"), malformed: () => get("slots", "?serviceId=s1&from=2026-02-30&to=2026-12-07"), absentStatus: 400, malformedStatus: 400 },
     { input: "slots ?to", absent: () => get("slots", "?serviceId=s1&from=2026-12-01"), valid: () => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07"), malformed: () => get("slots", "?serviceId=s1&from=2026-12-01&to=07.12.2026"), absentStatus: 400, malformedStatus: 400 },
-    { input: "runs ?courseId", absent: () => get("runs", "?language=ro"), valid: () => get("runs", "?courseId=c1"), malformed: () => get("runs", "?courseId=a%23b"), absentStatus: 400, malformedStatus: 400 },
-    { input: "runs ?language (optional)", absent: () => get("runs", "?courseId=c1"), valid: () => get("runs", "?courseId=c1&language=ro"), malformed: () => get("runs", `?courseId=c1&language=${"x".repeat(36)}`), absentStatus: 200, malformedStatus: 400 },
-    { input: "runs ?all (optional)", absent: () => get("runs", "?courseId=c1"), valid: () => get("runs", "?courseId=c1&all=1"), malformed: () => get("runs", "?courseId=c1&all=true"), absentStatus: 200, malformedStatus: 400 },
     // SCHED-1G3: offer takes no parameter; any parameter (the former `?witness` included) is malformed.
     { input: "offer: no parameter", absent: () => get("offer"), valid: () => get("offer"), malformed: () => get("offer", "?witness=198.51.100.4"), absentStatus: 200, malformedStatus: 400 },
     { input: "hold intentId", absent: holdWith((b) => { delete b.intentId; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.intentId = "11111111-1111-1111-1111-111111111111"; }), absentStatus: 400, malformedStatus: 400 },
@@ -394,8 +383,6 @@ const INVENTORY: Inventory[] = [
     { input: "hold what.kind", absent: holdWith((b) => { delete b.what.kind; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.what.kind = "slots"; }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold what.serviceId", absent: holdWith((b) => { delete b.what.serviceId; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.what.serviceId = "x".repeat(101); }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold what.start", absent: holdWith((b) => { delete b.what.start; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.what.start = "2026-02-31T09:00:00Z"; }), absentStatus: 400, malformedStatus: 400 },
-    { input: "hold what.courseId", absent: seatWith((b) => { delete b.what.courseId; }), valid: seatWith(() => {}), malformed: seatWith((b) => { b.what.courseId = "a#b"; }), absentStatus: 400, malformedStatus: 400 },
-    { input: "hold what.runId", absent: seatWith((b) => { delete b.what.runId; }), valid: seatWith(() => {}), malformed: seatWith((b) => { b.what.runId = ""; }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold who.email", absent: holdWith((b) => { delete b.who.email; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.who.email = "ana@"; }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold who.name", absent: holdWith((b) => { delete b.who.name; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.who.name = "x".repeat(201); }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold who.phone (optional)", absent: holdWith((b) => { delete b.who.phone; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.who.phone = 40; }), absentStatus: 200, malformedStatus: 400 },
@@ -403,10 +390,9 @@ const INVENTORY: Inventory[] = [
     { input: "view token", absent: () => post("view", {}), valid: () => post("view", { token: TOKEN }), malformed: () => post("view", { token: TOKEN.slice(1) }), absentStatus: 404, malformedStatus: 404 },
     { input: "confirm token", absent: () => post("confirm", {}), valid: () => post("confirm", { token: TOKEN }), malformed: () => post("confirm", { token: `${TOKEN}=` }), absentStatus: 404, malformedStatus: 404 },
     { input: "cancel token", absent: () => post("cancel", {}), valid: () => post("cancel", { token: TOKEN }), malformed: () => post("cancel", { token: null }), absentStatus: 404, malformedStatus: 404 },
-    { input: "move token", absent: () => post("move", { to: { kind: "seat", runId: "r2" } }), valid: () => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }), malformed: () => post("move", { token: "x", to: { kind: "seat", runId: "r2" } }), absentStatus: 404, malformedStatus: 404 },
-    { input: "move to.kind", absent: () => post("move", { token: TOKEN, to: { runId: "r2" } }), valid: () => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }), malformed: () => post("move", { token: TOKEN, to: { kind: "group", runId: "r2" } }), absentStatus: 400, malformedStatus: 400 },
+    { input: "move token", absent: () => post("move", { to: { kind: "slot", start: "2026-12-01T09:00:00Z" } }), valid: () => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00Z" } }), malformed: () => post("move", { token: "x", to: { kind: "slot", start: "2026-12-01T09:00:00Z" } }), absentStatus: 404, malformedStatus: 404 },
+    { input: "move to.kind", absent: () => post("move", { token: TOKEN, to: { start: "2026-12-01T09:00:00Z" } }), valid: () => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00Z" } }), malformed: () => post("move", { token: TOKEN, to: { kind: "slots", start: "2026-12-01T09:00:00Z" } }), absentStatus: 400, malformedStatus: 400 },
     { input: "move to.start", absent: () => post("move", { token: TOKEN, to: { kind: "slot" } }), valid: () => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-12-01T09:00:00Z" } }), malformed: () => post("move", { token: TOKEN, to: { kind: "slot", start: "2026-02-31T09:00:00Z" } }), absentStatus: 400, malformedStatus: 400 },
-    { input: "move to.runId", absent: () => post("move", { token: TOKEN, to: { kind: "seat" } }), valid: () => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }), malformed: () => post("move", { token: TOKEN, to: { kind: "seat", runId: "a#b" } }), absentStatus: 400, malformedStatus: 400 },
     { input: "feed resourceId", absent: () => handleBookingFeed("shop.example.test", "", `${SECRET}.ics`), valid: () => handleBookingFeed("shop.example.test", "r1", `${SECRET}.ics`), malformed: () => handleBookingFeed("shop.example.test", "a#b", `${SECRET}.ics`), absentStatus: 404, malformedStatus: 404 },
     { input: "feed <secret>.ics", absent: () => handleBookingFeed("shop.example.test", "r1", ".ics"), valid: () => handleBookingFeed("shop.example.test", "r1", `${SECRET}.ics`), malformed: () => handleBookingFeed("shop.example.test", "r1", `${SECRET}.txt`), absentStatus: 404, malformedStatus: 404 },
 ];

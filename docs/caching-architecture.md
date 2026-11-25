@@ -271,8 +271,9 @@ Rules (executable form: rows `sched1g-*` of `renderer/test/serving-contract/cont
 - **Proxy inputs.** Absent / valid / malformed for every query parameter and body: a valid input reaches the forward
   step (`503 unavailable` in the suite, which has no backend), the others are refused before it. Row
   `sched1g-proxy-inputs`; what is forwarded, the checks (the backend route's own schemas from `@amodx/shared`),
-  and the complete input inventory: `test/unit/sched-1g-proxy.test.ts`. The `?service` / `?course` selectors: row
-  `sched1g-selectors` (server reader) and `test/unit/sched-1g-pages.test.ts` (the flow).
+  and the complete input inventory: `test/unit/sched-1g-proxy.test.ts`. The `?service` selector: row
+  `sched1g-selectors` (server reader; since SCHED-GROUPS-REMOVE-1 an old `?course` link still serves the book page and
+  passes no course value) and `test/unit/sched-1g-pages.test.ts` (the flow).
 - **Existing pages (rule 1).** The booking branch leaves every other path on its old code path (row `sched1g-preserve`:
   near-miss paths, preview paths, the unknown-host gate). Adding the root folder `app/%5Fbook` makes Next list it among
   the static siblings of `[siteId]` in every page's RSC payload: `"s":["api"]` → `"s":["%5Fbook","api"]`. Measured on

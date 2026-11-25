@@ -13,12 +13,12 @@ import * as path from 'path';
 /**
  * SCHED-1D1/1D2/1E1 (docs/slices/sched-1.md § 10.2, § 10.3, § 11.2, § 17) — the scheduling API nested stack: the ADMIN
  * routes of `sched-1d` (bookings with history, customers incl. erasure, resources, feed secret, mail templates;
- * SCHED-1D1), the VISITOR routes (offer, slots, runs, hold, view, confirm, cancel, move; SCHED-1D2; the calendar
- * feed, SCHED-1G1) and the APPOINTMENT admin routes of `sched-1e` (services, default availability, week planner
- * read, day edits, copy-week, all-resource appointments read, manual appointment, slot move; SCHED-1E1) and the GROUP
- * admin routes of `sched-1f` (courses list/create/update/delete, runs list/create/update/move/cancel, roster, unplaced
- * list, manual entry, person move; SCHED-1F1), and the ONE scheduled function of SCHED-1G1 (`reminders.ts`: reminders,
- * the daily expired-hold cleanup, the Sunday planner mail) with its ONE rule `rate(15 minutes)` (§ 11.3, § 11.4, § 14.1).
+ * SCHED-1D1), the VISITOR routes (offer, slots, hold, view, confirm, cancel, move; SCHED-1D2; the calendar feed,
+ * SCHED-1G1) and the APPOINTMENT admin routes of `sched-1e` (services, default availability, week planner read, day
+ * edits, copy-week, all-resource appointments read, manual appointment, slot move; SCHED-1E1), and the ONE scheduled
+ * function of SCHED-1G1 (`reminders.ts`: reminders, the daily expired-hold cleanup, the Sunday planner mail) with its
+ * ONE rule `rate(15 minutes)` (§ 11.3, § 11.4, § 14.1). The group routes of `sched-1f` were removed by
+ * SCHED-GROUPS-REMOVE-1 (code on branch `archive/group-scheduling-2026-11`).
  *
  * Pattern of `api-commerce.ts`: L1 `CfnRoute` / `CfnIntegration` (routes created by `httpApi.addRoutes()` would land
  * in the parent), its own `CfnAuthorizer` on the parent's authorizer function. Unlike CommerceApi, the event bus is
@@ -28,8 +28,7 @@ import * as path from 'path';
  * Wiring per function (§ 11.2): every function gets `SCHEDULING_TABLE_NAME`, `TABLE_NAME` and read on the main table
  * (the tenant record); on the scheduling table, read for functions that only read (the GET routes, the customer
  * lookup and the visitor view), read-write for the others, none for the templates route (it never reads the table).
- * The mailing functions (admin booking cancel, manual appointment, slot move, run move, run cancel, manual seat, person
- * move; visitor hold, confirm, cancel, move) get
+ * The mailing functions (admin booking cancel, manual appointment, slot move; visitor hold, confirm, cancel, move) get
  * `SES_FROM_EMAIL`, one
  * `ses:SendEmail` on the sending identity, and `RENDERER_CLOUDFRONT_ORIGIN`; the feed-secret route gets
  * `RENDERER_CLOUDFRONT_ORIGIN` (it builds the feed URL). The visitor hold gets `RECAPTCHA_SECRET_KEY` exactly as the
@@ -68,7 +67,7 @@ export class SchedulingApi extends NestedStack {
     constructor(scope: Construct, id: string, props: SchedulingApiProps) {
         super(scope, id, {
             ...props,
-            description: 'AMODX Scheduling API — visitor booking routes; admin bookings, customers, resources, mail templates, appointments, week planner and groups',
+            description: 'AMODX Scheduling API — visitor booking routes; admin bookings, customers, resources, mail templates, appointments and week planner',
         });
 
         cdk.Tags.of(this).add('Project', 'AMODX');
@@ -190,8 +189,6 @@ export class SchedulingApi extends NestedStack {
             fn('VisitorOfferFunc', 'visitor/offer.ts', { scheduling: 'read' }));
         addRoute('VisitorSlots', 'GET /scheduling/visitor/slots',
             fn('VisitorSlotsFunc', 'visitor/slots.ts', { scheduling: 'read' }));
-        addRoute('VisitorRuns', 'GET /scheduling/visitor/courses/{courseId}/runs',
-            fn('VisitorRunsFunc', 'visitor/runs.ts', { scheduling: 'read' }));
         // The initial hold (§ 16.3 class 2): reCAPTCHA, limits, the hold mail.
         addRoute('VisitorHold', 'POST /scheduling/visitor/holds',
             fn('VisitorHoldFunc', 'visitor/holds.ts', { scheduling: 'readWrite', mail: true, recaptcha: true }));
@@ -237,39 +234,6 @@ export class SchedulingApi extends NestedStack {
             fn('AdminCreateAppointmentFunc', 'admin/appt-appointments-create.ts', { scheduling: 'readWrite', mail: true }));
         addRoute('AdminMoveSlot', 'POST /scheduling/admin/bookings/{bookingId}/move-slot',
             fn('AdminMoveSlotFunc', 'admin/appt-move-slot.ts', { scheduling: 'readWrite', mail: true }));
-
-        // ===================== GROUPS (admin, SCHED-1F1, § 10.3 routes of `sched-1f`) =====================
-        // Configuration writes (course create/update/delete, run create/update/move/cancel) publish one main-table audit event
-        // (§ 6.5 point 2): read-write + audit. Run move and run cancel also mail every person (§ 11.1): + mail. The GET
-        // routes only read (the roster and the unplaced list carry customer data: E+T only, checked in the handlers).
-        // The two person routes (manual entry, move a person) append `history` and publish no audit event
-        // (SCHED-AUDIT-PII = C); they mail: read-write + mail.
-        addRoute('AdminListCourses', 'GET /scheduling/admin/courses',
-            fn('AdminListCoursesFunc', 'admin/group-courses-list.ts', { scheduling: 'read' }));
-        addRoute('AdminCreateCourse', 'POST /scheduling/admin/courses',
-            fn('AdminCreateCourseFunc', 'admin/group-courses-create.ts', { scheduling: 'readWrite', audit: true }));
-        addRoute('AdminUpdateCourse', 'PUT /scheduling/admin/courses/{courseId}',
-            fn('AdminUpdateCourseFunc', 'admin/group-courses-update.ts', { scheduling: 'readWrite', audit: true }));
-        addRoute('AdminDeleteCourse', 'DELETE /scheduling/admin/courses/{courseId}',
-            fn('AdminDeleteCourseFunc', 'admin/group-courses-delete.ts', { scheduling: 'readWrite', audit: true }));
-        addRoute('AdminListRuns', 'GET /scheduling/admin/courses/{courseId}/runs',
-            fn('AdminListRunsFunc', 'admin/group-runs-list.ts', { scheduling: 'read' }));
-        addRoute('AdminCreateRun', 'POST /scheduling/admin/courses/{courseId}/runs',
-            fn('AdminCreateRunFunc', 'admin/group-runs-create.ts', { scheduling: 'readWrite', audit: true }));
-        addRoute('AdminUpdateRun', 'PUT /scheduling/admin/courses/{courseId}/runs/{runId}',
-            fn('AdminUpdateRunFunc', 'admin/group-runs-update.ts', { scheduling: 'readWrite', audit: true }));
-        addRoute('AdminMoveRun', 'POST /scheduling/admin/courses/{courseId}/runs/{runId}/move',
-            fn('AdminMoveRunFunc', 'admin/group-runs-move.ts', { scheduling: 'readWrite', audit: true, mail: true }));
-        addRoute('AdminCancelRun', 'POST /scheduling/admin/courses/{courseId}/runs/{runId}/cancel',
-            fn('AdminCancelRunFunc', 'admin/group-runs-cancel.ts', { scheduling: 'readWrite', audit: true, mail: true }));
-        addRoute('AdminRoster', 'GET /scheduling/admin/courses/{courseId}/runs/{runId}/roster',
-            fn('AdminRosterFunc', 'admin/group-roster.ts', { scheduling: 'read' }));
-        addRoute('AdminListUnplaced', 'GET /scheduling/admin/courses/{courseId}/unplaced',
-            fn('AdminListUnplacedFunc', 'admin/group-unplaced.ts', { scheduling: 'read' }));
-        addRoute('AdminCreateSeat', 'POST /scheduling/admin/seats',
-            fn('AdminCreateSeatFunc', 'admin/group-seats-create.ts', { scheduling: 'readWrite', mail: true }));
-        addRoute('AdminMoveSeat', 'POST /scheduling/admin/bookings/{bookingId}/move-seat',
-            fn('AdminMoveSeatFunc', 'admin/group-move-seat.ts', { scheduling: 'readWrite', mail: true }));
 
         // ===================== SCHEDULED JOB (SCHED-1G1, § 11.3, § 11.4, § 14.1) =====================
         // ONE function, ONE rule, no route. Named gain: reminders, the expired-hold cleanup and the Sunday mail cannot run

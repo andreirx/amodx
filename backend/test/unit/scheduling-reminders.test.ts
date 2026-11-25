@@ -8,14 +8,15 @@ import { BookingSchema, weekMailDue } from "@amodx/shared";
  *
  * REAL: the job, the kernel (`weekMailDue`, `planDay`, `activeEntries`), `scheduling-email.ts` (templates, rendering,
  * `whenText`), `parseSchedulingTenant`, and every READ of `scheduling-db.ts` the job calls (`listResources`,
- * `readIntervals`, `runsNotEndedBy`, `getCourse`, `getResourcePlans`) over `ReadTable` below — an in-memory READ-ONLY
+ * `readIntervals`, `getResourcePlans`) over `ReadTable` below — an in-memory READ-ONLY
  * DynamoDB (Get, Query with `begins_with` / `BETWEEN`, BatchGet, projections), which also serves the main-table
  * tenant Query (AP12).
  * REPLACED at their boundaries (mocked, stateful, with the documented semantics; the transactions themselves are rows
  * C14, C29, C34, C35 (2) of `sched-1c`, run against `FakeTable` in scheduling-db.test.ts): `markReminder` (its
- * condition: start = S, confirmed, not reminded for S; seat: run first start = S and not cancelled), `mintToken`,
+ * condition: start = S, confirmed, not reminded for S), `mintToken`,
  * `cleanupExpiredHolds`, `claimWeekMail`, `markWeekMailSent`; SES (`SendEmail` recorded; refusals injected).
  * Clock: injected (`runSchedulingJobs({ scheduledAt, now })`). Credential-free.
+ * Rows G3 and G5 of SCHED-GROUPS-REMOVE-1: `storedGroupItems` writes the items of the removed group shape.
  */
 
 type Item = Record<string, any>;
@@ -106,13 +107,8 @@ vi.mock("../../src/lib/scheduling-db.js", async (importOriginal) => {
         markReminder: vi.fn(async (_store: any, tenantId: string, bookingId: string, target: any) => {
             h.beforeMark?.(bookingId);
             const b = bookingOf(tenantId, bookingId);
-            const S = target.kind === "slot" ? target.start : target.firstStart;
-            let placed = false;
-            if (b && target.kind === "slot") placed = b.what.kind === "slot" && b.what.start === S;
-            if (b && target.kind === "seat") {
-                const run = h.table.get(`TENANT#${tenantId}`, `RUN#${target.courseId}#${target.runId}`);
-                placed = b.what.runId === target.runId && run?.firstStartIso === new Date(S).toISOString() && run?.status !== "cancelled";
-            }
+            const S = target.start;
+            const placed = b !== undefined && b.what.kind === "slot" && b.what.start === S;
             if (!b || !placed || b.state.kind !== "confirmed" || b.reminderSentFor === S) return { kind: "stale" };
             h.table.put({ ...b, reminderSentFor: S });
             return { kind: "marked" };
@@ -334,35 +330,17 @@ describe("G10 reminders (§ 11.3)", () => {
         expect(h.mails[0].body).toContain("https://d111.cloudfront.net/_site/t2/_booking/manage#t=tok1");
     });
 
-    it("G10 a seat in a run created before the tenant changed `scheduling.timezone`: {{when}} shows the meeting in the run's own zone", async () => {
-        tenant("t1", { scheduling: { timezone: "America/New_York", reminderHours: 24 } });
-        const first = NOW + 5 * HOUR;   // 2026-12-01T15:07Z = 17:07 Bucharest
-        h.table.put({ PK: pk("t1"), SK: "COURSE#c1", id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro"] });
-        h.table.put({
-            PK: pk("t1"), SK: "RUN#c1#run1", id: "run1", courseId: "c1", timezone: "Europe/Bucharest", capacity: 8, trainerIds: [R1],
-            language: { kind: "notSet" }, status: "open", meetings: [{ date: "2026-12-01", start: "17:07", end: "19:00" }],
-            firstStartIso: iso(first), lastEndIso: iso(first + 2 * HOUR), v: 1, seats: { "seat-confirmed": {}, "seat-held": { x: NOW + HOUR } },
-        });
-        h.table.put({ PK: pk("t1"), SK: `RUNSPAN#${iso(first + 2 * HOUR)}#c1#run1`, firstStartIso: iso(first) });
-        for (const [id, state] of [["seat-confirmed", { kind: "confirmed", at: NOW - DAY }], ["seat-held", { kind: "held", expiresAt: NOW + HOUR, mail: "sent" }]] as const) {
-            h.table.put({
-                PK: pk("t1"), SK: `BOOKING#${id}`, id, ref: "B-5EA70000", rev: 2, what: { kind: "seat", courseId: "c1", runId: "run1" },
-                state, source: { kind: "visitor" }, who: CUSTOMER, tokenHashes: [], createdAt: NOW - DAY, updatedAt: NOW - DAY,
-                history: [{ action: "created", at: NOW - DAY, state: "confirmed", placement: { kind: "seat", runId: "run1" } }],
-            });
-        }
-        await run(NOW);
-        expect(h.mails).toHaveLength(1);   // the confirmed seat only
-        expect(h.mails[0].subject).toBe("Reminder: booking B-5EA70000, 2026-12-01 17:07 (Europe/Bucharest)");
-        expect(h.mails[0].body).toContain("Pottery");
-        // A cancelled run sends none.
-        h.mails = [];
-        const r = h.table.get(pk("t1"), "RUN#c1#run1")!;
-        h.table.put({ ...r, status: "cancelled" });
-        const b = h.table.get(pk("t1"), "BOOKING#seat-confirmed")!;
-        h.table.put({ ...b, reminderSentFor: undefined });
-        await run(NOW + 15 * MIN);
-        expect(h.mails).toHaveLength(0);
+    it("G3 a confirmed seat booking of the removed group shape whose run starts in the reminder window: no mark, no mail, no failure; the appointment in the window is reminded", async () => {
+        tenant("t1");
+        resource("t1", R1, "Dr. One");
+        storedGroupItems("t1", NOW + 5 * HOUR);
+        const slotId = slot("t1", NOW + 5 * HOUR);
+        const s = await run(NOW);
+        expect(s.reminders).toMatchObject({ sent: 1, failed: 0 });
+        expect(h.mails).toHaveLength(1);
+        expect(h.mails[0].subject).toContain(`B-${slotId.slice(0, 8).toUpperCase()}`);
+        expect(h.table.get(pk("t1"), "BOOKING#seat-1")!.reminderSentFor).toBeUndefined();
+        expect(logs.join("\n")).not.toContain("storedDataInvalid");
     });
 
     it("G10 the mail is built from the booking as saved: a booking moved after the mark (before the mint) is not mailed", async () => {
@@ -387,12 +365,16 @@ describe("G10 reminders (§ 11.3)", () => {
     });
 });
 
-/** A run of course c1 in `zone` with one meeting starting at `first`, and one confirmed seat `seat-1` (ref B-5EA70001). */
-function seatRun(t: string, first: number, zone = "Europe/Bucharest") {
+/**
+ * The items a table written before SCHED-GROUPS-REMOVE-1 can hold (rows G3, G5): a course, a run with one meeting at
+ * `first` naming R1 as trainer, its RUNSPAN#, and a confirmed seat booking `seat-1` of CUSTOMER with its CUST# item.
+ * No code reads them now; the tests below prove that their presence changes nothing.
+ */
+function storedGroupItems(t: string, first: number) {
     const local = (ms: number) => new Date(ms + 2 * HOUR).toISOString();   // Bucharest = UTC+2 in December
     h.table.put({ PK: pk(t), SK: "COURSE#c1", id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro"] });
     h.table.put({
-        PK: pk(t), SK: "RUN#c1#run1", id: "run1", courseId: "c1", timezone: zone, capacity: 8, trainerIds: [R1],
+        PK: pk(t), SK: "RUN#c1#run1", id: "run1", courseId: "c1", timezone: "Europe/Bucharest", capacity: 8, trainerIds: [R1],
         language: { kind: "notSet" }, status: "open",
         meetings: [{ date: local(first).slice(0, 10), start: local(first).slice(11, 16), end: local(first + HOUR).slice(11, 16) }],
         firstStartIso: iso(first), lastEndIso: iso(first + HOUR), v: 1, seats: { "seat-1": {} },
@@ -403,31 +385,8 @@ function seatRun(t: string, first: number, zone = "Europe/Bucharest") {
         state: { kind: "confirmed", at: NOW - DAY }, source: { kind: "visitor" }, who: CUSTOMER, tokenHashes: [], createdAt: NOW - DAY,
         updatedAt: NOW - DAY, history: [{ action: "created", at: NOW - DAY, state: "confirmed", placement: { kind: "seat", runId: "run1" } }],
     });
+    h.table.put({ PK: pk(t), SK: `CUST#${CUSTOMER.email}#seat-1` });
 }
-/** A run move as the store commits it: meetings, first/last instants and the RUNSPAN# key (§ 7.6). */
-function moveRun(t: string, first: number) {
-    const run = h.table.get(pk(t), "RUN#c1#run1")!;
-    h.table.items.delete(`${pk(t)}\u0000RUNSPAN#${run.lastEndIso}#c1#run1`);
-    const local = (ms: number) => new Date(ms + 2 * HOUR).toISOString();
-    h.table.put({ ...run, firstStartIso: iso(first), lastEndIso: iso(first + HOUR),
-        meetings: [{ date: local(first).slice(0, 10), start: local(first).slice(11, 16), end: local(first + HOUR).slice(11, 16) }] });
-    h.table.put({ PK: pk(t), SK: `RUNSPAN#${iso(first + HOUR)}#c1#run1`, firstStartIso: iso(first) });
-}
-
-describe("G10 recorded limit S1G1-R04 (seats)", () => {
-    it("G10 limit (S1G1-R04): a run moved between the mark and the send → the reminder shows the EARLIER start (no post-mark recheck); the next run reminds the new start", async () => {
-        tenant("t1");
-        seatRun("t1", NOW + 5 * HOUR);   // 17:07 Bucharest
-        const { mintToken } = await import("../../src/lib/scheduling-db.js");
-        const realMint = (mintToken as any).getMockImplementation();
-        (mintToken as any).mockImplementationOnce(async (...args: any[]) => { moveRun("t1", NOW + 7 * HOUR); return realMint(...args); });
-        const first = await run(NOW);
-        expect(first.reminders).toMatchObject({ sent: 1, placementChanged: 0 });
-        expect(h.mails.map((m) => m.subject)).toEqual(["Reminder: booking B-5EA70001, 2026-12-01 17:07 (Europe/Bucharest)"]);   // the earlier start
-        await run(NOW + 15 * MIN);
-        expect(h.mails.map((m) => m.subject)[1]).toBe("Reminder: booking B-5EA70001, 2026-12-01 19:07 (Europe/Bucharest)");   // the new start
-    });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("§ 14.1 daily cleanup and tenant selection (C29 tenant part)", () => {
@@ -533,11 +492,33 @@ describe("G14 weekly mail population and delivery (§ 11.4)", () => {
         expect(s.weekMail.alreadySent).toBe(1);
     });
 
-    it("G14 none for: switch off; group runs only (no resource with weekly hours); sendToAdmin false; no contactEmail (and the log line)", async () => {
+    it("G6 a saved weekAhead override that names {{courseName}} and {{groupLink}}: both stay as written in the weekly mail, as before the removal (review SGR-R2)", async () => {
+        tenant("t1", { schedulingEmailConfig: { templates: { weekAhead: { subject: "Week {{weekStart}} {{courseName}}", body: "Appointment summary|{{groupLink}}|{{courseName}}" } } } });
+        resource("t1", R1, "Dr. One", WEEKDAYS_9_17);
+        await run(SUN_0900);
+        expect(mailsTo(OWNER).map((m) => ({ subject: m.subject, body: m.body }))).toEqual([
+            { subject: "Week 2026-12-07 {{courseName}}", body: "Appointment summary|{{groupLink}}|{{courseName}}" },
+        ]);
+    });
+
+    it("G3 G5 a course, a run and a seat booking of the removed group shape in the week: the weekly mail is the same as without them", async () => {
+        weekly();
+        await run(SUN_0900);
+        const without = mailsTo(OWNER).map((m) => ({ subject: m.subject, body: m.body }));
+        expect(without).toHaveLength(1);
+        h.mails = [];
+        h.markers.clear();
+        storedGroupItems("t1", at("2026-12-08T08:00:00.000Z"));   // Tuesday of the mailed week, 10:00 Bucharest, trainer R1
+        const s = await run(SUN_0900);
+        expect(mailsTo(OWNER).map((m) => ({ subject: m.subject, body: m.body }))).toEqual(without);
+        expect(s.weekMail).toMatchObject({ sent: 1 });
+    });
+
+    it("G14 none for: switch off; no resource with weekly hours; sendToAdmin false; no contactEmail (and the log line)", async () => {
         tenant("t-off", { schedulingEnabled: false });
         resource("t-off", R1, "Dr. One", WEEKDAYS_9_17);
-        tenant("t-groups");
-        resource("t-groups", R1, "Trainer");      // a trainer with no AVAILABILITY# item
+        tenant("t-nohours");
+        resource("t-nohours", R1, "Dr. Two");     // a resource with no AVAILABILITY# item
         tenant("t-quiet", { schedulingEmailConfig: { templates: { weekAhead: { subject: "s", body: "b", sendToAdmin: false } } } });
         resource("t-quiet", R1, "Dr. One", WEEKDAYS_9_17);
         tenant("t-nomail", { integrations: {} });

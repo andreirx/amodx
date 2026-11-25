@@ -20,8 +20,7 @@ import { SchedulingSettingsSchema, SchedulingEmailKeySchema, type SchedulingEmai
  * template overrides are saved through the existing PUT /settings (TENANT_ADMIN), with ONLY the scheduling attributes
  * in the body. The default mail texts come from GET /scheduling/admin/email-templates: this page keeps no copy.
  * Not on this screen: services and the week planner (`sched-1e`, own pages linked from the header: SchedulingPlanner.tsx,
- * SchedulingAppointments.tsx), courses and groups (`sched-1f`, own pages linked from the header: SchedulingCourses.tsx,
- * SchedulingRoster.tsx),
+ * SchedulingAppointments.tsx),
  * customer lookup and erasure (the routes exist; the screen for them is not in this slice).
  */
 
@@ -112,10 +111,10 @@ export function templatesPayload(edited: Templates, defaults: Templates)
 /** The text shown for a failed scheduling call: the server's reason for the known refusal codes, else the message. */
 export function schedulingErrorText(e: unknown): string {
     if (e instanceof ApiError && e.body !== null && typeof e.body === "object") {
-        const body = e.body as { code?: string; error?: string; activeBookings?: number; runs?: number };
+        const body = e.body as { code?: string; error?: string; activeBookings?: number };
         switch (body.code) {
             case "resourceInUse":
-                return `This resource cannot be removed: it has ${body.activeBookings ?? 0} future booking(s) and is a trainer of ${body.runs ?? 0} group(s) that have not ended. Move or cancel them first.`;
+                return `This resource cannot be removed: it has ${body.activeBookings ?? 0} future booking(s). Move or cancel them first.`;
             case "resourceRemovalInProgress":
                 return "Another removal of this resource is in progress. Try again in a few minutes.";
             case "busy":
@@ -138,18 +137,17 @@ export function needsContactAddressWarning(schedulingEnabled: boolean, contactEm
 
 const KEY_LABELS: Record<SchedulingEmailKey, string> = {
     hold: "Confirm request", confirmed: "Confirmed", cancelled: "Cancelled", moved: "Moved",
-    unplaced: "No group", reminder: "Reminder", weekAhead: "Week ahead (to you)",
+    reminder: "Reminder", weekAhead: "Week ahead (to you)",
 };
 const KEY_DESCRIPTIONS: Record<SchedulingEmailKey, string> = {
     hold: "Sent when a visitor books. Its link is the only way to confirm the booking.",
     confirmed: "Sent when a booking is confirmed, and when you add a booking by hand. A copy goes to your contact email when 'Admin' is ticked.",
     cancelled: "Sent when a booking is cancelled. The copy to your contact email is sent only when the customer cancels.",
-    moved: "Sent when a booking or a group moves to another time.",
-    unplaced: "Sent when a group is cancelled or a person is moved out of a group.",
+    moved: "Sent when a booking moves to another time.",
     reminder: "Sent before the booking starts (Scheduling settings: reminder hours; 0 = no reminder).",
     weekAhead: "Sent to your contact email each Sunday with the next week's plan. Untick 'Admin' to stop it.",
 };
-const BOOKING_VARIABLES = ["ref", "customerName", "serviceName", "courseName", "when", "expiresAt", "link", "groupLink", "siteName"];
+const BOOKING_VARIABLES = ["ref", "customerName", "serviceName", "when", "expiresAt", "link", "siteName"];
 const WEEK_VARIABLES = ["weekStart", "weekEnd", "summary", "plannerLink", "siteName"];
 
 type Resource = { id: string; name: string; hasFeed: boolean };
@@ -293,21 +291,19 @@ export default function SchedulingPage() {
             <Input id="sched-timezone" list="sched-timezones" value={form.timezone} placeholder="Europe/Bucharest"
                 onChange={(e) => setForm({ ...form, timezone: e.target.value })} disabled={!isAdmin} />
             <datalist id="sched-timezones">{TIMEZONES.map((tz) => <option key={tz} value={tz} />)}</datalist>
-            <p className="text-xs text-muted-foreground">Opening hours and group meetings are in this time zone.</p>
+            <p className="text-xs text-muted-foreground">Opening hours are in this time zone.</p>
         </div>
     );
 
     const header = (
         <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="h-7 w-7" /> Scheduling</h1>
-            <p className="text-muted-foreground">Appointments and group bookings, confirmed by an emailed link.</p>
-            {/* SCHED-1E2: the appointment pages (they work with scheduling off, § 23.5). SCHED-1F2: the group pages. */}
+            <p className="text-muted-foreground">Appointments, confirmed by an emailed link.</p>
+            {/* SCHED-1E2: the appointment pages (they work with scheduling off, § 23.5). */}
             <p className="text-sm">
                 <Link className="underline" to="/scheduling/planner">Week planner</Link>
                 {" · "}
                 <Link className="underline" to="/scheduling/appointments">Services and weekly hours</Link>
-                {" · "}
-                <Link className="underline" to="/scheduling/courses">Courses and groups</Link>
             </p>
         </div>
     );
@@ -354,7 +350,7 @@ export default function SchedulingPage() {
                         {numberField("holdMinutes", "Hold (minutes)", "How long a booking waits for its confirmation link (5-1440).")}
                         {numberField("changeCutoffHours", "Change cutoff (hours)", "Customers can cancel or move until this many hours before the start (0-168).")}
                         {numberField("reminderHours", "Reminder (hours before)", "0 = no reminder (0-168).")}
-                        {numberField("bookingHorizonWeeks", "Booking horizon (weeks)", "Visitors can book appointments this many weeks ahead (1-52). Group seats are not limited.")}
+                        {numberField("bookingHorizonWeeks", "Booking horizon (weeks)", "Visitors can book appointments this many weeks ahead (1-52).")}
                     </div>
                     {isAdmin && (
                         <div className="flex gap-2">
@@ -369,7 +365,7 @@ export default function SchedulingPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Resources</CardTitle>
-                    <CardDescription>The people (or rooms) that customers book. A trainer of a group is a resource too.</CardDescription>
+                    <CardDescription>The people (or rooms) that customers book.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {resources.length === 0 && <p className="text-sm text-muted-foreground">No resources yet.</p>}

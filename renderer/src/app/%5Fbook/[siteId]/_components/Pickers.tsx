@@ -1,15 +1,13 @@
 "use client";
-// SCHED-1G2 — the two pickers the book page and the manage page share (docs/slices/sched-1.md § 10.1, § 10.2):
+// SCHED-1G2 — the picker the book page and the manage page share (docs/slices/sched-1.md § 10.1, § 10.2):
 //   - `SlotWeek`: free start times of one service, one week at a time (from today in the tenant's zone up to
-//     `lastBookableDate`, § 5.5); times shown in the zone of the answer, with the zone named;
-//   - `RunList`: the groups of one course — the proposal of the partly filled group first (D6), the others on request
-//     (`all=1`), or "no group open".
+//     `lastBookableDate`, § 5.5); times shown in the zone of the answer, with the zone named.
 // Abstraction line: users — the book flow (new booking) and the manage view (move); axis: none; rejected: a copy of
-// each picker in both pages.
+// the picker in both pages.
 import { useEffect, useState } from "react";
 import {
     addDays, fillText, formatLocalDate, formatTime, localDateIn, refusalTextKey,
-    type BookingTexts, type ProposalDTO, type RunDTO, type SlotsDTO,
+    type BookingTexts, type SlotsDTO,
 } from "@/lib/booking-ui";
 import { callBooking } from "./api";
 
@@ -79,92 +77,6 @@ export function SlotWeek({ serviceId, timezone, texts, locale, onPick, disabled 
                     {!canNext && <p className="text-sm text-muted-foreground">{fillText(texts.lastBookableDate, { date: formatLocalDate(data.lastBookableDate, locale) })}</p>}
                 </>
             )}
-        </section>
-    );
-}
-
-export function RunCard({ run, texts, locale, action }: { run: Omit<RunDTO, "seatsLeft"> & { seatsLeft?: number }; texts: BookingTexts; locale: string; action?: React.ReactNode }) {
-    return (
-        <div className="space-y-2 rounded-md border p-4">
-            <p className="text-sm">{run.language !== null ? fillText(texts.groupLanguage, { language: run.language }) : texts.groupLanguageOpen}</p>
-            {run.seatsLeft !== undefined && <p className="text-sm">{fillText(texts.seatsLeft, { n: run.seatsLeft })}</p>}
-            <p className="text-sm font-medium">{texts.meetingsHeading}</p>
-            <ul className="text-sm">
-                {run.meetings.map((m, i) => (
-                    <li key={i}>{fillText(texts.meetingLine, { date: formatLocalDate(m.date, locale), start: m.start, end: m.end })}</li>
-                ))}
-            </ul>
-            <p className="text-xs text-muted-foreground">{fillText(texts.timesShownIn, { zone: run.timezone })}</p>
-            {action}
-        </div>
-    );
-}
-
-/** `disabled` (rule of `operation.ts`): every button of the list is disabled while a write is pending. */
-export function RunList({ courseId, language, excludeRunId, texts, locale, onPick, disabled = false }: {
-    courseId: string; language: string | undefined; excludeRunId?: string; texts: BookingTexts; locale: string; onPick: (run: RunDTO) => void;
-    disabled?: boolean;
-}) {
-    const [all, setAll] = useState(false);
-    const [state, setState] = useState<{ kind: "loading" } | { kind: "ready"; data: ProposalDTO } | { kind: "error"; code: string | undefined }>({ kind: "loading" });
-
-    useEffect(() => {
-        let live = true;
-        setState({ kind: "loading" });
-        const query: Record<string, string> = { courseId };
-        if (language !== undefined) query.language = language;
-        if (all) query.all = "1";
-        callBooking<ProposalDTO>("runs", { query }).then((r) => {
-            if (!live) return;
-            setState(r.ok ? { kind: "ready", data: r.data } : { kind: "error", code: r.code });
-        });
-        return () => { live = false; };
-    }, [courseId, language, all]);
-
-    const choose = (run: RunDTO) => (
-        <button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground disabled:opacity-60" disabled={disabled} onClick={() => onPick(run)}>{texts.chooseThisGroup}</button>
-    );
-
-    let body: React.ReactNode = null;
-    if (state.kind === "loading") body = <p aria-live="polite">{texts.loading}</p>;
-    else if (state.kind === "error") body = <Alert text={texts[refusalTextKey(state.code)]} />;
-    else {
-        const p = state.data;
-        switch (p.kind) {
-            case "noneOpen":
-                body = <p>{texts.noGroupsOpen}</p>;
-                break;
-            case "proposed":
-                body = (
-                    <div className="space-y-3">
-                        <p className="font-medium">{texts.proposedGroup}</p>
-                        {p.run.runId === excludeRunId ? null : <RunCard run={p.run} texts={texts} locale={locale} action={choose(p.run)} />}
-                        {p.othersCount > 0 && (
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm">{fillText(texts.otherGroups, { n: p.othersCount })}</span>
-                                <button type="button" className="rounded-md border px-3 py-1 text-sm disabled:opacity-40" disabled={disabled} onClick={() => setAll(true)}>{texts.showAllGroups}</button>
-                            </div>
-                        )}
-                    </div>
-                );
-                break;
-            case "choose": {
-                const runs = p.runs.filter((r) => r.runId !== excludeRunId);
-                body = runs.length === 0
-                    ? <p>{texts.noGroupsOpen}</p>
-                    : <ul className="space-y-3">{runs.map((r) => <li key={r.runId}><RunCard run={r} texts={texts} locale={locale} action={choose(r)} /></li>)}</ul>;
-                break;
-            }
-            default: {
-                const never: never = p;
-                throw new Error(`Unhandled proposal ${JSON.stringify(never)}`);
-            }
-        }
-    }
-    return (
-        <section aria-labelledby="run-list-heading" className="space-y-4">
-            <h2 id="run-list-heading" className="text-xl font-semibold">{texts.chooseGroup}</h2>
-            {body}
         </section>
     );
 }

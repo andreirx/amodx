@@ -8,7 +8,7 @@
  * `slotTaken`); no window, grid, day-off or horizon check; the duration is the service's current one, or the stored
  * `end − start` when the service was deleted (§ 13). The booking keeps its id and every link token (§ 8.5) and gets a
  * `moved` history entry with `by: { kind: "admin", email }` in the same write (SCHED-AUDIT-PII = C: no main-table audit
- * event, so no event-bus permission). A booking that is not a slot (a seat) → 400 `invalid`; unknown → 404.
+ * event, so no event-bus permission). Unknown → 404 (a stored booking of the removed group shape reads as unknown).
  *
  * Before the write: the tenant (`readTenantBeforeWrite`: consistent; a stored setting or mail configuration that fails
  * its schema → 500 `storedDataInvalid`);
@@ -53,9 +53,6 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const store = schedulingStoreFromEnv();
         const before = await getBooking(store, tenantId, id.value, true);
         if (before === undefined) return refusal(404, "notFound", "Booking not found.");
-        if (before.what.kind !== "slot") {
-            return refusal(400, "invalid", "The request is not valid.", { issues: [{ path: "bookingId", message: "The booking is not an appointment." }] });
-        }
         const target = await getResource(store, tenantId, body.value.resourceId, false);
         const now = Date.now();
         const moved = await moveSlot(store, {
@@ -69,7 +66,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
             const minted = await mintToken(store, tenantId, booking.id, now, { countForEmail: false });
             if (minted.ok) {
                 booking = minted.value.booking;
-                await sendVisitorMail({ key: "moved", tenantId, tenant, settings: settings.value, booking, place: {}, token: minted.value.token });
+                await sendVisitorMail({ key: "moved", tenantId, tenant, settings: settings.value, booking, token: minted.value.token });
             } else {
                 console.error("[scheduling] appt-move-slot no link for the moved mail", booking.id, minted.error.kind);
             }

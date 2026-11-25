@@ -6,10 +6,12 @@ import { BatchGetCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb
  * SCHED-1G1 — the calendar feed, POST /scheduling/visitor/feed (docs/slices/sched-1.md § 12; § 17.3 row G11).
  *
  * REAL: the handler, `requireRole`, every read of `scheduling-db.ts` it calls (`getResource`, `readIntervals` with
- * `activeEntries`, `getBookingViews`, `runsNotEndedBy`, `getRun`, `getCourse`), the kernel, `feedCalendar`.
+ * `activeEntries`, `getBookingViews`), the kernel, `feedCalendar`.
  * REPLACED: the DynamoDB client of both tables by `ReadTable` below (an in-memory READ-ONLY table: Get, Query with
  * `begins_with` or `BETWEEN` on SK, BatchGet, projections with aliases and dotted paths; it records every command).
  * The feed writes nothing, so a write command fails the test. Clock: `Date` faked at `NOW`. Credential-free.
+ * The seed also holds items of the removed group shape (a course, a run with seats, its `RUNSPAN#`), as a table written
+ * before SCHED-GROUPS-REMOVE-1 can: every test here runs with them present (rows G3 and G5 of that slice).
  */
 
 type Item = Record<string, any>;
@@ -96,7 +98,7 @@ function bookingItem(id: string, start: number, state: Item, resourceId = R1): I
 }
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-/** A run of course c1 with meetings given as Bucharest local times (the zone stored on the run). */
+/** A run of course c1 as stored before SCHED-GROUPS-REMOVE-1 (meetings as Bucharest local times); nothing reads it now. */
 function runItem(runId: string, trainerIds: string[], meetings: { date: string; start: string; end: string }[], extra: Item = {}): Item {
     return {
         PK, SK: `RUN#c1#${runId}`, id: runId, courseId: "c1", timezone: "Europe/Bucharest", capacity: 8, trainerIds,
@@ -132,7 +134,7 @@ function seed() {
     h.table.put({ PK, SK: `RESDAY#${R1}#${utcDay(CONFIRMED_START)}`, v: 1, entries: { [C_ID]: entry(CONFIRMED_START, 2) } });
     h.table.put({ PK, SK: `RESDAY#${R1}#${utcDay(HELD_START)}`, v: 1, entries: { [H_ID]: entry(HELD_START, 2, NOW + HOUR) } });
     h.table.put({ PK, SK: `RESDAY#${R1}#${utcDay(EXPIRED_START)}`, v: 1, entries: { [X_ID]: entry(EXPIRED_START, 2, NOW - HOUR) } });
-    // A run that STARTED BEFORE the window (first meeting 70 days ago) and has one meeting inside it (C17 shape).
+    // Items of the removed group shape: a run with a meeting inside the window, naming R1 as trainer (rows G3, G5).
     putRun(runItem("run-long", [R1], [
         { date: "2026-09-22", start: "10:00", end: "12:00" },   // 2026-09-22T07:00Z: before NOW − 60 days
         { date: "2026-12-05", start: "10:00", end: "13:00" },   // Bucharest UTC+2 → 08:00Z-11:00Z
@@ -159,7 +161,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("G11 calendar feed (§ 12)", () => {
-    it("G11 a valid secret → 200 text/calendar, private max-age=300, UTC times, CRLF lines, one event per active appointment and per meeting in the window", async () => {
+    it("G11 a valid secret → 200 text/calendar, private max-age=300, UTC times, CRLF lines, one event per active appointment in the window", async () => {
         const res = await ok();
         expect(res.statusCode).toBe(200);
         expect(res.headers["Content-Type"]).toBe("text/calendar; charset=utf-8");
@@ -168,11 +170,7 @@ describe("G11 calendar feed (§ 12)", () => {
         expect(res.body.endsWith("END:VCALENDAR\r\n")).toBe(true);
         expect(res.body.replace(/\r\n/g, "")).not.toMatch(/\n/);   // every line break is CRLF
         const ev = events(res.body);
-        expect(ev).toHaveLength(3);   // confirmed slot, held slot, the run's meeting inside the window (not the expired hold)
-        const meeting = ev.find((e) => e.includes("UID:run-long-2@t1"))!;
-        expect(meeting).toContain("DTSTART:20261205T080000Z");
-        expect(meeting).toContain("DTEND:20261205T110000Z");
-        expect(meeting).toContain("SUMMARY:Pottery\\, beginners 2/8");   // held unexpired + confirmed of capacity 8; comma escaped
+        expect(ev).toHaveLength(2);   // confirmed slot, held slot (not the expired hold)
         const confirmed = ev.find((e) => e.includes(`UID:${C_ID}@t1`))!;
         expect(confirmed).toContain("DTSTART:20261207T070000Z");
         expect(confirmed).toContain("DTEND:20261207T080000Z");
@@ -185,10 +183,18 @@ describe("G11 calendar feed (§ 12)", () => {
         expect(res.body).not.toContain("VTIMEZONE");
     });
 
-    it("G11 a run that started before the window is in the feed with only its meetings inside the window", async () => {
-        const body = (await ok()).body;
-        expect(body).toContain("UID:run-long-2@t1");
-        expect(body).not.toContain("UID:run-long-1@t1");   // 2026-09-22 is before NOW − 60 days
+    it("G3 G5 a course, a run (trainer R1, a meeting in the window) and a seat booking of the removed group shape: 200 with the two appointments only; no request names a group key or the seat booking", async () => {
+        const seatId = "0d000004-0000-4000-8000-000000000004";
+        h.table.put({ ...bookingItem(seatId, CONFIRMED_START, { kind: "confirmed", at: NOW - DAY }), what: { kind: "seat", courseId: "c1", runId: "run-long" },
+            history: [{ action: "created", at: NOW - DAY, state: "confirmed", placement: { kind: "seat", runId: "run-long" } }] });
+        const res = await ok();
+        expect(res.statusCode).toBe(200);
+        expect(events(res.body).map((e) => /UID:([^\r\n]*)/.exec(e)![1]).sort()).toEqual([`${C_ID}@t1`, `${H_ID}@t1`]);
+        expect(res.body).not.toContain("run-long");
+        expect(res.body).not.toContain("Pottery");
+        const sent = JSON.stringify(h.table.commands.map((c: any) => c.input));
+        expect(sent).toContain(`RESDAY#${R1}#`);   // control: the recorded requests are the feed's reads
+        for (const key of ["COURSE#", "RUN#", "RUNSPAN#", seatId]) expect({ key, named: sent.includes(key) }).toEqual({ key, named: false });
     });
 
     it("G11 no customer field: no name, email or phone in the body, and the BOOKING# read does not ask for `who`", async () => {
@@ -259,30 +265,6 @@ describe("G11 calendar feed (§ 12)", () => {
         expect((await feed(undefined, { raw: "{not json" })).statusCode).toBe(400);
     });
 
-    it("G11 a run whose trainers change from R1 to R2: after the change it is in R2's feed and not in R1's", async () => {
-        const r2Secret = "T".repeat(43);
-        expect((await ok(R1)).body).toContain("UID:run-long-2@t1");
-        expect((await ok(R2, r2Secret)).body).not.toContain("UID:run-long-2@t1");
-        const run = h.table.items.get(`${PK}\u0000RUN#c1#run-long`);
-        h.table.put({ ...run, trainerIds: [R2] });
-        expect((await ok(R1)).body).not.toContain("UID:run-long-2@t1");
-        expect((await ok(R2, r2Secret)).body).toContain("UID:run-long-2@t1");
-    });
-
-    it("G11 a run created in Europe/Bucharest keeps its UTC instants after the tenant setting changes to another zone", async () => {
-        const before = events((await ok()).body).find((e) => e.includes("UID:run-long-2@t1"))!;
-        h.table.put({ PK: "SYSTEM", SK: "TENANT#t1", id: "t1", schedulingEnabled: true, scheduling: { timezone: "America/New_York" } });
-        const after = events((await ok()).body).find((e) => e.includes("UID:run-long-2@t1"))!;
-        expect(after).toBe(before);
-        expect(after).toContain("DTSTART:20261205T080000Z");   // 10:00 Bucharest, not 10:00 New York (15:00Z)
-    });
-
-    it("G11 a cancelled run is not in the feed", async () => {
-        const run = h.table.items.get(`${PK}\u0000RUN#c1#run-long`);
-        h.table.put({ ...run, status: "cancelled" });
-        expect((await ok()).body).not.toContain("run-long");
-    });
-
     it("G11 a booking BatchGet that never finishes → 503 busy (never a partial feed)", async () => {
         h.table.unprocessed = true;
         const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -296,7 +278,7 @@ describe("G11 calendar feed (§ 12)", () => {
 describe("G11 feedCalendar (pure)", () => {
     it("G11 folds lines longer than 75 octets without splitting a UTF-8 character, and escapes TEXT", () => {
         const text = feedCalendar({
-            tenantId: "t1", now: NOW, meetings: [],
+            tenantId: "t1", now: NOW,
             slots: [{ bookingId: "b1", ref: "B-1", serviceName: `Ședință; lungă, ${"ă".repeat(60)}\nrând`, start: NOW, end: NOW + HOUR, held: false }],
         });
         for (const line of text.split("\r\n")) expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(75);
@@ -307,8 +289,8 @@ describe("G11 feedCalendar (pure)", () => {
     it("G11 the same data gives the same text (events sorted by start, then UID)", () => {
         const a = { bookingId: "b2", ref: "B-2", serviceName: "X", start: NOW + HOUR, end: NOW + 2 * HOUR, held: true };
         const b = { bookingId: "b1", ref: "B-1", serviceName: "X", start: NOW, end: NOW + HOUR, held: false };
-        const one = feedCalendar({ tenantId: "t1", now: NOW, slots: [a, b], meetings: [] });
-        expect(feedCalendar({ tenantId: "t1", now: NOW, slots: [b, a], meetings: [] })).toBe(one);
+        const one = feedCalendar({ tenantId: "t1", now: NOW, slots: [a, b] });
+        expect(feedCalendar({ tenantId: "t1", now: NOW, slots: [b, a] })).toBe(one);
         expect(one.indexOf("UID:b1@t1")).toBeLessThan(one.indexOf("UID:b2@t1"));
     });
 });

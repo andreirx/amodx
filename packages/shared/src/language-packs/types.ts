@@ -22,9 +22,8 @@ export interface LanguagePack {
 
 /**
  * SCHED-1G2 (docs/slices/sched-1.md § 10.1) — the visitor texts of the hosted booking pages (`/_booking`,
- * `/_booking/manage`). Plain texts with `{placeholders}` (filled by `fillTemplate`); no count key (counts are written as
- * "Places left: {n}", so no plural form is needed). Not part of the three-part locale table; the page selects a pack by
- * language (`?lang=`, else the tenant locale). SCHED-LABELS-1: a tenant overrides them in its own stored home,
+ * `/_booking/manage`). Plain texts with `{placeholders}` (filled by `fillTemplate`); no count key. Not part of the
+ * three-part locale table; the page selects a pack by language (`?lang=`, else the tenant locale). SCHED-LABELS-1: a tenant overrides them in its own stored home,
  * `bookingStrings` (`BookingStringsSchema`, keys `BOOKING_TEXT_KEYS` derived from the English pack), shown only on a
  * booking page in the tenant's own language (`renderer/src/lib/booking-text.ts`).
  * The `err*` keys are the visitor texts of the refusal codes of § 10.2 and of the renderer proxy
@@ -32,27 +31,23 @@ export interface LanguagePack {
  */
 export interface BookingStrings {
     bookTitle: string; manageTitle: string; loading: string; back: string; timesShownIn: string;
-    chooseOffer: string; servicesHeading: string; coursesHeading: string; durationMinutes: string; nothingOffered: string;
+    chooseOffer: string; servicesHeading: string; durationMinutes: string; nothingOffered: string;
     chooseTime: string; previousWeek: string; nextWeek: string; noTimesThisWeek: string; lastBookableDate: string;
-    chooseLanguage: string; chooseGroup: string; proposedGroup: string; otherGroups: string; showAllGroups: string;
-    seatsLeft: string; groupLanguage: string; groupLanguageOpen: string; meetingsHeading: string; meetingLine: string;
-    noGroupsOpen: string; chooseThisGroup: string;
     detailsHeading: string; selectedLabel: string; nameLabel: string; emailLabel: string; phoneLabel: string;
-    languageLabel: string; fieldRequired: string; emailInvalid: string; submitHold: string; sending: string;
+    fieldRequired: string; emailInvalid: string; submitHold: string; sending: string;
     checkMailHeading: string; checkMailHeld: string; checkMailConfirmed: string; resendMail: string; resent: string;
     newBooking: string;
     noLinkToken: string; bookingRef: string; stateHeld: string; stateConfirmed: string; whenLabel: string;
-    whatLabel: string; groupChatLink: string; unplacedNote: string; confirmButton: string; confirmedNow: string;
+    whatLabel: string; confirmButton: string; confirmedNow: string;
     cancelButton: string; cancelQuestion: string; cancelYes: string; cancelNo: string; cancelledNow: string;
-    moveTimeButton: string; moveGroupButton: string; movedNow: string; moveNotOffered: string; changeUntil: string;
+    moveTimeButton: string; movedNow: string; moveNotOffered: string; changeUntil: string;
     refreshBooking: string;
     errInvalid: string; errNotAvailable: string; errNotFound: string; errVerificationRequired: string;
     errVerificationFailed: string; errUnavailable: string; errSlotTaken: string; errNotOnGrid: string; errInPast: string;
     errBeyondHorizon: string; errNotEligible: string; errOutsideAvailability: string; errResourceUnavailable: string;
-    errRunFull: string; errRunClosed: string; errRunCancelled: string; errRunStarted: string; errLanguageMismatch: string;
     errIntentReused: string; errIntentClosed: string; errTooManyForEmail: string; errTooManyFromAddress: string;
     errBusy: string; errMailFailed: string; errLinkNotValid: string; errExpired: string; errCancelled: string;
-    errTooLate: string; errNotConfirmed: string; errPaidContactTenant: string; errStale: string; errRange: string;
+    errTooLate: string; errNotConfirmed: string; errStale: string; errRange: string;
     errServer: string; errGeneric: string;
 }
 

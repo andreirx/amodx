@@ -16,7 +16,7 @@ lib/
 ├── amodx-stack.ts              # Main stack: composes all constructs, wires dependencies
 ├── api.ts                      # HTTP API Gateway + authorizer + all routes; wires catalog routes to CatalogApi's functions (passed in)
 ├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
-├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 8 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1F1: 13 group admin routes; SCHED-1G1: the calendar feed route + the scheduled job and its one rate(15 minutes) rule; L1 routes, own authorizer)
+├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 7 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1G1: the calendar feed route + the scheduled job and its one rate(15 minutes) rule; L1 routes, own authorizer)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
 ├── database.ts                 # DynamoDB single table with 3 GSIs
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
@@ -47,7 +47,7 @@ AmodxStack
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
 ├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
 ├── EngagementApi (NestedStack — popups, forms)
-├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1F1: courses, runs, roster, unplaced list, seats; SCHED-1G1: calendar feed, scheduled job; after AdminHosting, which supplies `adminUrl`)
+├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1G1: calendar feed, scheduled job; after AdminHosting, which supplies `adminUrl`)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
 ├── AmodxAdminHosting (S3 + CloudFront)
 ├── AmodxDomains (Route53 + ACM certs)
@@ -101,26 +101,23 @@ to derive the domain server-side; the DNS lookups themselves write nothing). Wit
 
 `SchedulingApi` NestedStack (`api-scheduling.ts`, SCHED-1D1; docs/slices/sched-1.md § 11.2, § 17): functions AND
 routes (L1 `CfnRoute`/`CfnIntegration`, its own `CfnAuthorizer` on the parent's authorizer function, as CommerceApi).
-Routes: the 10 admin routes under `/scheduling/admin/…` (SCHED-1D1), the 8 visitor routes under
-`/scheduling/visitor/…` (SCHED-1D2: offer, slots, runs, holds, bookings/view|confirm|cancel|move), the calendar
+Routes: the 10 admin routes under `/scheduling/admin/…` (SCHED-1D1), the 7 visitor routes under
+`/scheduling/visitor/…` (SCHED-1D2: offer, slots, holds, bookings/view|confirm|cancel|move), the calendar
 feed `POST /scheduling/visitor/feed` (SCHED-1G1, § 12: read-only on the scheduling table, no mail / link-base /
 event-bus / reCAPTCHA wiring, row `(sched1g1)`) and the 12 appointment admin routes of SCHED-1E1 (services ×4, `resources/{r}/availability` GET/PUT,
 `resources/{r}/week`, `resources/{r}/days` PUT, `resources/{r}/days/copy-week`, `appointments` GET/POST,
 `bookings/{id}/move-slot`; no closed-time route, row E14, which also pins every scheduling admin route of the stack to
-`tools/mcp-server/routes.json`) and the 13 group admin routes of SCHED-1F1 (`courses` GET/POST, `courses/{c}`
-PUT/DELETE, `courses/{c}/runs` GET/POST, `courses/{c}/runs/{r}` PUT, `…/move`, `…/cancel`, `…/roster`,
-`courses/{c}/unplaced`, `seats` POST, `bookings/{id}/move-seat`). Every route runs the authorizer (`CUSTOM`, one authorizer for the nested stack): no scheduling route is
+`tools/mcp-server/routes.json`). The 13 group admin routes of SCHED-1F1 and the visitor route
+`courses/{c}/runs` were removed by SCHED-GROUPS-REMOVE-1 (code on branch `archive/group-scheduling-2026-11`). Every route runs the authorizer (`CUSTOM`, one authorizer for the nested stack): no scheduling route is
 anonymous; the renderer key resolves to `RENDERER`. Wiring per function, pinned by `infra/test` rows I1-I5 and the
 amended `(sched1b-3)`: every function has `SCHEDULING_TABLE_NAME` and `TABLE_NAME` (read on the main table); on the
 scheduling-private table read only for the GET routes (SCHED-1E1: services list, availability, week, appointments
-list; SCHED-1F1: courses, runs, roster, unplaced list), the customer lookup and the visitor view, read-write for the
+list), the customer lookup and the visitor view, read-write for the
 writers, no grant for the templates route; `EVENT_BUS_NAME` + `events:PutEvents` ONLY on the functions that publish a
 main-table audit event (resource writes, feed secret, erasure; SCHED-1E1: service writes, default availability, day
-edits, copy-week; SCHED-1F1: course create / update / delete, run create / update / move / cancel — never a booking function (incl. the
-manual seat and the person move) and never a visitor function,
+edits, copy-week — never a booking function and never a visitor function,
 SCHED-AUDIT-PII = C); `SES_FROM_EMAIL` + one `ses:SendEmail` on the sender identity on the mailing functions (admin
-booking cancel, manual appointment, slot move, run move, run cancel, manual seat, person move; visitor hold, confirm,
-cancel, move); `RENDERER_CLOUDFRONT_ORIGIN` on the mailing functions and the
+booking cancel, manual appointment, slot move; visitor hold, confirm, cancel, move; the scheduled job); `RENDERER_CLOUDFRONT_ORIGIN` on the mailing functions and the
 feed-secret route; `RECAPTCHA_SECRET_KEY` on the visitor hold only, from the optional prop `recaptchaSecretKey` exactly
 as CommerceApi: `amodx-stack.ts` passes the parent's SSM-backed deployment secret to `SchedulingApi` (row I3, § 9.1
 fail-open guard; the hold handler also refuses — 503 `verificationUnavailable` — when no configuration resolves). The
@@ -158,6 +155,10 @@ bundles byte-identical (only the source maps differ, they carry checkout paths);
 identical, 4 differ only in renamed minified names; OBSERVED), 30 with a residual difference, caused by
 `lib/scheduling-email.ts` (`whenText`, the § 11.4 weekly text) and `admin/bookings-cancel.ts` (INFERRED from the source diff: no other changed source is reachable). Local synth counts:
 SchedulingApi raw 271 / 45 functions, deployed ≈ 317; parent deployed ≈ 469 (unchanged).
+SCHED-GROUPS-REMOVE-1: the 13 group admin functions and `VisitorRunsFunc` leave SchedulingApi with their routes,
+integrations, permissions, roles and policies (14 functions; 31 remain); the nested template's description no longer
+names groups; the parent and the other nested stacks are not changed (INFERRED from the source diff; the synth counts
+are not re-measured here).
 
 Custom Lambda authorizer validates Cognito JWT or master API key. Public routes (`POST /leads`, `/contact`, `/consent`) bypass auth.
 

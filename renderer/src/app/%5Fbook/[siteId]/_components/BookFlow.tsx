@@ -1,37 +1,31 @@
 "use client";
 // SCHED-1G2 — the book page flow (docs/slices/sched-1.md § 10.1, § 10.2, § 7.2, § 9.1): offer → a service (its free
-// times, week by week) or a course (language when the course has several, then its groups: the proposal first) →
-// name, email, phone → hold → "check your email". A hold does NOT confirm: it reserves the time or the place until
+// times, week by week) → name, email, phone → hold → "check your email". A hold does NOT confirm: it reserves the time until
 // `expiresAt` and mails a link; only the Confirm button of the manage page confirms (§ 8.3). Every refusal code has a
 // visitor text (`refusalTextKey`); a used or closed form offers "make a new booking" (`refusalRecovery`, S1G2-R4).
 //
 // Hold and resend follow the one lifetime rule of `operation.ts`: one at a time; Back, the form and "new booking" are
 // disabled while one is pending; every navigation moves the epoch, so a late answer never replaces the current screen.
 //
-// The intent id (§ 7.2) is created once per chosen time or group and kept across retries, so a double submit or a
+// The intent id (§ 7.2) is created once per chosen time and kept across retries, so a double submit or a
 // retry after a lost answer is answered by the backend's replay table instead of a second booking. The reCAPTCHA v3
 // token is requested at submit time (the script is loaded by the page with the tenant's key, § 9.1).
 import { useEffect, useRef, useState } from "react";
-import { fillText, formatInstantWithZone, refusalRecovery, refusalTextKey, type BookingTexts, type HoldResult, type OfferDTO, type RunDTO } from "@/lib/booking-ui";
+import { fillText, formatInstantWithZone, refusalRecovery, refusalTextKey, type BookingTexts, type HoldResult, type OfferDTO } from "@/lib/booking-ui";
 import { callBooking } from "./api";
 import { useOperation, type Operation } from "./operation";
-import { Alert, RunCard, RunList, SlotWeek } from "./Pickers";
+import { Alert, SlotWeek } from "./Pickers";
 
 type Service = OfferDTO["services"][number];
-type Course = OfferDTO["courses"][number];
-type Choice =
-    | { kind: "slot"; service: Service; start: string; timezone: string }
-    | { kind: "seat"; course: Course; run: RunDTO; language: string | undefined };
+type Choice = { kind: "slot"; service: Service; start: string; timezone: string };
 type HoldBody = {
     intentId: string; recaptchaToken?: string; resend?: boolean;
-    what: { kind: "slot"; serviceId: string; start: string } | { kind: "seat"; courseId: string; runId: string };
-    who: { email: string; name: string; phone?: string; language?: string };
+    what: { kind: "slot"; serviceId: string; start: string };
+    who: { email: string; name: string; phone?: string };
 };
 type Step =
     | { kind: "offer" }
     | { kind: "service"; service: Service }
-    | { kind: "language"; course: Course }
-    | { kind: "course"; course: Course; language: string | undefined }
     | { kind: "details"; choice: Choice; intentId: string }
     | { kind: "sent"; result: HoldResult; body: HoldBody };
 
@@ -51,18 +45,11 @@ async function recaptchaToken(siteKey: string | undefined): Promise<string | und
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function describeChoice(choice: Choice, locale: string): string {
-    switch (choice.kind) {
-        case "slot": return `${choice.service.name} — ${formatInstantWithZone(choice.start, locale, choice.timezone)}`;
-        case "seat": return choice.course.name;
-        default: {
-            const never: never = choice;
-            throw new Error(`Unhandled choice ${JSON.stringify(never)}`);
-        }
-    }
+    return `${choice.service.name} — ${formatInstantWithZone(choice.start, locale, choice.timezone)}`;
 }
 
-export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, initialCourseId }: {
-    texts: BookingTexts; locale: string; recaptchaSiteKey: string | undefined; initialServiceId?: string; initialCourseId?: string;
+export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId }: {
+    texts: BookingTexts; locale: string; recaptchaSiteKey: string | undefined; initialServiceId?: string;
 }) {
     const [offer, setOffer] = useState<{ kind: "loading" } | { kind: "ready"; data: OfferDTO } | { kind: "error"; code: string | undefined }>({ kind: "loading" });
     const [step, setStep] = useState<Step>({ kind: "offer" });
@@ -78,9 +65,7 @@ export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, in
             if (!r.ok) { setOffer({ kind: "error", code: r.code }); return; }
             setOffer({ kind: "ready", data: r.data });
             const service = r.data.services.find((s) => s.id === initialServiceId);
-            const course = r.data.courses.find((c) => c.id === initialCourseId);
             if (service) setStep({ kind: "service", service });
-            else if (course) setStep(courseStep(course));
         });
         return () => { live = false; };
         // The initial parameters are read once, at load (G3).
@@ -90,10 +75,6 @@ export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, in
     // Focus order: after each step change the step's heading takes the focus.
     useEffect(() => { headingRef.current?.focus(); }, [step.kind]);
 
-    function courseStep(course: Course): Step {
-        if (course.languages.length > 1) return { kind: "language", course };
-        return { kind: "course", course, language: course.languages[0] };
-    }
     const back = <button type="button" className="text-sm underline" onClick={() => go({ kind: "offer" })}>{texts.back}</button>;
 
     if (offer.kind === "loading") return <p aria-live="polite">{texts.loading}</p>;
@@ -102,7 +83,7 @@ export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, in
 
     switch (step.kind) {
         case "offer":
-            if (data.services.length === 0 && data.courses.length === 0) return <p>{texts.nothingOffered}</p>;
+            if (data.services.length === 0) return <p>{texts.nothingOffered}</p>;
             return (
                 <div className="space-y-6">
                     <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold">{texts.chooseOffer}</h2>
@@ -121,18 +102,6 @@ export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, in
                             </ul>
                         </section>
                     )}
-                    {data.courses.length > 0 && (
-                        <section aria-labelledby="courses-heading" className="space-y-2">
-                            <h3 id="courses-heading" className="font-medium">{texts.coursesHeading}</h3>
-                            <ul className="space-y-2">
-                                {data.courses.map((c) => (
-                                    <li key={c.id}>
-                                        <button type="button" className="w-full rounded-md border px-4 py-3 text-left font-medium hover:bg-muted" onClick={() => go(courseStep(c))}>{c.name}</button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-                    )}
                 </div>
             );
         case "service":
@@ -143,31 +112,6 @@ export function BookFlow({ texts, locale, recaptchaSiteKey, initialServiceId, in
                     <p className="font-medium">{step.service.name}</p>
                     <SlotWeek serviceId={step.service.id} timezone={data.timezone} texts={texts} locale={locale}
                         onPick={(start) => go({ kind: "details", intentId: crypto.randomUUID(), choice: { kind: "slot", service: step.service, start, timezone: data.timezone } })} />
-                </div>
-            );
-        case "language":
-            return (
-                <div className="space-y-4">
-                    {back}
-                    <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold">{texts.chooseLanguage}</h2>
-                    <p className="font-medium">{step.course.name}</p>
-                    <ul className="flex flex-wrap gap-2">
-                        {step.course.languages.map((l) => (
-                            <li key={l}>
-                                <button type="button" className="rounded-md border px-4 py-2 hover:bg-muted" onClick={() => go({ kind: "course", course: step.course, language: l })}>{l}</button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            );
-        case "course":
-            return (
-                <div className="space-y-4">
-                    {back}
-                    <h2 ref={headingRef} tabIndex={-1} className="sr-only">{step.course.name}</h2>
-                    <p className="font-medium">{step.course.name}</p>
-                    <RunList courseId={step.course.id} language={step.language} texts={texts} locale={locale}
-                        onPick={(run) => go({ kind: "details", intentId: crypto.randomUUID(), choice: { kind: "seat", course: step.course, run, language: step.language } })} />
                 </div>
             );
         case "details":
@@ -205,13 +149,10 @@ function DetailsForm({ step, op, texts, locale, recaptchaSiteKey, headingRef, on
         setRefusal(null);
         if (errors.name) { nameRef.current?.focus(); return; }
         if (errors.email) { emailRef.current?.focus(); return; }
-        const language = choice.kind === "seat" ? choice.language : undefined;
         const body: HoldBody = {
             intentId: step.intentId,
-            what: choice.kind === "slot"
-                ? { kind: "slot", serviceId: choice.service.id, start: choice.start }
-                : { kind: "seat", courseId: choice.course.id, runId: choice.run.runId },
-            who: { email: email.trim(), name: name.trim(), ...(phone.trim() !== "" ? { phone: phone.trim() } : {}), ...(language !== undefined ? { language } : {}) },
+            what: { kind: "slot", serviceId: choice.service.id, start: choice.start },
+            who: { email: email.trim(), name: name.trim(), ...(phone.trim() !== "" ? { phone: phone.trim() } : {}) },
         };
         await op.run(async () => {
             const token = await recaptchaToken(recaptchaSiteKey);
@@ -228,7 +169,6 @@ function DetailsForm({ step, op, texts, locale, recaptchaSiteKey, headingRef, on
             <button type="button" disabled={op.busy} className="text-sm underline disabled:opacity-40" onClick={onBack}>{texts.back}</button>
             <h2 ref={headingRef} tabIndex={-1} className="text-xl font-semibold">{texts.detailsHeading}</h2>
             <p>{fillText(texts.selectedLabel, { what: describeChoice(choice, locale) })}</p>
-            {choice.kind === "seat" && <RunCard run={choice.run} texts={texts} locale={locale} />}
             <div className="space-y-1">
                 <label htmlFor="booking-name" className="block text-sm font-medium">{texts.nameLabel}</label>
                 <input id="booking-name" ref={nameRef} className={inputClass} autoComplete="name" required maxLength={200} value={name}
@@ -247,9 +187,6 @@ function DetailsForm({ step, op, texts, locale, recaptchaSiteKey, headingRef, on
                 <label htmlFor="booking-phone" className="block text-sm font-medium">{texts.phoneLabel}</label>
                 <input id="booking-phone" type="tel" className={inputClass} autoComplete="tel" maxLength={40} value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
-            {choice.kind === "seat" && choice.language !== undefined && (
-                <p className="text-sm">{texts.languageLabel}: {choice.language}</p>
-            )}
             {refusal !== null && <Alert text={texts[refusalTextKey(refusal.code)]} />}
             {refusal !== null && refusalRecovery(refusal.code) === "newBooking"
                 ? <button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={onBack}>{texts.newBooking}</button>

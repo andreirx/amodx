@@ -23,8 +23,8 @@
  *
  * Abstraction lines:
  * - `BOOKING_OPS` (a closed table: op → method, backend route, input check) — users: the one API route handler and the
- *   unit tests; axis: the eight visitor routes of § 10.2 (fixed by the deployed backend); rejected: eight route files
- *   with the same frame (method, size, tenant, key, pass-through) written eight times.
+ *   unit tests; axis: the seven visitor routes of § 10.2 (fixed by the deployed backend); rejected: seven route files
+ *   with the same frame (method, size, tenant, key, pass-through) written seven times.
  * - `forward` — users: the API handler and the feed handler; axis: none; rejected: two copies of the backend call.
  */
 import { HoldRequestSchema, KeyPart, LocalDateSchema, MoveBodySchema } from "@amodx/shared";
@@ -43,9 +43,9 @@ export const MAX_BODY_BYTES = 8 * 1024;
 // So the proxy forwards exactly what the backend accepts and nothing it refuses. The schemas are `.strict()`, so a body
 // that passes holds only known fields; it is forwarded as received (the backend normalizes the email itself). The
 // renderer imports no `zod` itself (test/unit/sched-1g-proxy.test.ts checks the sources).
-// Two backend rules are not zod schemas in `@amodx/shared` and are written here, each named after its backend source:
-// the link token format (`parseLinkBody`) and the course path parameter (`pathParam`); and the token routes accept no
-// field besides the token (backend `NoMoreFields` = `z.object({}).strict()`).
+// One backend rule is not a zod schema in `@amodx/shared` and is written here, named after its backend source: the
+// link token format (`parseLinkBody`); and the token routes accept no field besides the token (backend `NoMoreFields`
+// = `z.object({}).strict()`).
 
 type Issue = { path: string; message: string };
 type Checked<T> = { ok: true; value: T } | { ok: false; issues: Issue[] };
@@ -56,8 +56,6 @@ const issuesOf = (error: { issues: { path: PropertyKey[]; message: string }[] })
 
 /** `parseLinkBody` / `getBookingByToken` (backend/src/scheduling/visitor/common.ts): 43 characters of base64url. */
 const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
-/** scheduling/common.ts `pathParam` (runs.ts `courseId`): non-empty, no `#`. */
-const isPathParam = (v: unknown): v is string => typeof v === "string" && v !== "" && !v.includes("#");
 
 /** `{ token }` and more: the token is checked first and in full; a malformed one is the one answer 404 (§ 8.4). */
 type LinkBody = { kind: "linkNotValid" } | { kind: "ok"; token: string; rest: Record<string, unknown> };
@@ -103,7 +101,7 @@ const tokenOnly = (route: string): PostOp => ({
     },
 });
 
-/** The eight visitor operations of § 10.2 (the feed has its own handler, `handleBookingFeed`). */
+/** The seven visitor operations of § 10.2 (the feed has its own handler, `handleBookingFeed`). */
 export const BOOKING_OPS: Readonly<Record<string, GetOp | PostOp>> = {
     offer: {
         method: "GET",
@@ -126,24 +124,6 @@ export const BOOKING_OPS: Readonly<Record<string, GetOp | PostOp>> = {
             if (issues.length > 0) return invalid(issues);
             const search = new URLSearchParams({ serviceId: serviceId as string, from: from as string, to: to as string });
             return { ok: true, forward: { path: `/scheduling/visitor/slots?${search}` } };
-        },
-    },
-    runs: {
-        method: "GET",
-        prepare: (query) => {
-            const q = queryOf(query, ["courseId", "language", "all"]);
-            if (!q.ok) return invalid(q.issues);
-            const { courseId, language, all } = q.value;
-            const issues: Issue[] = [];
-            if (!isPathParam(courseId)) issues.push({ path: "courseId", message: "Not valid." });
-            if (language !== null && (language.length < 1 || language.length > 35)) issues.push({ path: "language", message: "Not valid." });
-            if (all !== null && all !== "0" && all !== "1") issues.push({ path: "all", message: "Must be 0 or 1." });
-            if (issues.length > 0) return invalid(issues);
-            const search = new URLSearchParams();
-            if (language !== null) search.set("language", language);
-            if (all !== null) search.set("all", all);
-            const qs = search.toString();
-            return { ok: true, forward: { path: `/scheduling/visitor/courses/${encodeURIComponent(courseId as string)}/runs${qs ? `?${qs}` : ""}` } };
         },
     },
     hold: {

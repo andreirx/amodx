@@ -84,15 +84,10 @@ afterEach(async () => {
 const OFFER = {
     timezone: "Europe/Bucharest",
     services: [{ id: "svc1", name: "Consultație", durationMin: 50 }],
-    courses: [{ id: "c1", name: "Curs de ceramică", languages: ["ro", "en"] }, { id: "c2", name: "Atelier", languages: ["ro"] }],
 };
-const run = (runId: string, language: string | null, seatsLeft: number) => ({
-    runId, courseId: "c1", timezone: "Europe/Bucharest", language, seatsLeft,
-    meetings: [{ date: "2026-12-10", start: "18:00", end: "20:00" }, { date: "2026-12-17", start: "18:00", end: "20:00" }],
-});
 
 describe("SCHED-1G2 book flow (browser)", () => {
-    it("book flow (ro): loading, then the offer with services and courses", async () => {
+    it("book flow (ro): loading, then the offer with services", async () => {
         let release!: () => void;
         serve(() => new Promise((r) => { release = () => r({ status: 200, body: OFFER }); }));
         await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined }));
@@ -101,13 +96,12 @@ describe("SCHED-1G2 book flow (browser)", () => {
         await settle();
         expect(text()).toContain(RO.chooseOffer);
         expect(text()).toContain(RO.servicesHeading);
-        expect(text()).toContain(RO.coursesHeading);
         expect(text()).toContain(fillText(RO.durationMinutes, { n: 50 }));
         expect(calls).toEqual([{ method: "GET", path: "/_booking/api/offer", query: "", body: undefined }]);
     });
 
     it("book flow (ro): nothing offered", async () => {
-        serve(() => ({ status: 200, body: { timezone: "Europe/Bucharest", services: [], courses: [] } }));
+        serve(() => ({ status: 200, body: { timezone: "Europe/Bucharest", services: [] } }));
         await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined }));
         expect(text()).toContain(RO.nothingOffered);
     });
@@ -181,50 +175,21 @@ describe("SCHED-1G2 book flow (browser)", () => {
         expect(text()).toContain(RO.chooseOffer);
     });
 
-    it("book flow (ro): a course with two languages, the proposal, all groups, a seat confirmed at once", async () => {
+    it("book flow (ro): a hold answered 'confirmed' (the form's intent was already confirmed) shows the confirmed text", async () => {
         serve((c) => {
             if (c.path.endsWith("/offer")) return { status: 200, body: OFFER };
-            if (c.path.endsWith("/runs")) {
-                const q = new URLSearchParams(c.query);
-                return q.get("all") === "1"
-                    ? { status: 200, body: { kind: "choose", runs: [run("r1", "ro", 3), run("r2", null, 8)] } }
-                    : { status: 200, body: { kind: "proposed", run: run("r1", "ro", 3), othersCount: 1 } };
-            }
+            if (c.path.endsWith("/slots")) return { status: 200, body: { timezone: "Europe/Bucharest", serviceId: "svc1", durationMin: 50, lastBookableDate: "2027-01-31", days: [{ date: "2026-12-01", starts: ["2026-12-01T10:00:00.000Z"] }] } };
             if (c.path.endsWith("/hold")) return { status: 200, body: { ref: "B-0000EEEE", state: "confirmed", emailMasked: "a***@example.test" } };
             throw new Error(`unexpected ${c.path}`);
         });
-        await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined }));
-        await click(button("Curs de ceramică"));
-        expect(text()).toContain(RO.chooseLanguage);
-        await click(button("ro"));
-        expect(calls.at(-1)).toMatchObject({ path: "/_booking/api/runs", query: "?courseId=c1&language=ro" });
-        expect(text()).toContain(RO.chooseGroup);
-        expect(text()).toContain(RO.proposedGroup);
-        expect(text()).toContain(fillText(RO.otherGroups, { n: 1 }));
-        expect(text()).toContain(fillText(RO.seatsLeft, { n: 3 }));
-        expect(text()).toContain(fillText(RO.groupLanguage, { language: "ro" }));
-        expect(text()).toContain(RO.meetingsHeading);
-        expect(text()).toContain(fillText(RO.meetingLine, { date: "joi, 10 decembrie 2026", start: "18:00", end: "20:00" }));
-        await click(button(RO.showAllGroups));
-        expect(calls.at(-1)).toMatchObject({ query: "?courseId=c1&language=ro&all=1" });
-        expect(text()).toContain(RO.groupLanguageOpen);
-        const r2 = host.querySelectorAll("ul.space-y-3 button")[1] as HTMLElement;
-        expect(r2.textContent).toBe(RO.chooseThisGroup);
-        await click(r2);
-        expect(text()).toContain(RO.detailsHeading);
-        expect(text()).toContain(`${RO.languageLabel}: ro`);
+        await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined, initialServiceId: "svc1" }));
+        await click(button("12:00"));
         await type("booking-name", "Ana");
         await type("booking-email", "ana@example.test");
         await click(button(RO.submitHold));
-        expect(calls.at(-1)!.body).toMatchObject({ what: { kind: "seat", courseId: "c1", runId: "r2" }, who: { language: "ro" } });
+        expect(calls.at(-1)!.body).toMatchObject({ what: { kind: "slot", serviceId: "svc1", start: "2026-12-01T10:00:00.000Z" } });
         expect(text()).toContain(fillText(RO.checkMailConfirmed, { email: "a***@example.test", ref: "B-0000EEEE" }));
-    });
-
-    it("book flow (ro): no group open; ?course= starts on the course (one language: no language step)", async () => {
-        serve((c) => (c.path.endsWith("/offer") ? { status: 200, body: OFFER } : { status: 200, body: { kind: "noneOpen" } }));
-        await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined, initialCourseId: "c2" }));
-        expect(calls.at(-1)).toMatchObject({ path: "/_booking/api/runs", query: "?courseId=c1".replace("c1", "c2") + "&language=ro" });
-        expect(text()).toContain(RO.noGroupsOpen);
+        expect([...host.querySelectorAll("button")].some((b) => b.textContent === RO.resendMail)).toBe(false);
     });
 
     it("book flow: a refusal of the hold is shown with its text, and the form stays", async () => {
@@ -341,33 +306,16 @@ describe("SCHED-1G2 manage view (browser)", () => {
         expect(host.querySelector('[role="alert"]')?.textContent).toBe(RO.moveNotOffered);
     });
 
-    it("manage view (ro): a confirmed seat with its group link; change the group", async () => {
+    it("manage view (ro) G4: a link the backend answers 404 linkNotValid (an unknown token, or an old link of a booking shape that was removed) shows only the link-not-valid text", async () => {
+        // SCHED-GROUPS-REMOVE-1 row G4: the backend gives one answer for both cases, so the page cannot and does not tell
+        // them apart; the screen is the refusal text alone, with no booking, no action and no further request.
         window.history.replaceState(null, "", `/_booking/manage#t=${TOKEN}`);
-        const seat = {
-            ...CONFIRMED, what: { kind: "seat", courseName: "Curs de ceramică", groupLink: "https://chat.example.test/g", run: { ...run("r1", "ro", 0), seatsLeft: undefined } },
-        };
-        serve((c) => {
-            if (c.path.endsWith("/view")) return { status: 200, body: seat };
-            if (c.path.endsWith("/runs")) return { status: 200, body: { kind: "choose", runs: [run("r1", "ro", 2), run("r3", "ro", 4)] } };
-            if (c.path.endsWith("/move")) return { status: 409, body: { error: "x", code: "runFull", capacity: 8 } };
-            throw new Error(`unexpected ${c.path}`);
-        });
+        serve(() => ({ status: 404, body: { error: "This link is not valid.", code: "linkNotValid" } }));
         await mount(createElement(ManageView, { texts: RO, locale: "ro-RO" }));
-        const link = [...host.querySelectorAll("a")].find((a) => a.textContent === RO.groupChatLink)!;
-        expect(link.getAttribute("href")).toBe("https://chat.example.test/g");
-        await click(button(RO.moveGroupButton));
-        expect(calls.at(-1)).toMatchObject({ path: "/_booking/api/runs", query: "?courseId=c1&language=ro" });
-        expect(host.querySelectorAll("ul.space-y-3 > li")).toHaveLength(1);  // the current group is not offered
-        await click(button(RO.chooseThisGroup));
-        expect(calls.at(-1)!.body).toEqual({ token: TOKEN, to: { kind: "seat", runId: "r3" } });
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe(RO.errRunFull);
-    });
-
-    it("manage view (ro): an unplaced booking", async () => {
-        window.history.replaceState(null, "", `/_booking/manage#t=${TOKEN}`);
-        serve(() => ({ status: 200, body: { ...CONFIRMED, what: { kind: "unplaced", courseName: "Curs de ceramică", proposal: { kind: "noneOpen" } }, can: { confirm: false, cancel: true, move: false } } }));
-        await mount(createElement(ManageView, { texts: RO, locale: "ro-RO" }));
-        expect(text()).toContain(fillText(RO.unplacedNote, { course: "Curs de ceramică" }));
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe(RO.errLinkNotValid);
+        expect(text()).toBe(RO.errLinkNotValid);
+        expect(host.querySelectorAll("button, a")).toHaveLength(0);
+        expect(calls).toEqual([{ method: "POST", path: "/_booking/api/view", query: "", body: { token: TOKEN } }]);
     });
 
     // Every refusal code, at its reader: the manage view's answer to `POST view`.
@@ -492,12 +440,11 @@ describe("SCHED-1G2 S1G2-R1 — one lifetime rule for writes (operation.ts)", ()
     });
 });
 
-describe("SCHED-1G2 S1G2-R3 — the ?service / ?course selectors (the props the server page passes)", () => {
+describe("SCHED-1G2 S1G2-R3 — the ?service selector (the prop the server page passes)", () => {
     const flowWith = async (props: Record<string, string | undefined>) => {
         serve((c) => {
             if (c.path.endsWith("/offer")) return { status: 200, body: OFFER };
             if (c.path.endsWith("/slots")) return { status: 200, body: SLOTS("2026-12-01", "2026-12-01T10:00:00.000Z") };
-            if (c.path.endsWith("/runs")) return { status: 200, body: { kind: "noneOpen" } };
             throw new Error(`unexpected ${c.path}`);
         });
         await mount(createElement(BookFlow, { texts: RO, locale: "ro-RO", recaptchaSiteKey: undefined, ...props }));
@@ -507,27 +454,18 @@ describe("SCHED-1G2 S1G2-R3 — the ?service / ?course selectors (the props the 
         expect(text()).toContain(RO.chooseOffer);
         expect(calls.map((c) => c.path)).toEqual(["/_booking/api/offer"]);
     });
-    it("R3 valid ?service → that service's week; valid ?course → that course (two languages: the language step)", async () => {
+    it("R3 valid ?service → that service's week", async () => {
         await flowWith({ initialServiceId: "svc1" });
         expect(calls.at(-1)!.path).toBe("/_booking/api/slots");
-        await act(async () => { root.render(createElement("div")); });
-        calls = [];
-        await flowWith({ initialCourseId: "c1" });
-        expect(text()).toContain(RO.chooseLanguage);
     });
     it("R3 unknown, malformed or empty ids → the offer, and no other read", async () => {
-        for (const props of [{ initialServiceId: "no-such-service" }, { initialCourseId: "a#b" }, { initialServiceId: "" }, { initialCourseId: "x".repeat(500) }]) {
+        for (const props of [{ initialServiceId: "no-such-service" }, { initialServiceId: "a#b" }, { initialServiceId: "" }, { initialServiceId: "x".repeat(500) }]) {
             calls = [];
             await act(async () => { root.render(createElement("div")); });
             await flowWith(props);
             expect(text(), JSON.stringify(props)).toContain(RO.chooseOffer);
             expect(calls.map((c) => c.path)).toEqual(["/_booking/api/offer"]);
         }
-    });
-    it("R3 both valid → the service wins (recorded behaviour)", async () => {
-        await flowWith({ initialServiceId: "svc1", initialCourseId: "c1" });
-        expect(calls.at(-1)!.path).toBe("/_booking/api/slots");
-        expect(text()).not.toContain(RO.chooseLanguage);
     });
 });
 

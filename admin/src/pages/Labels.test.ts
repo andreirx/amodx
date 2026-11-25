@@ -306,9 +306,9 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
 describe("SCHED-LABELS-1 — the Booking section (stored home `bookingStrings`)", () => {
     const loaded = { locale: "ro-RO", schedulingEnabled: true, bookingStrings: { bookTitle: "Programează-te", back: "Înapoi acasă", futureKey: "kept" } };
 
-    it("the section covers every booking key (98, from the English pack), edits bookingStrings, and is shown to every tenant, with or without scheduling", () => {
+    it("the section covers every booking key (75, from the English pack), edits bookingStrings, and is shown to every tenant, with or without scheduling", () => {
         expect(SECTION_KEYS.booking).toEqual(BOOKING_TEXT_KEYS);
-        expect(SECTION_KEYS.booking).toHaveLength(98);
+        expect(SECTION_KEYS.booking).toHaveLength(75);
         expect(SECTION_HOME.booking).toBe("booking");
         for (const settings of [{}, { schedulingEnabled: true }, { schedulingEnabled: false }, { commerceEnabled: true }, { catalogMode: true }, null]) {
             expect(visibleSections(settings).at(-1), JSON.stringify(settings)).toBe("booking");

@@ -130,14 +130,13 @@ describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => 
 });
 
 describe("Sidebar — Scheduling (SCHED-MENU-1)", () => {
-    it("scheduling on: every site kind has exactly the three entries at their unchanged routes; other entries stay unchanged", () => {
+    it("scheduling on: every site kind has exactly the two entries at their unchanged routes; other entries stay unchanged", () => {
         for (const t of [CONTENT_T, COMMERCE_T, CATALOG_T]) {
             const before = render(t);
             const html = markup({ ...t, schedulingEnabled: true });
             const { Scheduling, ...other } = sections(html);
-            expect(Scheduling).toEqual(["Appointments", "Groups", "Scheduling settings"]);
+            expect(Scheduling).toEqual(["Appointments", "Scheduling settings"]);
             expect(hrefOf(html, "Appointments")).toBe("/scheduling/planner");
-            expect(hrefOf(html, "Groups")).toBe("/scheduling/courses");
             expect(hrefOf(html, "Scheduling settings")).toBe("/scheduling");
             expect(other).toEqual(before);
             expect(hrefOf(html, "Customers")).toBe(t.commerceEnabled ? "/customers" : undefined);

@@ -1,6 +1,7 @@
 /**
  * SCHED-1A (docs/slices/sched-1.md § 4, § 5) — the scheduling kernel: domain types, their Zod schemas, and the
- * pure rules of both booking shapes (a slot with a practitioner, a seat in a group) and of the week planner.
+ * pure rules of the appointment shape (a slot with a practitioner) and of the week planner. The group shape (§ 4.3,
+ * § 5.4) was removed by SCHED-GROUPS-REMOVE-1; its code is on branch `archive/group-scheduling-2026-11`.
  * Maturity: PROTOTYPE (until `sched-1i` passes on staging, § 17).
  *
  * Pure: no I/O, no clock read, no ambient zone, no AWS, no framework. `now` and the zone are parameters. The
@@ -34,7 +35,6 @@ const MAX_STORED_DAYS = 366;
 const MAX_WINDOWS_PER_DAY = 8;
 const KEPT_PAST_DAYS = 6; // overrides are kept from local today − 6 on (§ 5.5)
 const MAX_HISTORY = 50;
-const MAX_MEETINGS = 60;
 const TOKEN_VIEW_DAYS = 30;
 
 function assertNever(value: never): never {
@@ -163,70 +163,20 @@ export const DaysEditSchema = z.discriminatedUnion("kind", [
 export type DaysEdit = z.infer<typeof DaysEditSchema>;
 
 // ---------------------------------------------------------------------------------------------------------------
-// Group side (§ 4.3)
-// ---------------------------------------------------------------------------------------------------------------
-
-const LanguageTagSchema = z.string().min(1);
-/** Run capacity 1-45 (SCHED-SEAT-BOUND = A, § 4.5). A course's default capacity is a run's capacity, same bound. */
-const CapacitySchema = z.number().int().min(1).max(45);
-
-export const CourseSchema = z.object({
-    id: IdSchema,
-    name: NameSchema,
-    defaultCapacity: CapacitySchema,
-    languages: z.array(LanguageTagSchema).max(10),
-});
-export type Course = z.infer<typeof CourseSchema>;
-
-/** D4: one meeting in the run's zone, on one local day. Order, overlap and existence are `validateMeetings`. */
-export const MeetingSchema = z.object({ date: LocalDateSchema, start: LocalTimeSchema, end: LocalTimeSchema })
-    .refine((m) => !isLocalTime(m.start) || !isLocalTime(m.end) || minutesOfDay(m.end) > minutesOfDay(m.start), {
-        message: "End must be after start.", path: ["end"],
-    });
-export type Meeting = z.infer<typeof MeetingSchema>;
-
-/** D7: not known at first, then one tag. */
-export const RunLanguageSchema = z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("notSet") }),
-    z.object({ kind: z.literal("set"), tag: LanguageTagSchema }),
-]);
-export type RunLanguage = z.infer<typeof RunLanguageSchema>;
-
-export const RunStatusSchema = z.enum(["open", "closed", "cancelled"]);
-export type RunStatus = z.infer<typeof RunStatusSchema>;
-
-const HttpsUrlSchema = z.string().max(500).refine((value) => {
-    try {
-        return new URL(value).protocol === "https:";
-    } catch {
-        return false;
-    }
-}, { message: "Must be an https: URL." });
-
-export const RunSchema = z.object({
-    id: IdSchema,
-    courseId: IdSchema,
-    meetings: nonEmptyList(MeetingSchema, MAX_MEETINGS),
-    timezone: TimeZoneSchema,
-    capacity: CapacitySchema,
-    trainerIds: nonEmptyList(IdSchema, 10),
-    language: RunLanguageSchema,
-    groupLink: HttpsUrlSchema.optional(),
-    status: RunStatusSchema,
-});
-export type Run = z.infer<typeof RunSchema>;
-
-// ---------------------------------------------------------------------------------------------------------------
 // Booking (§ 4.4)
 // ---------------------------------------------------------------------------------------------------------------
 
 const EmailSchema = z.string().email();
+const LanguageTagSchema = z.string().min(1);
 
-export const BookingWhatSchema = z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("slot"), serviceId: IdSchema, serviceName: NameSchema, resourceId: IdSchema, start: InstantSchema, end: InstantSchema }),
-    z.object({ kind: z.literal("seat"), courseId: IdSchema, runId: IdSchema }),
-    z.object({ kind: z.literal("unplaced"), courseId: IdSchema }),
-]);
+/**
+ * What a booking holds: a slot with a practitioner, the one shape. `kind: "slot"` stays in the stored item and is
+ * the discriminator a reader checks before parsing: a stored `BOOKING#` of the removed group shape carries another
+ * `kind` (`backend/src/lib/scheduling-db.ts`, `readStoredBooking`).
+ */
+export const BookingWhatSchema = z.object({
+    kind: z.literal("slot"), serviceId: IdSchema, serviceName: NameSchema, resourceId: IdSchema, start: InstantSchema, end: InstantSchema,
+});
 export type BookingWhat = z.infer<typeof BookingWhatSchema>;
 
 /** Who acted on a booking: the customer (by link token only) or an admin (by email). */
@@ -244,11 +194,7 @@ export const BookingStateSchema = z.discriminatedUnion("kind", [
 ]);
 export type BookingState = z.infer<typeof BookingStateSchema>;
 
-export const PlacementSchema = z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("slot"), resourceId: IdSchema, start: InstantSchema, end: InstantSchema }),
-    z.object({ kind: z.literal("seat"), runId: IdSchema }),
-    z.object({ kind: z.literal("unplaced") }),
-]);
+export const PlacementSchema = z.object({ kind: z.literal("slot"), resourceId: IdSchema, start: InstantSchema, end: InstantSchema });
 export type Placement = z.infer<typeof PlacementSchema>;
 
 /** SCHED-AUDIT-PII = C (§ 22 point 1): one entry per change of `what` or `state`. */
@@ -262,7 +208,6 @@ export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
 
 export const BookingSourceSchema = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("visitor") }),
-    z.object({ kind: z.literal("order"), orderId: IdSchema, line: z.number().int().nonnegative() }),
     z.object({ kind: z.literal("manual"), adminEmail: EmailSchema, channel: z.string().min(1).max(40) }),
 ]);
 export type BookingSource = z.infer<typeof BookingSourceSchema>;
@@ -291,19 +236,13 @@ export const HoldRequestSchema = z.object({
     intentId: z.uuid(),
     recaptchaToken: z.string().max(4000).optional(),   // "" → 400 verificationRequired, as orders/create.ts (`!token`)
     resend: z.boolean().optional(),
-    what: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("slot"), serviceId: KeyPart, start: z.iso.datetime() }).strict(),
-        z.object({ kind: z.literal("seat"), courseId: KeyPart, runId: KeyPart }).strict(),
-    ]),
+    what: z.object({ kind: z.literal("slot"), serviceId: KeyPart, start: z.iso.datetime() }).strict(),
     who: PersonSchema.strict(),
 }).strict();
 
 /** The body of POST /scheduling/visitor/bookings/move besides the token (`parseLinkBody` takes the token first). */
 export const MoveBodySchema = z.object({
-    to: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("slot"), start: z.iso.datetime() }).strict(),
-        z.object({ kind: z.literal("seat"), runId: z.string().min(1).max(100).refine((v) => !v.includes("#"), { message: "Must not contain #." }) }).strict(),
-    ]),
+    to: z.object({ kind: z.literal("slot"), start: z.iso.datetime() }).strict(),
 }).strict();
 
 /**
@@ -333,10 +272,6 @@ export const ResDayEntrySchema = z.object({ s: InstantSchema, e: InstantSchema, 
 /** A `RESDAY#` entry with its map key, as the kernel reads it (§ 5). */
 export type ContainerEntry = z.infer<typeof ResDayEntrySchema> & { bookingId: string };
 
-/** One value of `RUN#.seats` (§ 6.2): `x` present = held until `x`; absent = confirmed. */
-export const SeatEntrySchema = z.object({ x: InstantSchema.optional() });
-export type SeatEntry = z.infer<typeof SeatEntrySchema>;
-
 // ---------------------------------------------------------------------------------------------------------------
 // Tenant settings (§ 4.1). Referenced by `TenantConfigSchema` in index.ts as OPTIONAL fields with no top-level
 // default: a tenant without them parses exactly as before. Absent `schedulingEnabled` = off.
@@ -352,8 +287,8 @@ export const SchedulingSettingsSchema = z.object({
 });
 export type SchedulingSettings = z.infer<typeof SchedulingSettingsSchema>;
 
-/** The seven mail keys of § 11.1. Defaults and the sending rules per key live in `scheduling-email.ts` (`sched-1d`). */
-export const SchedulingEmailKeySchema = z.enum(["hold", "confirmed", "cancelled", "moved", "unplaced", "reminder", "weekAhead"]);
+/** The six mail keys of § 11.1. Defaults and the sending rules per key live in `scheduling-email.ts` (`sched-1d`). */
+export const SchedulingEmailKeySchema = z.enum(["hold", "confirmed", "cancelled", "moved", "reminder", "weekAhead"]);
 export type SchedulingEmailKey = z.infer<typeof SchedulingEmailKeySchema>;
 
 /** A tenant override of one mail. An absent `sendTo…` means the key's default (no schema default here, § 11.1 `weekAhead`). */
@@ -552,8 +487,7 @@ export type ConfirmRefusal = { kind: "expired"; at: Instant } | { kind: "cancell
 export type ChangeRefusal =
     | { kind: "tooLate"; cutoff: Instant }
     | { kind: "notActive"; state: "expired" | "cancelled" }
-    | { kind: "notConfirmed" }
-    | { kind: "paidContactTenant" };
+    | { kind: "notConfirmed" };
 
 /** Held and not expired, or confirmed. */
 export function isActive(state: BookingState, now: Instant): boolean {
@@ -580,19 +514,6 @@ export function confirmDecision(b: Booking, now: Instant): Result<"apply" | "noo
     }
 }
 
-/**
- * The start the customer's change window counts back from: a slot's own start; for a seat, `startOf` (the run's
- * first meeting, read by the caller from `RUN#`); none for `unplaced` ("always inside the window").
- */
-function changeWindowStart(what: BookingWhat, startOf: Instant | null): Instant | null {
-    switch (what.kind) {
-        case "slot": return what.start;
-        case "seat": return startOf;
-        case "unplaced": return null;
-        default: return assertNever(what);
-    }
-}
-
 /** § 5.3, the same for customer and admin: cancel any active booking; move only a confirmed one. */
 function actionAllowed(action: "cancel" | "move", confirmed: boolean): Result<void, ChangeRefusal> {
     switch (action) {
@@ -604,14 +525,13 @@ function actionAllowed(action: "cancel" | "move", confirmed: boolean): Result<vo
 
 /**
  * § 5.3 customer change (link) and admin change. A booking that is not active (cancelled, or held and expired) is
- * refused for every actor. Customer: an `order` booking → `paidContactTenant`; a move needs `confirmed`; both before
- * `start − cutoffHours`. Admin: cancel any active booking; move confirmed bookings (an unplaced booking is
- * confirmed); no time window.
+ * refused for every actor. Customer: a move needs `confirmed`; both before `start − cutoffHours` (the slot's start).
+ * Admin: cancel any active booking; move confirmed bookings; no time window.
  *
  * Every decision here dispatches by `switch` with `assertNever` (review R2): state, actor, action and source. A
  * new variant of any of them fails the compile here instead of taking an `else` branch.
  */
-export function changeDecision(b: Booking, startOf: Instant | null, now: Instant, cutoffHours: number,
+export function changeDecision(b: Booking, now: Instant, cutoffHours: number,
     action: "cancel" | "move", actor: "customer" | "admin"): Result<void, ChangeRefusal> {
     const state = b.state;
     let confirmed: boolean;
@@ -631,44 +551,29 @@ export function changeDecision(b: Booking, startOf: Instant | null, now: Instant
         case "customer": {
             const source = b.source;
             switch (source.kind) {
-                case "order": return err({ kind: "paidContactTenant" });
                 case "visitor":
                 case "manual": break;
                 default: return assertNever(source);
             }
             const allowed = actionAllowed(action, confirmed);
             if (!allowed.ok) return allowed;
-            const start = changeWindowStart(b.what, startOf);
-            if (start !== null) {
-                const cutoff = start - cutoffHours * HOUR_MS;
-                if (now >= cutoff) return err({ kind: "tooLate", cutoff });
-            }
+            const cutoff = b.what.start - cutoffHours * HOUR_MS;
+            if (now >= cutoff) return err({ kind: "tooLate", cutoff });
             return ok(undefined);
         }
         default: return assertNever(actor);
     }
 }
 
-/** The end the link's 30 days count from: a slot's end; for a seat, `endOf` (the run's last meeting end); none for `unplaced`. */
-function viewEnd(what: BookingWhat, endOf: Instant | null): Instant | null {
-    switch (what.kind) {
-        case "slot": return what.end;
-        case "seat": return endOf;
-        case "unplaced": return null;
-        default: return assertNever(what);
-    }
-}
-
-/** § 5.3 token view: valid while not cancelled and `now < end + 30 days`; `unplaced` is valid while unplaced. */
-export function tokenView(b: Booking, endOf: Instant | null, now: Instant): "valid" | "gone" {
+/** § 5.3 token view: valid while not cancelled and `now < end + 30 days` (the slot's end). */
+export function tokenView(b: Booking, now: Instant): "valid" | "gone" {
     switch (b.state.kind) {
         case "cancelled": return "gone";
         case "held":
         case "confirmed": break;
         default: return assertNever(b.state);
     }
-    const end = viewEnd(b.what, endOf);
-    return end === null || now < end + TOKEN_VIEW_DAYS * DAY_MS ? "valid" : "gone";
+    return now < b.what.end + TOKEN_VIEW_DAYS * DAY_MS ? "valid" : "gone";
 }
 
 /** § 4.4: `h` + `e`, keeping the newest 50 (the oldest is dropped). */
@@ -685,148 +590,6 @@ export function bookingBase(tenant: { id: string; domain?: string }, cloudFrontO
     const domain = tenant.domain;
     if (domain !== undefined && domain !== "" && !domain.endsWith(".localhost")) return `https://${domain}`;
     return `${cloudFrontOrigin}/_site/${tenant.id}`;
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Group shape (§ 5.4)
-// ---------------------------------------------------------------------------------------------------------------
-
-export type SeatRefusal =
-    | { kind: "runCancelled" }
-    | { kind: "runClosed" }
-    | { kind: "runStarted" }
-    | { kind: "runFull"; capacity: number }
-    | { kind: "languageMismatch"; run: string; person: string };
-
-export type Proposal =
-    | { kind: "proposed"; run: string; others: string[] }
-    | { kind: "choose"; runs: string[] }
-    | { kind: "noneOpen" };
-
-export type MeetingError =
-    | { kind: "empty" }
-    | { kind: "endNotAfterStart"; index: number }
-    | { kind: "overlap"; a: number; b: number }
-    | { kind: "nonexistentLocalTime"; index: number }
-    | { kind: "tooMany"; max: 60 };
-
-/** Held unexpired + confirmed seats, without `excluding`. */
-export function activeSeats(seats: Record<string, SeatEntry>, now: Instant, excluding?: string): number {
-    return Object.entries(seats).filter(([id, seat]) => id !== excluding && entryActive(seat, now)).length;
-}
-
-/**
- * § 5.4 seats. Visitor: refused when cancelled, closed, started (`now >= firstStart`), full, or the language is
- * incompatible (a run `set` to another tag than the person's; no person language fits every run). Admin: refused
- * only when cancelled or full, and never changes the language.
- */
-export function seatDecision(run: Run, seatsTaken: number, firstStart: Instant, person: Person,
-    actor: "visitor" | "admin", now: Instant): Result<{ languageAfter: RunLanguage }, SeatRefusal> {
-    switch (actor) {
-        case "visitor": {
-            switch (run.status) {
-                case "cancelled": return err({ kind: "runCancelled" });
-                case "closed": return err({ kind: "runClosed" });
-                case "open": break;
-                default: return assertNever(run.status);
-            }
-            if (now >= firstStart) return err({ kind: "runStarted" });
-            if (seatsTaken >= run.capacity) return err({ kind: "runFull", capacity: run.capacity });
-            const language = run.language;
-            switch (language.kind) {
-                case "notSet":
-                    return ok({ languageAfter: person.language === undefined ? language : { kind: "set", tag: person.language } });
-                case "set":
-                    if (person.language !== undefined && person.language !== language.tag) {
-                        return err({ kind: "languageMismatch", run: language.tag, person: person.language });
-                    }
-                    return ok({ languageAfter: language });
-                default: return assertNever(language);
-            }
-        }
-        case "admin": {
-            switch (run.status) {
-                case "cancelled": return err({ kind: "runCancelled" });
-                case "closed":
-                case "open": break;
-                default: return assertNever(run.status);
-            }
-            if (seatsTaken >= run.capacity) return err({ kind: "runFull", capacity: run.capacity });
-            return ok({ languageAfter: run.language });
-        }
-        default: return assertNever(actor);
-    }
-}
-
-/** § 4.3: only an `open` run takes new visitor seats (`closed` stops them; `cancelled` is final). */
-function offeredToVisitors(status: RunStatus): boolean {
-    switch (status) {
-        case "open": return true;
-        case "closed":
-        case "cancelled": return false;
-        default: return assertNever(status);
-    }
-}
-
-function languageFits(language: RunLanguage, personLanguage: string | undefined): boolean {
-    switch (language.kind) {
-        case "notSet": return true;
-        case "set": return personLanguage === undefined || language.tag === personLanguage;
-        default: return assertNever(language);
-    }
-}
-
-/**
- * § 5.4 proposal (D6, D7). Candidates: open, not started, not full, language compatible. With a partly filled
- * candidate: the most taken, then the earliest first meeting, then the lowest id; `others` = the other candidates
- * by first meeting. With only empty candidates: `choose` them all by first meeting.
- */
-export function propose(runs: { run: Run; taken: number; firstStart: Instant }[], personLanguage: string | undefined,
-    now: Instant): Proposal {
-    const candidates = runs.filter((c) => offeredToVisitors(c.run.status) && now < c.firstStart && c.taken < c.run.capacity
-        && languageFits(c.run.language, personLanguage));
-    if (candidates.length === 0) return { kind: "noneOpen" };
-    const byFirstMeeting = [...candidates].sort((a, b) => a.firstStart - b.firstStart || byCodeUnit(a.run.id, b.run.id));
-    const partlyFilled = candidates.filter((c) => c.taken > 0);
-    if (partlyFilled.length === 0) return { kind: "choose", runs: byFirstMeeting.map((c) => c.run.id) };
-    const best = [...partlyFilled].sort((a, b) => b.taken - a.taken || a.firstStart - b.firstStart || byCodeUnit(a.run.id, b.run.id))[0];
-    return { kind: "proposed", run: best.run.id, others: byFirstMeeting.filter((c) => c !== best).map((c) => c.run.id) };
-}
-
-/**
- * § 5.4 meetings: 1-60, each `end > start`, each local time exists, no overlap (as instants in `tz`); sorted by
- * start on output. Indexes in errors are positions in the input list.
- */
-export function validateMeetings(m: Meeting[], tz: TimeZone): Result<[Meeting, ...Meeting[]], MeetingError> {
-    if (m.length === 0) return err({ kind: "empty" });
-    if (m.length > MAX_MEETINGS) return err({ kind: "tooMany", max: 60 });
-    const spans: { index: number; start: Instant; end: Instant }[] = [];
-    for (let index = 0; index < m.length; index++) {
-        const meeting = m[index];
-        if (minutesOfDay(meeting.end) <= minutesOfDay(meeting.start)) return err({ kind: "endNotAfterStart", index });
-        const start = localToInstant(meeting.date, meeting.start, tz);
-        const end = localToInstant(meeting.date, meeting.end, tz);
-        if (!start.ok || !end.ok) return err({ kind: "nonexistentLocalTime", index });
-        spans.push({ index, start: start.value, end: end.value });
-    }
-    spans.sort((a, b) => a.start - b.start || a.index - b.index);
-    for (let k = 1; k < spans.length; k++) {
-        if (spans[k].start < spans[k - 1].end) return err({ kind: "overlap", a: spans[k - 1].index, b: spans[k].index });
-    }
-    const sorted = spans.map((s) => m[s.index]);
-    return ok([sorted[0], ...sorted.slice(1)]);
-}
-
-/** § 5.4 cancel a run: confirmed seats → unplaced; held unexpired → cancelled; expired entries ignored. Ids sorted. */
-export function cancelRunEffects(seats: Record<string, SeatEntry>, now: Instant): { toUnplace: string[]; toCancel: string[] } {
-    const toUnplace: string[] = [];
-    const toCancel: string[] = [];
-    for (const id of Object.keys(seats).sort(byCodeUnit)) {
-        const x = seats[id].x;
-        if (x === undefined) toUnplace.push(id);
-        else if (now < x) toCancel.push(id);
-    }
-    return { toUnplace, toCancel };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

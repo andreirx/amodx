@@ -1,5 +1,5 @@
 /**
- * SCHED-1D1 — POST /scheduling/admin/bookings/{bookingId}/cancel (E+T; docs/slices/sched-1.md § 10.3, § 7.3, § 7.4):
+ * SCHED-1D1 — POST /scheduling/admin/bookings/{bookingId}/cancel (E+T; docs/slices/sched-1.md § 10.3, § 7.3):
  * body `{}` → `BookingAdminDTO`. The admin cancels any active booking (no time window, § 5.3); a cancelled or expired
  * hold → 409 `notActive`. One transaction (`cancelBooking`): the place is released, every link token is deleted
  * (`tokenHashes = []`), and the `cancelled` history entry with `by: { kind: "admin", email }` is appended in the same
@@ -35,7 +35,6 @@ export function changeFailureAnswer(f: ChangeFailure): Answer {
         case "notActive": return refusal(409, "notActive", "The booking is not active.", { state: f.state });
         case "tooLate": return refusal(409, "tooLate", "The change window has closed.", { cutoff: new Date(f.cutoff).toISOString() });
         case "notConfirmed": return refusal(409, "notConfirmed", "The booking is not confirmed.");
-        case "paidContactTenant": return refusal(409, "paidContactTenant", "A paid booking is changed by the site.");
         case "stale": return refusal(409, "stale", "The booking changed; read it again.");
         case "busy": return refusal(503, "busy", "Busy, please try again.");
         default: {
@@ -46,9 +45,9 @@ export function changeFailureAnswer(f: ChangeFailure): Answer {
 }
 
 /**
- * `whenText` moved to `lib/scheduling-email.ts` (SCHED-1G1). Re-exported here ONLY for the two existing importers
- * outside the SCHED-1G1 allocation (`./group-common.ts`, `../visitor/mail.ts`); pointing their imports at
- * `lib/scheduling-email.ts` and deleting this line is a recorded one-line follow-up for each.
+ * `whenText` moved to `lib/scheduling-email.ts` (SCHED-1G1). Re-exported here ONLY for the existing importer outside
+ * the SCHED-1G1 allocation (`../visitor/mail.ts`); pointing its import at `lib/scheduling-email.ts` and deleting this
+ * line is a recorded one-line follow-up.
  */
 export { whenText };
 
@@ -65,7 +64,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const tenant = await readSchedulingTenant(tenantId, true);   // decides the write: consistent (§ 6.4 rule 4)
         if (tenant === undefined) return refusal(404, "notFound", "Site not found.");
 
-        // Also before the write: the booking and the names its answer and mail show (resource, or course and run). A
+        // Also before the write: the booking and the names its answer and mail show (its resource). A
         // stored item that fails its schema → 500 storedDataInvalid here, with nothing changed (review S1D1-R01).
         const store = schedulingStoreFromEnv();
         // Consistent (§ 6.4 rule 4, review S1D1-R07): a "not found" here answers 404 instead of cancelling, so an eventual
@@ -97,13 +96,12 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
             if (template.sendToCustomer && !from) {
                 console.error("[scheduling] bookings-cancel no SES_FROM_EMAIL; mail not sent", booking.id);
             } else if (template.sendToCustomer) {
-                const mail = renderSchedulingMail(template, {
+                const mail = renderSchedulingMail("cancelled", template, {
                     ref: booking.ref,
                     customerName: booking.who.name,
-                    serviceName: booking.what.kind === "slot" ? booking.what.serviceName : "",
-                    courseName: names.courseName ?? "",
-                    when: whenText(booking, names, tenant.scheduling?.timezone),
-                    expiresAt: "", link: "", groupLink: "", // no link after a cancel: every token was deleted (§ 8.4)
+                    serviceName: booking.what.serviceName,
+                    when: whenText(booking, tenant.scheduling?.timezone),
+                    expiresAt: "", link: "", // no link after a cancel: every token was deleted (§ 8.4)
                     siteName: tenant.name ?? "",
                 });
                 await ses.send(new SendEmailCommand({

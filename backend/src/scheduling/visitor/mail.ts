@@ -10,7 +10,6 @@
  *   `cancelled`, § 11.1). The owner copy NEVER carries the link: a link token gives control of the booking (§ 8.1);
  *   the owner manages bookings in the admin.
  * Link: `<bookingBase>/_booking/manage#t=<token>` (§ 8.2), only when the caller minted a token for this mail (§ 8.4).
- * Group link: only in the `confirmed` mail of a seat (row D10 of § 2, F8).
  * Logs carry the booking id and the error name only.
  *
  * Abstraction line: `sendVisitorMail` — users: hold, confirm, cancel, move; axis: none (one recipient and variable
@@ -21,9 +20,8 @@ import { bookingBase, instantToLocal, type Booking, type Instant } from "@amodx/
 import { formatFromHeader } from "../../lib/email-from.js";
 import { renderSchedulingMail, resolveTemplate } from "../../lib/scheduling-email.js";
 import { whenText } from "../admin/bookings-cancel.js";
-import type { BookingNames } from "../admin/booking-dto.js";
 import type { SchedulingTenant } from "../common.js";
-import type { Place, VisitorSettings } from "./common.js";
+import type { VisitorSettings } from "./common.js";
 
 const ses = new SESClient({});
 
@@ -55,31 +53,23 @@ function customerCopy(key: VisitorMailKey, sendToCustomer: boolean): boolean {
  */
 export async function sendVisitorMail(input: {
     key: VisitorMailKey; tenantId: string; tenant: SchedulingTenant; settings: VisitorSettings;
-    booking: Booking; place: Place; token: string | null;
+    booking: Booking; token: string | null;
 }): Promise<"sent" | "failed" | "off"> {
-    const { key, tenantId, tenant, settings, booking: b, place, token } = input;
+    const { key, tenantId, tenant, settings, booking: b, token } = input;
     const template = resolveTemplate(key, tenant.templates);
     const from = process.env.SES_FROM_EMAIL ?? "";
     const origin = process.env.RENDERER_CLOUDFRONT_ORIGIN ?? "";
-    const names: BookingNames = {
-        resourceName: null,
-        courseName: place.course?.name ?? null,
-        firstStart: place.run !== undefined ? Date.parse(place.run.firstStartIso) : null,
-        runTimezone: place.run?.timezone ?? null,
-    };
     const vars = (link: string) => ({
         ref: b.ref,
         customerName: b.who.name,
-        serviceName: b.what.kind === "slot" ? b.what.serviceName : "",
-        courseName: names.courseName ?? "",
-        when: whenText(b, names, settings.timezone),
+        serviceName: b.what.serviceName,
+        when: whenText(b, settings.timezone),
         expiresAt: b.state.kind === "held" ? localText(b.state.expiresAt, settings.timezone) : "",
         link,
-        groupLink: key === "confirmed" && b.what.kind === "seat" ? place.run?.groupLink ?? "" : "",
         siteName: tenant.name ?? "",
     });
     const send = async (to: string, link: string) => {
-        const mail = renderSchedulingMail(template, vars(link));
+        const mail = renderSchedulingMail(key, template, vars(link));
         await ses.send(new SendEmailCommand({
             Source: formatFromHeader(tenant.name, from),
             Destination: { ToAddresses: [to] },

@@ -1,6 +1,6 @@
 // SCHED-1G2 — the book page `/_booking` (docs/slices/sched-1.md § 10.1). Query: `frame=1` (no header, transparent
-// background), `lang=<tag>` (texts of that language when a pack exists), `service=<id>` / `course=<id>` (start on that
-// service or course). The flow runs in the browser (`BookFlow`) against the renderer proxy `<base>/api/<op>`.
+// background), `lang=<tag>` (texts of that language when a pack exists), `service=<id>` (start on that
+// service). The flow runs in the browser (`BookFlow`) against the renderer proxy `<base>/api/<op>`.
 // reCAPTCHA v3 is the ONLY third-party script (row G6), with the tenant's site key when the tenant set both keys
 // (`mapTenant`, § 9.1), else the deployment key. It is a plain `<script async>` rendered here, NOT the site's
 // `RecaptchaProvider` client component: a client module shared with the site tree regroups the client chunks of every
@@ -43,7 +43,7 @@ export default async function BookPage({ params, searchParams }: Props) {
     return (
         <PageShell config={config} frame={one(query.frame) === "1"} language={language} title={texts.bookTitle}>
             <BookFlow texts={texts} locale={locale} recaptchaSiteKey={recaptchaSiteKey}
-                initialServiceId={one(query.service)} initialCourseId={one(query.course)} />
+                initialServiceId={one(query.service)} />
             {recaptchaSiteKey && <script src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(recaptchaSiteKey)}`} async />}
         </PageShell>
     );
