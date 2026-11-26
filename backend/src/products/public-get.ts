@@ -37,10 +37,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             return { statusCode: 404, body: JSON.stringify({ error: "Product not found" }) };
         }
 
+        // DIGITAL-FILE-GUARD-1: `resourceId` names the product's private file; it never leaves on this public route.
+        // The rest of the stored item is answered as before (docs/slices/digital-file-guard-1.md § G2 lists it).
+        const { resourceId: _privateFile, ...publicProduct } = product;
+
         return {
             statusCode: 200,
             headers: { "Cache-Control": "public, max-age=60" },
-            body: JSON.stringify(product)
+            body: JSON.stringify(publicProduct)
         };
     } catch (e: any) {
         console.error("[products/public-get] Error:", e);

@@ -6,6 +6,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
+import { productIdsReferencingResource } from "../lib/resource-products.js";
 
 
 const s3 = new S3Client({});
@@ -75,8 +76,9 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         // 2. Handle Gated Resource (The "Exchange")
         let downloadUrl = undefined;
-        // We look for 'resourceId' in the custom data payload or top level
-        const resourceId = body.resourceId;
+        // DIGITAL-FILE-GUARD-1: only a non-empty string is a resource id. The same string is the RESOURCE# key and
+        // the value the product lookup compares, so the two reads cannot disagree on its type.
+        const resourceId = typeof body.resourceId === "string" ? body.resourceId : undefined;
 
         if (resourceId && PRIVATE_BUCKET) {
             // A. Find the resource meta
@@ -86,13 +88,22 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }));
 
             if (resourceRes.Item) {
-                // B. Generate Link
-                const command = new GetObjectCommand({
-                    Bucket: PRIVATE_BUCKET,
-                    Key: resourceRes.Item.s3Key
-                });
-                // URL valid for 15 minutes
-                downloadUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
+                // DIGITAL-FILE-GUARD-1 (docs/slices/digital-file-guard-1.md): a resource that any product of this
+                // tenant references (any status) is a product's file, not a lead magnet. The lead stays stored; the
+                // answer has no link. A failed lookup throws to the catch below (500, no link): fail closed. The id
+                // in the log line is the one of a stored resource (the Get above matched it), never free text.
+                const productIds = await productIdsReferencingResource(tenantId, resourceId);
+                if (productIds.length > 0) {
+                    console.warn(`[leads/create] product file refused as lead magnet: tenant=${tenantId} resource=${resourceId}`);
+                } else {
+                    // B. Generate Link
+                    const command = new GetObjectCommand({
+                        Bucket: PRIVATE_BUCKET,
+                        Key: resourceRes.Item.s3Key
+                    });
+                    // URL valid for 15 minutes
+                    downloadUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
+                }
             }
         }
 

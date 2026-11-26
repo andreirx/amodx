@@ -11,7 +11,7 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 20 files in total)
+├── lib/                   # (selected modules; 21 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── scheduling-db.ts   # SCHED-1C (docs/slices/sched-1.md § 6-§ 8.4, § 13, § 14, § 23; PROTOTYPE): the ONLY code
 │   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
@@ -102,6 +102,11 @@ src/
 │   │                      #   page) as before; CAT-IMPORT-1 adds listCatProductIds (complete, ConsistentRead) and
 │   │                      #   writeCategoryProjections (one category, UnprocessedItems resent ≤ 5×, returns the
 │   │                      #   count left) — used only by the glam importer's reconciliation
+│   ├── resource-products.ts # productIdsReferencingResource(tenant, resource): ids of every product (any status)
+│   │                      #   whose resourceId is that resource. Query PRODUCT# + filter, ALL pages, ConsistentRead
+│   │                      #   (reads the whole product range of the tenant at the consistent rate; an absence here
+│   │                      #   authorizes a lead link, so it must see completed writes). Throws on a failed read.
+│   │                      #   Users: resources/presign.ts (download) and leads/create.ts (DIGITAL-FILE-GUARD-1)
 │   ├── events.ts          # EventBridge publishAudit() helper
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha() (a success answer without a
 │   │                      #   finite numeric score, or an answer that is not an object → refusal; PUBLIC-HARDEN-1)
@@ -172,6 +177,8 @@ src/
 │   ├── create.ts          # POST /products
 │   ├── list.ts            # GET /products
 │   ├── get.ts             # GET /products/{id}
+│   ├── public-get.ts      # GET /public/products/{slug} (no auth): the stored item WITHOUT resourceId
+│   │                      #   (DIGITAL-FILE-GUARD-1); public-list.ts projects a field list
 │   ├── update.ts          # PUT /products/{id}
 │   └── delete.ts          # DELETE /products/{id}
 ├── categories/
@@ -228,7 +235,10 @@ src/
 │   ├── list.ts            # GET /signals
 │   └── update.ts          # PUT /signals/{id}
 ├── leads/
-│   ├── create.ts          # POST /leads (public, no auth)
+│   ├── create.ts          # POST /leads: the authorizer admits it anonymously (auth/authorizer.ts:236; the handler
+│   │                      #   then checks Origin) or as RENDERER (the site proxy /api/leads sends the renderer key).
+│   │                      #   Stores the lead; signs a 15-min link for body.resourceId only when no product
+│   │                      #   references that resource (DIGITAL-FILE-GUARD-1; product file → 201, no link, warn)
 │   └── list.ts            # GET /leads
 ├── forms/
 │   ├── create/list/get/update/delete.ts, submissions.ts   # admin forms (FORM#<id> + FORMSLUG#<slug> pointer)
@@ -464,7 +474,9 @@ src/
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/
-│   └── presign.ts         # POST /resources/upload-url, GET /resources/{id}/download-url
+│   └── presign.ts         # POST /resources/upload, GET /resources/{id}/download (infra/lib/api.ts:512,517;
+│                          #   the code comments say upload-url / download-url). Linked products via
+│                          #   lib/resource-products.ts
 ├── assets/
 │   ├── create.ts          # POST /assets (returns presigned upload URL)
 │   └── list.ts            # GET /assets

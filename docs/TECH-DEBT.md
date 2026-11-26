@@ -241,6 +241,22 @@ Do not carry the numbers above into a slice report without re-running them.
 
 ## High Priority (Missing Features)
 
+### F-CMRC1-PRESIGN-ENTITLEMENT: a paid digital product has no delivery path
+**Found:** `cmrc-1` (named there); restated by `digital-file-guard-1` (2026-11-26). **Scope:** product decision for
+the human; ROADMAP slice `presign-entitlement-1`.
+
+- `hasUserPurchasedProduct` (`backend/src/resources/presign.ts:21-58`) reads `CUSTORDER#<email>#` with projection
+  `items`; those items hold only `orderNumber, total, status, createdAt, Type` (`backend/src/orders/create.ts:439-448`).
+  So every non-admin caller of `GET /resources/{id}/download` is refused ("Purchase required").
+- No site screen calls that route; only the MCP tool does (`tools/mcp-server/src/index.ts:1857`).
+- The Paddle webhook fulfils nothing (`paddle-hook-1`, unverified route).
+- Since `digital-file-guard-1`, the lead form also signs no link for a product's file (that was the leak, not a
+  delivery path).
+
+Result: a customer who pays for a digital product cannot get the file through the system. Fix needs a decision:
+which event proves payment (`pay-1` "paid" transition, `pay-2` verified webhook), and where the customer downloads
+(account page, emailed link).
+
 ### `UPLOADS_CDN_URL` is not wired to the renderer server Lambda (review photos degrade to absent)
 **Found:** `rev-4` build. **Scope:** ONE env var on `infra/lib/renderer-hosting.ts` (composition
 root) — deliberately deferred because `rev-4`'s writable surface bans infra edits.

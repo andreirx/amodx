@@ -5,6 +5,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { normalizeEmail } from "@amodx/shared";
+import { productIdsReferencingResource } from "../lib/resource-products.js";
 
 const s3 = new S3Client({});
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET!;
@@ -55,28 +56,6 @@ async function hasUserPurchasedProduct(
     }
 
     return false;
-}
-
-/**
- * Find the product(s) that reference this resource.
- */
-async function getProductsForResource(tenantId: string, resourceId: string): Promise<string[]> {
-    // Query all products for this tenant and filter by resourceId
-    // This is not optimal for large catalogs, but resources are typically
-    // linked to single products
-    const result = await db.send(new QueryCommand({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-        FilterExpression: "resourceId = :resourceId",
-        ExpressionAttributeValues: {
-            ":pk": `TENANT#${tenantId}`,
-            ":sk": "PRODUCT#",
-            ":resourceId": resourceId,
-        },
-        ProjectionExpression: "id",
-    }));
-
-    return (result.Items || []).map((item: any) => item.id);
 }
 
 // POST /resources/upload-url (Admin Only)
@@ -146,7 +125,7 @@ export const downloadHandler: Handler = async (event) => {
         // Admins bypass purchase check
         if (userRole !== "TENANT_ADMIN" && userRole !== "GLOBAL_ADMIN") {
             // Find which product(s) this resource belongs to
-            const productIds = await getProductsForResource(tenantId, resourceId);
+            const productIds = await productIdsReferencingResource(tenantId, resourceId);
 
             if (productIds.length === 0) {
                 // Resource not linked to any product - require admin access
