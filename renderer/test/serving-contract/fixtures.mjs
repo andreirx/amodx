@@ -1058,7 +1058,8 @@ const SL1E_ITEMS = [
 // rows `sched1g-*` read the running build only):
 //  - `studio` (en-US): its OWN reCAPTCHA pair (site key + secret: `mapTenant` maps the site key, never the secret, § 9.1)
 //    and every tenant script the site layout injects — Google Analytics id, Facebook pixel, Paddle client token — so the
-//    booking pages' ABSENCE of them (row G6) has a positive control: the tenant's own home page shows each marker;
+//    booking pages' ABSENCE of them (row G6) has a positive control: the tenant's own home page shows each config marker
+//    (PIXEL-CONSENT-1: the pixel id is a client prop; its loader waits for marketing consent, never in server HTML);
 //  - `oneKey` (ro-RO): a site key WITHOUT a secret — not a pair, so no tenant key reaches any page (row G8), and the
 //    Romanian texts of the booking pages (rows G3, G12).
 // The booking backend is not reachable from the suite (no `API_URL` in the constructed environment, row iso1): the proxy

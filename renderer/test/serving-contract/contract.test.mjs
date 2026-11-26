@@ -4099,17 +4099,27 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(sched1g-g6) no tenant script on the booking pages: the book page loads reCAPTCHA only, the manage page no third-party script; Referrer-Policy on manage", async () => {
             const markers = {
-                analytics: SCHED1G_MARKERS.ga, pixelId: SCHED1G_MARKERS.pixel, pixelScript: "connect.facebook.net",
+                analytics: SCHED1G_MARKERS.ga, pixelId: SCHED1G_MARKERS.pixel,
                 paddle: SCHED1G_MARKERS.paddle, cookieBanner: "We value your privacy", referralBeacon: "/api/ref?v=",
             };
-            // Positive control: the tenant's own site page carries every marker.
+            // Positive control: the tenant's site page carries each configuration/component marker.
+            // PIXEL-CONSENT-1: its pixel id remains in the FBPixelLoader client props, NOT a loader in server HTML.
+            // The markers are strings only the pixel emits (script id, SDK host, the image endpoint); a bare
+            // `<noscript` is NOT one: ThemeInjector's font fallback uses it on every tenant with a font.
             const home = await at(S1G.host, "/");
             for (const [name, m] of Object.entries(markers)) assert.ok(home.body.includes(m), `control: the site page lacks ${name}`);
+            const pixelLoader = /fb-pixel|connect\.facebook\.net|facebook\.com\/tr/;
+            assert.doesNotMatch(home.body, pixelLoader, "P2: the site page must wait for marketing consent");
+            // The flight payload sits in a JS string in the HTML, so its quotes arrive escaped (`\"`):
+            // `22:I[<module>,[<chunks>],\"FBPixelLoader\"]` and the element `{\"pixelId\":\"<id>\"}`.
+            assert.ok(home.body.includes('\\"FBPixelLoader\\"'), "control: the site page mounts the consent-gated pixel loader");
+            assert.ok(home.body.includes(`{\\"pixelId\\":\\"${SCHED1G_MARKERS.pixel}\\"}`), "control: the loader receives the tenant's pixel id");
             const book = await at(S1G.host, "/_booking");
             const manage = await at(S1G.host, "/_booking/manage");
             const externalScripts = (body) => [...body.matchAll(/<script[^>]*\ssrc="(https?:\/\/[^"]*)"/g)].map((m) => m[1]);
             for (const [page, res] of [["book", book], ["manage", manage]]) {
                 for (const [name, m] of Object.entries(markers)) assert.ok(!res.body.includes(m), `${page} page carries ${name}`);
+                assert.doesNotMatch(res.body, pixelLoader, `${page} page carries a pixel loader`);
             }
             assert.deepEqual(externalScripts(book.body), [`https://www.google.com/recaptcha/api.js?render=${SCHED1G_SITE_KEY}`], "book page: reCAPTCHA (tenant key) is the only external script");
             assert.deepEqual(externalScripts(manage.body), [], "manage page: an external script");

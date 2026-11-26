@@ -53,6 +53,8 @@ src/
 │   ├── CommentsSection.tsx                    # Comment list + form (requires NextAuth session)
 │   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link — canonical URL prop from SitePage (hydration-1)
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
+│   ├── FBPixel.tsx                            # Server; mounts FBPixelLoader via a dynamic import() (chunk-set reason: pixel-consent-1)
+│   ├── FBPixelLoader.tsx                      # Client; renders the pixel loader only when useConsent().marketing === true (pixel-consent-1)
 │   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny (texts = resolved site keys, from the layout)
 │   ├── QuoteRequest.tsx                       # CAT-QUOTE-1: "Request a quote" button + native <dialog> (showModal) with Call / WhatsApp / E-mail
 │   │                                          #   from contactChannels; message = catalog key quoteMessage with the product title, the presenter's option
@@ -1118,3 +1120,41 @@ Its block is in server HTML. `useTenantUrl` reads its cookie fallback after moun
 Headless SSR/hydration bindings and the render-read audit: `docs/slices/hydration-1.md`.
 Serving expected data is forward-derived from recorded share props and canonicals, not re-captured by the builder;
 no candidate output is masked. The local-server/browser/staging proofs remain operator gates.
+
+## Facebook consent gate (pixel-consent-1)
+
+The site layout still mounts `FBPixel` only when `integrations.fbPixelId` is set (layout unchanged).
+`FBPixel` stays a server component; it only does `await import("./FBPixelLoader")` and renders
+`<FBPixelLoader pixelId>`. `FBPixelLoader` is the client component: its existing `useConsent` hook
+starts at `null` on the server and the first client render; only its effect reads
+`window.AMODX_CONSENT`. It returns `null` unless `marketing === true`. The script text, id and
+`afterInteractive` strategy are unchanged. There is no `noscript` image: a visitor
+without JavaScript cannot choose consent, so this route must not report a PageView.
+
+Why the dynamic import (measured, serving rows `cm1-identity-*`): a static import of a new client
+module from the layout graph, a second export in `Analytics.tsx`, or a `fbPixelId` prop on
+`Analytics` each made Turbopack's chunk optimiser move an existing 250-byte async-loader stub
+(the `@amodx/effects/render` import of `PageEffectWrapper`) out of the shared layout chunk, so
+every compared HTML page of the tenants without a pixel id referenced it too (+2 or +3
+`/_next/static` references per URL against that URL's baseline). With the dynamic import, every
+`cm1-identity` URL compares equal to its baseline under the existing canonicalisation, with equal
+`assetPath` per URL. The partition is Turbopack's
+decision; it was observed, not derived. Re-run `npm --prefix renderer run test:serving` after any
+change to the layout's client modules.
+
+The banner writes the global and dispatches `amodx-consent-updated` in its choice
+handler; the hook's listener updates React state on the current page. No reload, new
+store or server-side cookie read is needed. This also keeps consent out of cached HTML.
+`trackFBEvent` sends only if `window.fbq` exists: the loader installs a queue before the
+SDK arrives. Earlier events are dropped, not replayed. Its callers remain
+`AddToCartButton`, `CheckoutPageView` and `FBPurchaseEvent` (mounted by `SitePage`).
+This slice does not unload an already installed SDK, implement consent revocation or
+retry a purchase event after later acceptance.
+
+Headless SSR/hydration and inline-loader bindings: `test/unit/pixel-consent-1.test.ts`.
+The tests stub the Next Script boundary (the external CJS module resolves a second
+React copy here); they execute the supplied loader text in jsdom with external
+resources disabled. They are not browser network or deployed Next proofs. Serving
+row `sched1g-g6` now requires no loader/image on the pixel-configured home, and (control)
+the `FBPixelLoader` client reference with the tenant's pixel id. Test rows, capture delta and gates:
+`docs/slices/pixel-consent-1.md`.

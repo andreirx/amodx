@@ -47,3 +47,5 @@ consent. That is the behaviour the code comment already claims. Name it to the h
 
 In Google's tag checker, a staging order shows one GA4 purchase and one Ads conversion after consent, and
 nothing without consent.
+
+2026-11-26 — item 4 shipped as `pixel-consent-1`; built record: `docs/slices/pixel-consent-1.md` (staging browser proof and deployment pending). The remaining `tags-1` items stay draft and are not built.

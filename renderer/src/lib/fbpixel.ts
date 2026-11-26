@@ -1,6 +1,7 @@
 /**
- * FB Pixel helper — safely fires events only when the pixel SDK is loaded
- * (respects cookie consent since FBPixel component only loads when consent is given).
+ * Sends events only when window.fbq exists (the loader can queue before the SDK arrives).
+ * FBPixelLoader (mounted by FBPixel) installs it only after marketing consent. Events before that are dropped, not replayed.
+ * This presence check does not unload an already installed pixel or implement consent revocation.
  */
 
 declare global {

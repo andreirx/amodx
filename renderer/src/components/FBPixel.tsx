@@ -1,35 +1,20 @@
-import Script from "next/script";
-
 interface FBPixelProps {
     pixelId: string;
 }
 
-export function FBPixel({ pixelId }: FBPixelProps) {
-    return (
-        <>
-            <Script id="fb-pixel" strategy="afterInteractive">
-                {`
-                    !function(f,b,e,v,n,t,s)
-                    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-                    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-                    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                    n.queue=[];t=b.createElement(e);t.async=!0;
-                    t.src=v;s=b.getElementsByTagName(e)[0];
-                    s.parentNode.insertBefore(t,s)}(window, document,'script',
-                    'https://connect.facebook.net/en_US/fbevents.js');
-                    fbq('init', '${pixelId}');
-                    fbq('track', 'PageView');
-                `}
-            </Script>
-            <noscript>
-                <img
-                    height="1"
-                    width="1"
-                    style={{ display: "none" }}
-                    src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
-                    alt=""
-                />
-            </noscript>
-        </>
-    );
+/**
+ * Server component: mounts the Facebook pixel for a tenant that has a pixel id.
+ * It renders the client component FBPixelLoader, which renders the loader script only after the
+ * visitor accepts marketing cookies (PIXEL-CONSENT-1). This component itself sends nothing.
+ *
+ * Why the dynamic `import()` (PIXEL-CONSENT-1, measured with the serving rows cm1-identity-*):
+ * a STATIC import of a new client module here, or the same code added to Analytics.tsx, made
+ * Turbopack's chunk optimiser split one existing chunk of the site layout, so every compared HTML
+ * page, also of tenants without a pixel id, referenced one more /_next/static chunk. With this dynamic
+ * import those pages compare equal to their baselines under the serving comparator. The chunk partition is Turbopack's decision, observed, not
+ * derived: re-run `npm --prefix renderer run test:serving` after a change to this file.
+ */
+export async function FBPixel({ pixelId }: FBPixelProps) {
+    const { FBPixelLoader } = await import("./FBPixelLoader");
+    return <FBPixelLoader pixelId={pixelId} />;
 }
