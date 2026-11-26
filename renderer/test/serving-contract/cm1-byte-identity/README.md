@@ -99,3 +99,12 @@ No share element and no JSON-LD normalization means unchanged bytes.
 Candidate captures and CM1 masks are unchanged. This is forward-derived expected data, NOT a fresh capture or a
 claim that serving passed. Exact affected sets/tenant/path lines and operator gates: `docs/slices/hydration-1.md`.
 The no-server `renderer/test/unit/hydration-1-expectations.test.ts` checks the derivation and retained mutation detection.
+
+## LANDING-1 expected-data derivation (2026-11-26; operator-run serving gate)
+
+Historical captures remain unchanged. `contract.test.mjs` now reads them through `../landing-1-expected.mjs`,
+which first applies HYDRATION-1, then adds only the four exact chrome-root markers to expected HTML/Flight.
+There is no new candidate mask or canonicalisation. The no-server test `test/unit/landing-1-expectations.test.ts`
+checks all 844 responses, an exact source-attribute-line inventory (`../landing-1-capture-lines.json`), and mutation
+detection by both comparator families. 699 expected responses acquire class attributes; 145 do not change.
+These are derived expectations, not fresh-build measurements. Full record: `docs/slices/landing-1.md`.

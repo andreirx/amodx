@@ -651,13 +651,13 @@ export default function ContentEditor() {
                                             <input type="checkbox" checked={form.hideNav}
                                                    onChange={e => update("hideNav", e.target.checked)}
                                                    className="rounded"/>
-                                            Hide Navbar
+                                            Hide top bar, commerce bar and navigation
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer text-sm">
                                             <input type="checkbox" checked={form.hideFooter}
                                                    onChange={e => update("hideFooter", e.target.checked)}
                                                    className="rounded"/>
-                                            Hide Footer
+                                            Hide site footer
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer text-sm">
                                             <input type="checkbox" checked={form.hideSharing}

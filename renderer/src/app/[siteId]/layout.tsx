@@ -440,7 +440,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 {/* CAT-THEME-1: under `editorial` the footer is on the surface colour (`--muted` = the theme's surfaceColor,
                     ThemeInjector); its width is `footer.contentMaxWidth`, absent → the header's (the rule before the slice).
                     BULK-PURGE-FOOTER-1: `footer.backgroundColor` / `footer.textColor` override both shapes (footerColorStyle). */}
-                <footer className={editorial ? "border-t py-12 bg-muted" : "border-t py-12 bg-muted/30"} {...(footerStyle ? { style: footerStyle } : {})}>
+                <footer className={editorial ? "border-t py-12 bg-muted site-footer" : "border-t py-12 bg-muted/30 site-footer"} {...(footerStyle ? { style: footerStyle } : {})}>
                     <div className={`${config.footer?.contentMaxWidth || config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
                         {/* SHOP-LOOK-1A (§ 6.3 rule 1): one slot. With a brand text or named columns, a wider grid replaces
                             today's grid element whole: brand text, named columns, then today's three columns; else today's

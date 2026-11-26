@@ -161,7 +161,7 @@ export function Navbar({
     }, []);
 
     return (
-        <nav className="border-b bg-background/80 backdrop-blur" style={colorStyle}>
+        <nav className="border-b bg-background/80 backdrop-blur site-navbar" style={colorStyle}>
             <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8`}>
                 <div className={`flex justify-between items-center transition-all duration-300 ${scrolled ? navHeightScrolled : navHeight}`}>
 

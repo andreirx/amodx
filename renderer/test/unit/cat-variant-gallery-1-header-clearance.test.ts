@@ -69,8 +69,8 @@ import { SITE_HEADER_SELECTOR } from "@/components/ProductImageGallery";
 
 type Length = { rem: number; px: number };
 const NAV_ROW = /^<div class="flex justify-between items-center transition-all duration-300 h-(\d+)">/;
-const TOP_BAR = '<div class="bg-primary text-primary-foreground text-xs py-2 px-4">';
-const NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur">';
+const TOP_BAR = '<div class="bg-primary text-primary-foreground text-xs py-2 px-4 site-top-bar">';
+const NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur site-navbar">';
 
 /** The sticky header of the rendered layout, measured part by part (unscrolled bar). Throws on an unknown part. */
 function measureHeader(html: string): { unscrolled: Length; base: Length } {
@@ -198,6 +198,6 @@ describe("[cvg1-header] the pinned gallery clears the site header (CVG1-HEADER-C
         expect(await headerOf(tenant({ header: {} }))).toEqual({ base: { rem: 0, px: 1 }, unscrolled: { rem: 4, px: 1 } });
         expect(await headerOf(tenant({ theme: { shape: "editorial" }, topBar: { show: true, content: "x" }, header: {} }))).toEqual({ base: { rem: 2, px: 4 }, unscrolled: { rem: 6, px: 4 } });
         expect(scrolledNavRem({})).toBe(3);                         // the Navbar's own scrolled default, h-12
-        expect(() => measureHeader('<div class="sticky top-0 z-50"><div class="other"></div><nav class="border-b bg-background/80 backdrop-blur"></nav></div>')).toThrow(/unknown part before/);
+        expect(() => measureHeader('<div class="sticky top-0 z-50"><div class="other"></div><nav class="border-b bg-background/80 backdrop-blur site-navbar"></nav></div>')).toThrow(/unknown part before/);
     });
 });

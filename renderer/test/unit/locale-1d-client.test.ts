@@ -440,15 +440,19 @@ if (CAPTURE) {
 } else {
     const before: { commit: string; states: Record<string, string[]> } = JSON.parse(readFileSync(BEFORE_FILE, "utf8"));
 
-    describe("[1d-client] the en-US markup of every client-only commerce state equals the 92adbba capture (§ 16.2 item 4)", () => {
+    describe("[1d-client] en-US states match 92adbba plus LANDING-1 chrome-root classes (§ 16.2 item 4)", () => {
         it("the capture is from the start commit and holds every state", () => {
             expect(before.commit).toBe("92adbba");
             expect(Object.keys(before.states).sort()).toEqual(Object.keys(STATES).sort());
         });
         for (const [name, st] of Object.entries(STATES)) {
-            it(`${st.title}: EN markup after every step equals 92adbba`, async () => {
+            it(`${st.title}: EN markup matches 92adbba plus LANDING-1 root classes`, async () => {
                 const now = (await st.run("en")).map(tokenise);
-                expect(now).toEqual(before.states[name]);
+                // Expected-only additions; the immutable capture and every candidate byte stay intact.
+                const expected = before.states[name].map((html) => html
+                    .replace('<div class="hidden md:block bg-background/80 backdrop-blur border-b text-sm"', '<div class="hidden md:block bg-background/80 backdrop-blur border-b text-sm site-commerce-bar"')
+                    .replace('<nav class="border-b bg-background/80 backdrop-blur"', '<nav class="border-b bg-background/80 backdrop-blur site-navbar"'));
+                expect(now).toEqual(expected);
             });
         }
         it("[1d-client] the en-US formatter texts keep the runtime default (month name, birthday, loyalty points)", async () => {

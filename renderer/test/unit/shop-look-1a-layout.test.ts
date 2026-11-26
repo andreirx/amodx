@@ -209,6 +209,6 @@ describe("SHOP-LOOK-1A — footer.brandText and footer.columns", () => {
     });
     it("the footer colours still apply to the footer with the new grid (the <footer> element is the same)", async () => {
         const page = await layout(tenant("content", { footer: { backgroundColor: "#111111", brandText: "Brand" } }));
-        expect(page.footerHtml.startsWith('<footer class="border-t py-12 bg-muted/30" style="background-color:#111111">')).toBe(true);
+        expect(page.footerHtml.startsWith('<footer class="border-t py-12 bg-muted/30 site-footer" style="background-color:#111111">')).toBe(true);
     });
 });

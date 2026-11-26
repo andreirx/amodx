@@ -122,3 +122,17 @@ describe("ContentEditor — languages (LANG-1A)", () => {
         expect(withTranslationChoice(payload, { kind: "join", nodeId: "en1" })).toEqual({ ...payload, translationOf: "en1" });
     });
 });
+
+// Source-level label binding: no new UI harness for two literal strings.
+// The renderer's LANDING-1 tests exercise the behaviour of the existing persisted fields.
+it("LANDING-1: the existing switches state their full effect in English", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(new URL("./ContentEditor.tsx", import.meta.url), "utf8");
+    for (const [field, text] of [["hideNav", "Hide top bar, commerce bar and navigation"], ["hideFooter", "Hide site footer"]]) {
+        const labels = [...source.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1]);
+        const label = labels.find((s) => s.includes(`checked={form.${field}}`));
+        expect(label).toBeDefined();
+        expect(label).toContain(`update("${field}", e.target.checked)`);
+        expect(label!.replace(/<input[\s\S]*?\/>/, "").trim()).toBe(text);
+    }
+});

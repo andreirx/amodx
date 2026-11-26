@@ -939,6 +939,18 @@ Per-tenant Google OAuth via NextAuth.js:
 
 ## Theme System
 
+**LANDING-1 (PROTOTYPE; `docs/slices/landing-1.md`).** The existing chrome roots carry reserved marker classes:
+TopBar's outer `div` = `site-top-bar`, CommerceBar's outer `div` = `site-commerce-bar`, Navbar's outer `nav` =
+`site-navbar`, and the layout's `footer` = `site-footer` (both theme shapes). No wrapper or component prop is added.
+`SitePage` emits an unlayered `display: none !important` rule for the first three classes when `hideNav` is true,
+and for the footer class when `hideFooter` is true. No element selector is used. The Navbar's desktop dropdown,
+mobile toggle/menu and category bar are descendants of its marked root. CommerceBar remains desktop-only as before.
+CookieConsent, PopupManager and QuickContact are outside the four roots; their mounting rules do not change.
+This is presentation only: hidden chrome and links remain in HTML. Both switches off adds only the marker classes.
+Headless rows A1–A5: `test/unit/landing-1.test.ts`; serving expected-data derivation and exact historical capture-line
+inventory: `test/serving-contract/landing-1-expected.mjs`, `landing-1-capture-lines.json`. These transform EXPECTED
+data only, after HYDRATION-1 derivation; stored captures, candidates and comparison masks stay unchanged.
+
 `ThemeInjector.tsx` injects CSS custom properties into `:root`:
 - Colors: `--primary`, `--primary-foreground`, `--secondary`, `--background`, `--foreground`, etc.
 - Typography: `--font-heading`, `--font-body`

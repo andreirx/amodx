@@ -43,7 +43,7 @@ vi.mock("@/components/CookieConsent", () => ({ CookieConsent: () => null }));
 import SiteLayout from "@/app/[siteId]/layout";
 import { Navbar } from "@/components/Navbar";
 
-const NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur">';
+const NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur site-navbar">';
 const BG = "#f5f1ea", FG = "#1f2937";
 const LINKS = [{ label: "Services", href: "/services", children: [{ label: "Design", href: "/design" }] }, { label: "About", href: "/about" }];
 
@@ -103,7 +103,7 @@ describe("HEADER-COLOURS-1 — the site layout (server render)", () => {
             const plain = await layout(tenant(kind));
             const page = await layout(tenant(kind, { backgroundColor: BG, textColor: FG }));
             const style = `--color-background:${BG};--color-foreground:${FG};--color-muted-foreground:${FG}`;
-            expect(page.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur" style="${style}">`);
+            expect(page.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur site-navbar" style="${style}">`);
             expect(page.navProps.colorStyle).toEqual({ "--color-background": BG, "--color-foreground": FG, "--color-muted-foreground": FG });
             expect(page.html.split(page.navOpen).join(NAV_OPEN)).toBe(plain.html);
             expect(page.html.split("--color-").length - 1, "the variables occur only on the <nav>").toBe(3);
@@ -111,10 +111,10 @@ describe("HEADER-COLOURS-1 — the site layout (server render)", () => {
 
         it(`[${kind}] only one value valid: only that one applies`, async () => {
             const bgOnly = await layout(tenant(kind, { backgroundColor: BG }));
-            expect(bgOnly.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur" style="--color-background:${BG}">`);
+            expect(bgOnly.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur site-navbar" style="--color-background:${BG}">`);
             expect(bgOnly.navProps.colorStyle).toEqual({ "--color-background": BG });
             const fgOnly = await layout(tenant(kind, { backgroundColor: "red; x:y", textColor: FG }));
-            expect(fgOnly.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur" style="--color-foreground:${FG};--color-muted-foreground:${FG}">`);
+            expect(fgOnly.navOpen).toBe(`<nav class="border-b bg-background/80 backdrop-blur site-navbar" style="--color-foreground:${FG};--color-muted-foreground:${FG}">`);
             expect(fgOnly.navProps.colorStyle).toEqual({ "--color-foreground": FG, "--color-muted-foreground": FG });
         });
     }

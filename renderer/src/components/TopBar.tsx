@@ -10,7 +10,7 @@ interface TopBarProps {
 
 export function TopBar({ content, quickContactPhone, quickContactEmail, contentMaxWidth = "max-w-7xl" }: TopBarProps) {
     return (
-        <div className="bg-primary text-primary-foreground text-xs py-2 px-4">
+        <div className="bg-primary text-primary-foreground text-xs py-2 px-4 site-top-bar">
             <div className={`${contentMaxWidth} mx-auto flex items-center justify-between`}>
                 {content ? (
                     <span dangerouslySetInnerHTML={{ __html: sanitizeInlineHtml(content) }} />

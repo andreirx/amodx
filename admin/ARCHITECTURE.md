@@ -370,6 +370,10 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 
 ## Tiptap Editor Integration
 
+LANDING-1: ContentEditor's existing `hideNav` checkbox reads "Hide top bar, commerce bar and navigation";
+`hideFooter` reads "Hide site footer". The persisted field names, loading, saving and reset behaviour stay unchanged.
+No new switch is added. Their renderer contract and A1–A5 evidence are in `docs/slices/landing-1.md`.
+
 `BlockEditor.tsx` wraps the Tiptap editor (users: `ContentEditor`, `StrategyEditor`, `CategoryEditor`):
 - Loads extensions from `getExtensions()` (`@amodx/plugins/admin`)
 - Injects storage callbacks: `uploadFn`, `pickFn` (media), `fetchTagsFn` (post grid tags), `fetchCategoriesFn` (the

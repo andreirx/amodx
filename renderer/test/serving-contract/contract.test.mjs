@@ -37,7 +37,8 @@ import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readClientModules, splitFlight, writeCaptures,
     bootstrapChunks, bootstrapChunkProblems, bootstrapChunkProblemsOfJournal, readRootNotFoundScript,
 } from "./cm1-byte-identity.mjs";
-import { readHydration1ExpectedCaptures } from "./hydration-1-expected.mjs";
+// LANDING-1: derive only EXPECTED root-class additions after HYDRATION-1; stored captures and candidates stay intact.
+import { readLanding1ExpectedCaptures } from "./landing-1-expected.mjs";
 import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
 import {
@@ -1153,14 +1154,14 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             }
             return cm1Candidate;
         }
-        const cm1Base = async () => (cm1Baseline ??= await readHydration1ExpectedCaptures(CM1_BASELINE_DIR));
+        const cm1Base = async () => (cm1Baseline ??= await readLanding1ExpectedCaptures(CM1_BASELINE_DIR));
         let cm1Control;
         /** The de4ad52 capture set (the pre-catalog-mode renderer), kept for `cm1-control` when locale-1a advanced `baseline/`. */
-        const cm1ControlSet = async () => (cm1Control ??= await readHydration1ExpectedCaptures(CM1_CONTROL_DIR));
+        const cm1ControlSet = async () => (cm1Control ??= await readLanding1ExpectedCaptures(CM1_CONTROL_DIR));
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1e tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the forward-derived expected baseline/ (HYDRATION-1 + LANDING-1; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -1852,21 +1853,21 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const LOC1_EN_MOVE = { category: 4, row: "LOC1E-ROOT-LAYOUT", lang: "en" };
         /** The start of a `__next_error__` shell (the 307 handoffs, the 404 landings): category 4's error-shell predicate. */
         const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
-        const loc1BeforeSet = async () => (loc1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
+        const loc1BeforeSet = async () => (loc1Before ??= await readLanding1ExpectedCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
         let loc1eBefore, cq1Cand, cq1Before, ct1Cand, ct1Before, cvg1Before;
         /** CDL-2: the cat-variant-gallery-1 record set (27fa7ca + its lists), read explicitly by the cvg1-text-removal-*
          *  rows (they pin CVG1's listed text removal against ITS start commit) and, for `cq1RoNone`, by cq1-quote-channels. */
-        const cvg1BeforeSet = async () => (cvg1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "variant-gallery-1", "before")));
+        const cvg1BeforeSet = async () => (cvg1Before ??= await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "variant-gallery-1", "before")));
         const cvg1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "variant-gallery-1", file), "utf8"));
         /** CAT-VARIANT-GALLERY-1: the cat-theme-1 record set (0865ac6), read explicitly by the ct1-* rows (the current set
          *  is variant-gallery-1). */
-        const ct1BeforeSet = async () => (ct1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "theme-1", "before")));
+        const ct1BeforeSet = async () => (ct1Before ??= await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "theme-1", "before")));
         /** CAT-THEME-1: the cat-quote-1 record set (29a2282), read explicitly by the cq1-* rows (the current set is variant-gallery-1). */
-        const cq1BeforeSet = async () => (cq1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "quote-1", "before")));
+        const cq1BeforeSet = async () => (cq1Before ??= await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "quote-1", "before")));
         /** This run's captures of the CT1 tenants (fixtures.mjs `CT1`, requests `CT1_REQUESTS`). */
         const ct1Set = async () => (ct1Cand ??= await captureRequests(request, server.port, Object.values(CT1_REQUESTS).flat()));
-        const loc1eBeforeSet = async () => (loc1eBefore ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before")));
+        const loc1eBeforeSet = async () => (loc1eBefore ??= await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before")));
         const loc1eJson = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "1e", file), "utf8"));
         /** This run's captures of the CQ1 tenants (fixtures.mjs `CQ1`, requests `CQ1_REQUESTS`). */
         const cq1Set = async () => (cq1Cand ??= await captureRequests(request, server.port, Object.values(CQ1_REQUESTS).flat()));
@@ -2096,7 +2097,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const leaks = {
                 "the editorial spec table": ['<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4">', '<dl class="grid grid-cols-2 gap-x-6 text-sm border-t">'],
                 "the header's top border": ['<div class="sticky top-0 z-50">', '<div class="sticky top-0 z-50 border-t-[3px] border-primary">'],
-                "the editorial footer": ['<footer class="border-t py-12 bg-muted/30">', '<footer class="border-t py-12 bg-muted">'],
+                "the editorial footer": ['<footer class="border-t py-12 bg-muted/30 site-footer">', '<footer class="border-t py-12 bg-muted site-footer">'],
                 "an arrow marker": ['href="/contact"', 'data-theme-arrow="" href="/contact"'],
                 "the nav font": ['class="hidden md:flex items-center gap-8"', 'class="hidden md:flex items-center gap-8 font-[family-name:var(--font-nav)]"'],
             };
@@ -2638,7 +2639,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const marked = [...home.html.matchAll(/<a data-theme-arrow="" [^>]*>([^<]*)</g)].map((m) => m[1]);
             assert.deepEqual(marked, ["Shop", "About", "Contact"], "the arrow marker on the two nav links and the contact button");
             // Footer: the surface colour, the 1440 width (its own, not the header's).
-            shows(home, "footer", ['<footer class="border-t py-12 bg-muted"><div class="max-w-[1440px] mx-auto px-6">']);
+            shows(home, "footer", ['<footer class="border-t py-12 bg-muted site-footer"><div class="max-w-[1440px] mx-auto px-6">']);
             // The content-page wrapper takes the section gap.
             shows(await ct1Page("editorial", "/about"), "/about wrapper", ['<main class="py-[var(--section-gap)] relative">']);
             // Listings: the wrapper's section gap; landscape cards with the first category's name under the title.
@@ -2733,9 +2734,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(ct1-footer-width) a tenant with only footer.contentMaxWidth: the footer at that width, the header at its own; byte-equal to 0865ac6 but for the footer width", async () => {
             const page = await ct1Page("footerOnly", "/");
-            shows(page, "footer", ['<footer class="border-t py-12 bg-muted/30"><div class="max-w-[1600px] mx-auto px-6">']);
+            shows(page, "footer", ['<footer class="border-t py-12 bg-muted/30 site-footer"><div class="max-w-[1600px] mx-auto px-6">']);
             assert.ok(page.html.includes('<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">'), "the header keeps its own (default) width");
-            assert.ok(page.before.includes('<footer class="border-t py-12 bg-muted/30"><div class="max-w-7xl mx-auto px-6">'), "precondition: 0865ac6 used the header's width");
+            assert.ok(page.before.includes('<footer class="border-t py-12 bg-muted/30 site-footer"><div class="max-w-7xl mx-auto px-6">'), "precondition: 0865ac6 used the header's width");
             // The whole page, under CM1-A1 + the resolved payload: the footer width is the ONLY difference (HTML and payload).
             const cand = await ct1CandSet(), before = await ct1BeforeSet();
             const a = cand.captures.find((x) => x.tenant === "footerOnly"), b = before.captures.find((x) => x.tenant === "footerOnly");
@@ -2773,7 +2774,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         test("(bpf1-footer-colours) both footer colours set: the footer's background is the colour and both text variables are the text colour; every footer text reads one of them, hover included", async () => {
             const { backgroundColor: bg, textColor: fg } = BPF1_FOOTER;
             const page = await bpf1Footer("colours");
-            assert.equal(page.open, `<footer class="border-t py-12 bg-muted/30" style="background-color:${bg};--color-foreground:${fg};--color-muted-foreground:${fg}">`);
+            assert.equal(page.open, `<footer class="border-t py-12 bg-muted/30 site-footer" style="background-color:${bg};--color-foreground:${fg};--color-muted-foreground:${fg}">`);
             for (const t of ["BPF1 Legal SRL", "1 Footer Street", "office@bpf1.serving-contract.test", "Delivery", "Terms", "Privacy", "All rights reserved."]) assert.ok(page.inner.includes(t), `in the footer: ${t}`);
             for (const c of FOOTER_TEXT_CLASSES) assert.ok(page.inner.includes(c), `today's class: ${c}`);
             // Every text colour inside the footer comes from one of the two re-declared variables.
@@ -2795,7 +2796,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(bpf1-footer-background-only) only footer.backgroundColor, editorial shape: the background on the footer, no text variable; the texts keep today's classes and markup", async () => {
             const bgOnly = await bpf1Footer("background");
-            assert.equal(bgOnly.open, `<footer class="border-t py-12 bg-muted" style="background-color:${BPF1_BACKGROUND_ONLY}">`);
+            assert.equal(bgOnly.open, `<footer class="border-t py-12 bg-muted site-footer" style="background-color:${BPF1_BACKGROUND_ONLY}">`);
             assert.ok(!bgOnly.footer.includes("--color-"), "no text variable is re-declared");
             for (const c of FOOTER_TEXT_CLASSES) assert.ok(bgOnly.inner.includes(c), `today's class: ${c}`);
             assert.ok(!bgOnly.flight.includes("--color-"), "payload: no text variable");
@@ -2810,7 +2811,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // for the HC1 tenants (fixtures.mjs `HC1`: three copies of the CM1 commerce tenant with the Top Bar, the Commerce
         // Bar and the search bar). "Absent → today's bytes" for every site kind is proven by the rows that compare with a
         // capture taken before this slice (cm1-*, loc1-*, ct1-*, cq1-*), unchanged: their tenants set no header colour.
-        const HC1_NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur">';
+        const HC1_NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur site-navbar">';
         /** One page of an HC1 copy, its key fields written as the plain twin's (so twins compare byte for byte). */
         const hc1Page = async (key, reqPath) => {
             const res = await request({ port: server.port, path: reqPath, host: HC1[key].host });
@@ -2835,7 +2836,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const prop = `,"colorStyle":{"--color-background":"${bg}","--color-foreground":"${fg}","--color-muted-foreground":"${fg}"}`;
             for (const reqPath of HC1_PATHS) {
                 const [page, plain] = [await hc1Page("colours", reqPath), await hc1Page("plain", reqPath)];
-                assert.equal(page.navOpen, `<nav class="border-b bg-background/80 backdrop-blur" style="${style}">`, reqPath);
+                assert.equal(page.navOpen, `<nav class="border-b bg-background/80 backdrop-blur site-navbar" style="${style}">`, reqPath);
                 assert.equal(plain.navOpen, HC1_NAV_OPEN, `${reqPath}: the twin keeps today's <nav>`);
                 assert.equal(page.html.split("--color-").length - 1, 3, `${reqPath}: the variables occur on the <nav> only`);
                 for (const part of ["HC1 announcement", "+1 555 0199", "HC1 offer"]) assert.ok(page.html.includes(part), `${reqPath}: the header part ${part} is in the compared HTML`);
@@ -3050,7 +3051,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.equal(items.map((m) => m[0]).join(""), bar.slice(BAR_OPEN.length, -"</ul></nav>".length), `${reqPath}: the bar holds only <li><a> items`);
                 assert.deepEqual(items.map((m) => [/href="([^"]*)"/.exec(m[1])?.[1], /class="([^"]*)"/.exec(m[1])?.[1], m[2]]),
                     [[`${URL_PREFIX_DEFAULTS.category}/sl1a-tiles`, LINK_CLASS, "SL1A Tiles"], [`${URL_PREFIX_DEFAULTS.category}/rugs`, LINK_CLASS, "Rugs"]], `${reqPath}: links in the stored order, on the category path`);
-                const navStart = page.html.indexOf('<nav class="border-b bg-background/80 backdrop-blur">');
+                const navStart = page.html.indexOf('<nav class="border-b bg-background/80 backdrop-blur site-navbar">');
                 assert.ok(page.html.indexOf(bar) > navStart && page.html.indexOf(bar) < page.html.indexOf("</nav>", page.html.indexOf(bar) + bar.length), `${reqPath}: the bar is inside the header <nav>`);
                 for (const t of ["SL1A Hidden", "sl1a-missing"]) assert.ok(!page.raw.includes(t) && !page.flight.includes(t), `${reqPath}: ${t} is not rendered`);
                 // HTML, footer: the new grid replaces today's grid in its slot; brand text, named columns, then today's columns.
@@ -3670,7 +3671,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // EVERY variant d9999d2 produced in 60 requests (`<file>.variant-<n>`), and each of 8 live responses must equal ONE
         // of them exactly under category 4 — nothing is masked for the race.
         test("(loc1e-404-document) the 404 landings of a known tenant, the RO copy and a missing tenant: a d9999d2 shell, and a payload whose root 404 boundary is the document <html lang=\"en\"><body class> + Next's 404", async () => {
-            const before = await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const before = await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
             // locale-1e.md § 18: a 404 shell's [siteId] resources are anchored to the live 200 pages captured by this run
             // from the same build and server (the en-US set); the 404 probe set itself holds only the 404 response.
             const reference = liveSiteIdReference(await loc1EnSet());
@@ -4959,7 +4960,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         test("(np1-bootstrap-chunks) every chunk the _R_ bootstrap of every document the suite served lists is in the build's static output and answers 200; a plain GET without the bootstrap where its stored baseline has one fails; a bad chunk is reported, also in a response of the HC1, CC1, SL1A and BPF1 rows", async () => {
             const hasBootstrap = (body) => /<script id="_R_">/.test(body);
             const cdl2 = await loc1BeforeSet();
-            const before404 = await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const before404 = await readLanding1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
             const baseline = new Map();
             for (const r of [...Object.values(EN_US_REQUESTS), ...Object.values(LOC1_REQUESTS), ...Object.values(CQ1_REQUESTS), ...Object.values(CT1_REQUESTS)].flat()) {
                 const b = cdl2.captures.find((x) => x.tenant === r.tenant && x.path === r.path);

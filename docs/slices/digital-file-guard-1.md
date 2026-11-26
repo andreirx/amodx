@@ -242,3 +242,8 @@ bundle `resources/presign.ts`). No infra diff is expected: `cdk diff` should sho
   (401 with the public web key; 403 "Invalid request origin" with an admin token), and the site proxy needs a tenant
   domain, which no staging tenant has. G1 is proven by unit tests (rows L1–L5).
 - Open for the human (not built): a paid digital product has no delivery path today (TECH-DEBT entry of this slice).
+
+### Production (the human, 2026-11-26)
+
+Deployed. The human states: "there are no products whatsoever right now in any tenant". So no private file of a
+product existed while the lead route could sign one; the exposure had nothing to expose.

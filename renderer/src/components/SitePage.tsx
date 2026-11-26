@@ -730,12 +730,12 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 <ThemeInjector theme={mergedTheme} tenantId={config.id} />
             )}
 
-            {/* B. Apply Hide Nav/Footer Logic */}
+            {/* LANDING-1: target only the layout's chrome roots, never nav/footer elements inside blocks. */}
             {(content.hideNav || content.hideFooter) && (
                 <style dangerouslySetInnerHTML={{
                     __html: `
-                        ${content.hideNav ? 'nav, .site-navbar { display: none !important; }' : ''}
-                        ${content.hideFooter ? 'footer, .site-footer { display: none !important; }' : ''}
+                        ${content.hideNav ? '.site-top-bar, .site-commerce-bar, .site-navbar { display: none !important; }' : ''}
+                        ${content.hideFooter ? '.site-footer { display: none !important; }' : ''}
                     `
                 }} />
             )}
