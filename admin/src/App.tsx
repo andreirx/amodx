@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createBrowserRouter, RouterProvider, Navigate, useLocation } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, useLocation, Link } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
 import LoginPage, { loginPathFor } from "@/pages/Login";
 import StrategyBoard from "@/pages/StrategyBoard";
@@ -87,7 +87,8 @@ function AppShell() {
 }
 
 // 2. Define the Router Configuration
-const router = createBrowserRouter([
+// Export the existing table for headless route matching and auth-guard tests; no second routing definition.
+export const appRoutes = [
     {
         path: "/login",
         element: <LoginPage />,
@@ -138,9 +139,17 @@ const router = createBrowserRouter([
             { path: "scheduling/planner", element: <SchedulingPlanner /> },
             { path: "scheduling/bookings/:bookingId", element: <SchedulingAppointmentsBooking /> },
             { path: "settings", element: <SettingsPage /> },
+            { path: "*", element: (
+                <section className="space-y-4">
+                    <h1 className="text-2xl font-semibold">Page not found</h1>
+                    <p className="text-muted-foreground">This address does not match an admin page.</p>
+                    <Link to="/" className="text-primary underline">Go to start page</Link>
+                </section>
+            ) },
         ],
     },
-]);
+];
+const router = createBrowserRouter(appRoutes);
 
 // 3. Export the App
 export default function App() {

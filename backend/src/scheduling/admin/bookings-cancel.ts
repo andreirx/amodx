@@ -21,7 +21,7 @@ import { z } from "zod";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { formatFromHeader } from "../../lib/email-from.js";
 import { cancelBooking, getBooking, schedulingStoreFromEnv, type ChangeFailure } from "../../lib/scheduling-db.js";
-import { renderSchedulingMail, resolveTemplate, whenText } from "../../lib/scheduling-email.js";
+import { renderSchedulingMail, resolveTemplate, schedulingReplyTo, whenText } from "../../lib/scheduling-email.js";
 import { EDITOR_OR_ADMIN, adminActor, adminRoute } from "./common.js";
 import { answer, parseBody, readSchedulingTenant, refusal, type Answer, pathParam } from "../common.js";
 import { bookingAdminDTO, bookingNames } from "./booking-dto.js";
@@ -104,8 +104,10 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
                     expiresAt: "", link: "", // no link after a cancel: every token was deleted (§ 8.4)
                     siteName: tenant.name ?? "",
                 });
+                const replyTo = schedulingReplyTo("customer", tenant, booking.who.email);
                 await ses.send(new SendEmailCommand({
                     Source: formatFromHeader(tenant.name, from),
+                    ...(replyTo === undefined ? {} : { ReplyToAddresses: replyTo }),
                     Destination: { ToAddresses: [booking.who.email] },
                     Message: { Subject: { Data: mail.subject }, Body: { Text: { Data: mail.body } } },
                 }));

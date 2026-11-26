@@ -252,6 +252,16 @@ describe("D7 POST /scheduling/admin/bookings/{bookingId}/cancel", () => {
         expect(res.json.history.at(-1)).toEqual({ action: "cancelled", at: "2026-12-01T10:03:00.000Z", by: { kind: "admin", email: EDITOR.email } });
     });
 
+    it.each([undefined, "business@example.test"])("F1 R1/R2 admin cancel Reply-To follows contactEmail (%s)", async (contactEmail) => {
+        tenantRecord!.integrations = contactEmail === undefined ? {} : { contactEmail };
+        h.store.cancelBooking.mockResolvedValue({ ok: true, value: cancelledBooking() });
+        expect((await call(cancelRoute, { path: { bookingId: BOOKING_ID } })).statusCode).toBe(200);
+        expect(h.sesSends).toHaveLength(1);
+        expect(h.sesSends[0].Destination.ToAddresses).toEqual([CUSTOMER.email]);
+        if (contactEmail === undefined) expect(h.sesSends[0]).not.toHaveProperty("ReplyToAddresses");
+        else expect(h.sesSends[0].ReplyToAddresses).toEqual([contactEmail]);
+    });
+
     it("D10 the admin booking cancel publishes NO audit event (SCHED-AUDIT-PII = C)", async () => {
         h.store.cancelBooking.mockResolvedValue({ ok: true, value: cancelledBooking() });
         await call(cancelRoute, { path: { bookingId: BOOKING_ID } });

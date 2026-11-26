@@ -288,7 +288,8 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 > read that branch; do not merge it (main will have moved). `sched-1h` and `contract-1` are withdrawn here.
 >
 > **What this section becomes** (order of work): `sched-groups-remove-1` → `hydration-1` → `sched-appt-fixes-1`
-> (Reply-To on booking mails, the double slash in admin requests, Google Fonts on booking pages) →
+> (Reply-To on booking mails, the double slash in admin requests, the protected admin not-found screen;
+> Google Fonts withdrawn from this slice) →
 > `presign-entitlement-1` (F-CMRC1-PRESIGN-ENTITLEMENT) → the website slices, each independent (`landing-1`,
 > `tags-1`, `import-paths-1`, `newsletter-1`, `redirect-1`, `gallery-1`). Waiting, not scheduled: Track B
 > (until a shop with physical products goes live), `pay-2`, `invoice-1`, `voucher-1`, `loyalty-1`,
@@ -304,6 +305,7 @@ school's orders; the school's scheduling is new work; the guesthouse books throu
 | `sched-1` (SPEC) | Scheduling with two booking shapes on one private table: a slot with a practitioner (the Track D plan's shape) and a seat in a course run (several meetings, capacity, proposal of the partly filled run, run language, moves, roster). Booking confirmed by an emailed link, no account (human 2026-11-21). Amends the Track D plan and PD-002's list. Build slices `sched-1a`…`1i` listed inside; they replace `appt-1`…`7` at ratification. `docs/slices/sched-1.md` | — | SPEC RATIFIED 2026-11-21 (human: nine decisions; week planner SCHED-PLANNER = B added and reviewed, § 23-24). Next: `sched-1a` |
 | `sched-menu-1` | Scheduling section only for enabled sites: separate Appointments (week planner), Groups, Scheduling settings; switch in Settings beside commerce, both menus refreshed after save. `docs/slices/sched-1.md` § 25 | Scheduling admin | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
 | `sched-groups-remove-1` | Remove the group shape (courses, groups, seats, rosters) from `main`: admin pages and menu entry, admin and visitor routes and functions, kernel and storage rules, the group step of the public booking page, texts, tests. Appointments unchanged. Archive: branch `archive/group-scheduling-2026-11`. `docs/slices/sched-1.md` § 25 | — | SHIPPED 2026-11-25, staging; production deploy pending (it deletes 14 functions and their routes) |
+| `sched-appt-fixes-1` | Scheduling mail Reply-To (customer ↔ business; weekly planner header absent), one slash at the admin API URL join, protected admin Page not found screen. `docs/slices/sched-appt-fixes-1.md` | `sched-groups-remove-1` | SHIPPED 2026-11-26, staging (`docs/slices/sched-appt-fixes-1.md`); production deploy pending |
 | `sched-frame-1` | The hosted booking page inside a frame on a site that is not on AMODX (a tenant with no domain): frame mode, allowed origins per tenant, copy-paste snippet, full-page steps for payment. Charging = the tenant switch + a fee outside the system. `docs/slices/sched-frame-1.md` | `sched-1g` | DRAFT |
 | `wp-export-1` | A tenant's content leaves as a WordPress import file (pages with addresses, media, products as a WooCommerce CSV); a data exit, not a copy of the design; round-trip proof through the existing importers. `docs/slices/wp-export-1.md` | — | DRAFT — independent, not scheduled |
 | `contract-1` | A contract accepted on the site per enrolment (version hash, signer, time); a guardian accepts for a participant under 18. `docs/slices/contract-1.md` | `sched-1f`, `sched-1g` | DRAFT — the tenant owns the contract text (human 2026-11-21) |

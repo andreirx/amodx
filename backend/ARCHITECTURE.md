@@ -58,6 +58,10 @@ src/
 │   │                      #   override replaces subject and body; an absent sendTo… flag keeps the default's),
 │   │                      #   storedOverrides (a stored schedulingEmailConfig that fails its schema → null → 500
 │   │                      #   storedDataInvalid, never "no override"), rendering via order-email.ts renderTemplate.
+│   │                      #   SCHED-APPT-FIXES-1: pure schedulingReplyTo(copy kind, tenant, customer email) is used by
+│   │                      #   all three SES send sites below. Customer copy → contactEmail when present, booking
+│   │                      #   owner copy → customer email when present, weekly planner → no Reply-To. Undefined
+│   │                      #   omits the SES input member (not an empty list). Recipients/texts/logs are unchanged.
 │   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts,
 │   │                      #   scheduling/visitor/mail.ts (SCHED-1D2: `hold`, `confirmed`, `cancelled`, `moved`; also
 │   │                      #   used by SCHED-1E1 appt-appointments-create.ts `confirmed` and appt-move-slot.ts `moved`),

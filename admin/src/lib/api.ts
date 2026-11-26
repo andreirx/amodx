@@ -45,7 +45,7 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
     // 3. Tenant Context
     if (currentTenantId) headers.set("x-tenant-id", currentTenantId);
 
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await fetch(`${API_URL.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`, {
         ...options,
         headers,
     });

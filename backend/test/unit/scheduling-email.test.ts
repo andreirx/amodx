@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    SCHEDULING_EMAIL_KEYS, defaultSchedulingTemplates, resolveTemplate, renderSchedulingMail, storedOverrides,
+    SCHEDULING_EMAIL_KEYS, defaultSchedulingTemplates, resolveTemplate, renderSchedulingMail, storedOverrides, schedulingReplyTo,
 } from "../../src/lib/scheduling-email.js";
 
 /**
@@ -10,6 +10,24 @@ import {
  * scheduling-admin.test.ts and scheduling-settings.test.ts. Pure; no AWS.
  * SCHED-GROUPS-REMOVE-1 row G6 (stored tenant mail data of the removed group shape) is the last describe block.
  */
+
+describe("F1 scheduling Reply-To rule", () => {
+    const tenant = { contactEmail: "business@example.test" };
+    const customer = "customer@example.test";
+    it("R1 customer copy → business", () => {
+        expect(schedulingReplyTo("customer", tenant, customer)).toEqual([tenant.contactEmail]);
+    });
+    it("R2 no contact address → absent", () => {
+        expect(schedulingReplyTo("customer", {}, customer)).toBeUndefined();
+    });
+    it("R3 booking owner copy → customer; no customer email → absent", () => {
+        expect(schedulingReplyTo("owner", tenant, customer)).toEqual([customer]);
+        expect(schedulingReplyTo("owner", tenant, undefined)).toBeUndefined();
+    });
+    it("R4 weekly planner → absent even with a contact and customer address", () => {
+        expect(schedulingReplyTo("weekAhead", tenant, customer)).toBeUndefined();
+    });
+});
 
 describe("D13 scheduling-email — the six keys of § 11.1", () => {
     it("D13 exactly the six keys, each with a non-empty subject and body", () => {

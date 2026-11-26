@@ -346,6 +346,7 @@ describe("POST /scheduling/visitor/holds", () => {
         expect(h.sesSends).toHaveLength(1);
         const mail = h.sesSends[0];
         expect(mail.Destination.ToAddresses).toEqual([CUSTOMER.email]);
+        expect(mail.ReplyToAddresses).toEqual(["owner@clinic.example"]); // F1 R1
         expect(mail.Message.Body.Text.Data).toContain(`https://clinic.example/_booking/manage#t=${TOKEN}`);
         expect(mail.Message.Body.Text.Data).toContain("2026-12-07 09:00 (Europe/Bucharest)");
         expect(mail.Message.Subject.Data).toBe("Please confirm your booking B-0B9F1C2A");
@@ -364,6 +365,14 @@ describe("POST /scheduling/visitor/holds", () => {
         tenantRecord!.domain = "t1.localhost";
         await call(holdRoute, { body: holdBody() });
         expect(h.sesSends[0].Message.Body.Text.Data).toContain(`https://d111.cloudfront.net/_site/t1/_booking/manage#t=${TOKEN}`);
+    });
+
+    it("F1 R2 a customer mail with no tenant contactEmail omits Reply-To", async () => {
+        tenantRecord!.integrations = {};
+        const res = await call(holdRoute, { body: holdBody() });
+        expect(res.statusCode).toBe(201);
+        expect(customerMails()).toHaveLength(1);
+        expect(customerMails()[0]).not.toHaveProperty("ReplyToAddresses");
     });
 
     it("D5 the hold mail fails → 503 mailFailed, the hold kept, mail marked failed", async () => {
@@ -582,6 +591,8 @@ describe("token routes", () => {
         expect(customerMails()).toHaveLength(1);
         expect(customerMails()[0].Message.Body.Text.Data).toContain(`https://clinic.example/_booking/manage#t=${NEW_TOKEN}`);
         expect(ownerMails()).toHaveLength(1);
+        expect(customerMails()[0].ReplyToAddresses).toEqual(["owner@clinic.example"]); // F1 R1
+        expect(ownerMails()[0].ReplyToAddresses).toEqual([CUSTOMER.email]); // F1 R3
         expect(ownerMails()[0].Message.Body.Text.Data).not.toContain("#t=");
     });
 

@@ -74,6 +74,7 @@ const h = vi.hoisted(() => {
         table: new ReadTable(),
         mails: [] as { to: string; subject: string; body: string }[],
         sesAttempts: 0,
+        sesInputs: [] as any[], // Raw SES inputs for F1 header-presence checks; existing content recorder stays unchanged.
         /** Return true to make SES refuse this mail. */
         sesRefuses: (_mail: { to: string; subject: string }) => false,
         /** Run before each `markReminder` (a concurrent move between selection and mark). */
@@ -91,6 +92,7 @@ vi.mock("@aws-sdk/client-ses", () => ({
     SESClient: class {
         async send(cmd: any) {
             h.sesAttempts++;
+            h.sesInputs.push(cmd.input);
             const mail = { to: cmd.input.Destination.ToAddresses[0], subject: cmd.input.Message.Subject.Data, body: cmd.input.Message.Body.Text.Data };
             if (h.sesRefuses(mail)) throw Object.assign(new Error("MessageRejected: secret detail"), { name: "MessageRejected" });
             h.mails.push(mail);
@@ -220,6 +222,7 @@ beforeEach(() => {
     h.table.commands = [];
     h.mails = [];
     h.sesAttempts = 0;
+    h.sesInputs = [];
     h.sesRefuses = () => false;
     h.beforeMark = null;
     h.cleanups = [];
@@ -472,6 +475,27 @@ describe("cadence (§ 11.3): one rate(15 minutes) rule serves all three jobs", (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+describe("F1 reminder Reply-To wiring", () => {
+    it("R1/R3 customer reply → business; owner copy reply → customer, without a booking link", async () => {
+        tenant("t1", { schedulingEmailConfig: { templates: { reminder: { subject: "Reminder", body: "{{link}}", sendToAdmin: true } } } });
+        resource("t1", R1, "Dr. One");
+        slot("t1", NOW + HOUR);
+        await run(NOW);
+        expect(h.sesInputs).toHaveLength(2);
+        expect(h.sesInputs[0]).toMatchObject({ Destination: { ToAddresses: [CUSTOMER.email] }, ReplyToAddresses: ["owner@t1.example"] });
+        expect(h.sesInputs[1]).toMatchObject({ Destination: { ToAddresses: ["owner@t1.example"] }, ReplyToAddresses: [CUSTOMER.email] });
+        expect(h.sesInputs[1].Message.Body.Text.Data).not.toContain("#t=");
+    });
+    it("R2 reminder without tenant contactEmail omits Reply-To", async () => {
+        tenant("t1", { integrations: {} });
+        resource("t1", R1, "Dr. One");
+        slot("t1", NOW + HOUR);
+        await run(NOW);
+        expect(h.sesInputs).toHaveLength(1);
+        expect(h.sesInputs[0]).not.toHaveProperty("ReplyToAddresses");
+    });
+});
+
 describe("G14 weekly mail population and delivery (§ 11.4)", () => {
     // Sunday 2026-12-06 in Bucharest (UTC+2): 09:00 local = 07:00Z; Monday 00:00 local = 22:00Z.
     const SUN_0859 = at("2026-12-06T06:59:00.000Z");
@@ -486,6 +510,8 @@ describe("G14 weekly mail population and delivery (§ 11.4)", () => {
         expect(mailsTo(OWNER)).toHaveLength(0);
         await run(SUN_0900);
         expect(mailsTo(OWNER)).toHaveLength(1);
+        expect(h.sesInputs).toHaveLength(1);
+        expect(h.sesInputs[0]).not.toHaveProperty("ReplyToAddresses"); // F1 R4: no single customer
         expect(h.markers.get("t1#2026-12-07")).toEqual({ claimedAt: SUN_0900, sentAt: SUN_0900 });
         const s = await run(SUN_0915);
         expect(mailsTo(OWNER)).toHaveLength(1);

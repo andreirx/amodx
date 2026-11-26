@@ -18,7 +18,7 @@
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { bookingBase, instantToLocal, type Booking, type Instant } from "@amodx/shared";
 import { formatFromHeader } from "../../lib/email-from.js";
-import { renderSchedulingMail, resolveTemplate } from "../../lib/scheduling-email.js";
+import { renderSchedulingMail, resolveTemplate, schedulingReplyTo } from "../../lib/scheduling-email.js";
 import { whenText } from "../admin/bookings-cancel.js";
 import type { SchedulingTenant } from "../common.js";
 import type { VisitorSettings } from "./common.js";
@@ -68,10 +68,12 @@ export async function sendVisitorMail(input: {
         link,
         siteName: tenant.name ?? "",
     });
-    const send = async (to: string, link: string) => {
+    const send = async (kind: "customer" | "owner", to: string, link: string) => {
         const mail = renderSchedulingMail(key, template, vars(link));
+        const replyTo = schedulingReplyTo(kind, tenant, b.who.email);
         await ses.send(new SendEmailCommand({
             Source: formatFromHeader(tenant.name, from),
+            ...(replyTo === undefined ? {} : { ReplyToAddresses: replyTo }),
             Destination: { ToAddresses: [to] },
             Message: { Subject: { Data: mail.subject }, Body: { Text: { Data: mail.body } } },
         }));
@@ -85,7 +87,7 @@ export async function sendVisitorMail(input: {
         } else {
             const link = token === null ? "" : `${bookingBase({ id: tenantId, domain: tenant.domain }, origin)}/_booking/manage#t=${token}`;
             try {
-                await send(b.who.email, link);
+                await send("customer", b.who.email, link);
                 outcome = "sent";
             } catch (e) {
                 console.error(`[scheduling] ${key} mail failed`, b.id, e instanceof Error ? e.name : "unknown");
@@ -95,7 +97,7 @@ export async function sendVisitorMail(input: {
     }
     if (template.sendToAdmin && tenant.contactEmail !== undefined && from) {
         try {
-            await send(tenant.contactEmail, "");
+            await send("owner", tenant.contactEmail, "");
         } catch (e) {
             console.error(`[scheduling] ${key} owner copy failed`, b.id, e instanceof Error ? e.name : "unknown");
         }

@@ -86,7 +86,7 @@ import {
     mintToken, readIntervals, schedulingStoreFromEnv,
     type ReminderTarget, type SchedulingStore,
 } from "../lib/scheduling-db.js";
-import { renderSchedulingMail, resolveTemplate, whenText } from "../lib/scheduling-email.js";
+import { renderSchedulingMail, resolveTemplate, schedulingReplyTo, whenText } from "../lib/scheduling-email.js";
 import { parseSchedulingTenant, type SchedulingTenant } from "./common.js";
 
 const ses = new SESClient({});
@@ -187,9 +187,11 @@ function errorName(e: unknown): string {
     return e instanceof Error ? e.name : "unknown error";
 }
 
-async function send(tenant: SchedulingTenant, to: string, mail: { subject: string; body: string }, from: string): Promise<void> {
+async function send(tenant: SchedulingTenant, to: string, mail: { subject: string; body: string }, from: string,
+    replyTo: string[] | undefined): Promise<void> {
     await ses.send(new SendEmailCommand({
         Source: formatFromHeader(tenant.name, from),
+        ...(replyTo === undefined ? {} : { ReplyToAddresses: replyTo }),
         Destination: { ToAddresses: [to] },
         Message: { Subject: { Data: mail.subject }, Body: { Text: { Data: mail.body } } },
     }));
@@ -272,7 +274,8 @@ async function reminders(store: SchedulingStore, tenantId: string, tenant: Sched
         });
         const link = `${bookingBase({ id: tenantId, domain: tenant.domain }, origin)}/_booking/manage#t=${token}`;
         try {
-            await send(tenant, b.who.email, renderSchedulingMail("reminder", template, vars(link)), from);
+            await send(tenant, b.who.email, renderSchedulingMail("reminder", template, vars(link)), from,
+                schedulingReplyTo("customer", tenant, b.who.email));
             summary.reminders.sent++;
         } catch (e) {
             console.error("[scheduling] reminder mail failed", tenantId, b.id, errorName(e));
@@ -281,7 +284,8 @@ async function reminders(store: SchedulingStore, tenantId: string, tenant: Sched
         }
         if (template.sendToAdmin && tenant.contactEmail !== undefined) {
             try {
-                await send(tenant, tenant.contactEmail, renderSchedulingMail("reminder", template, vars("")), from);
+                await send(tenant, tenant.contactEmail, renderSchedulingMail("reminder", template, vars("")), from,
+                    schedulingReplyTo("owner", tenant, b.who.email));
             } catch (e) {
                 console.error("[scheduling] reminder owner copy failed", tenantId, b.id, errorName(e));
             }
@@ -345,7 +349,7 @@ async function weekMail(store: SchedulingStore, tenantId: string, tenant: Schedu
     const from = process.env.SES_FROM_EMAIL ?? "";
     try {
         if (!from) throw Object.assign(new Error("SES_FROM_EMAIL is not set"), { name: "SenderNotConfigured" });
-        await send(tenant, tenant.contactEmail, mail, from);
+        await send(tenant, tenant.contactEmail, mail, from, schedulingReplyTo("weekAhead", tenant, undefined));
     } catch (e) {
         console.error("[scheduling] weekly mail failed", tenantId, week, errorName(e));
         summary.weekMail.mailFailed++;

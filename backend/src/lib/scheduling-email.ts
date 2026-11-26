@@ -20,6 +20,26 @@ import {
 } from "@amodx/shared";
 import { renderTemplate } from "./order-email.js";
 
+/**
+ * SCHED-APPT-FIXES-1 R1–R4: replies to a customer copy go to the business; replies to a booking's owner copy
+ * go to that customer. A weekly planner mail has no single customer. `undefined` means omit the header.
+ * Users: visitor mail, admin cancellation, reminder/weekly job. Axis: customer copy / owner copy / weekly planner;
+ * rejected: the same recipient rule repeated in three send sites. Pure; addresses are already parsed by callers.
+ */
+export function schedulingReplyTo(
+    kind: "customer" | "owner" | "weekAhead",
+    tenant: { contactEmail?: string },
+    customerEmail: string | undefined,
+): string[] | undefined {
+    switch (kind) {
+        case "customer": return tenant.contactEmail === undefined ? undefined : [tenant.contactEmail];
+        case "owner": return customerEmail === undefined ? undefined : [customerEmail];
+        case "weekAhead": return undefined;
+    }
+    const unhandled: never = kind;
+    throw new Error(`Unhandled mail copy ${String(unhandled)}`);
+}
+
 /** § 10.3 `EmailTemplate`: a template with both recipient flags resolved. */
 export type EmailTemplate = { subject: string; body: string; sendToCustomer: boolean; sendToAdmin: boolean };
 

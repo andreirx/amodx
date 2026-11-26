@@ -248,6 +248,12 @@ new-password step `Login.tsx` goes to `next` when `isSafeReturnPath` accepts it 
 no `\`, no control or whitespace character, ≤ 2000 characters), else to `/`. A 401/403 from `apiRequest` still goes to
 plain `/login` (no `next`).
 
+SCHED-APPT-FIXES-1: the final `*` child of the guarded shell shows **Page not found** and a **Go to start page**
+link to `/`. It uses the normal AdminLayout/menu; the guard still runs first for signed-out visitors, preserving
+the requested path/query in `next`. There is no new `errorElement`: page render errors are not handled by this
+not-found screen. `appRoutes` is the same table passed to `createBrowserRouter`, exported for headless matching and
+guard/layout tests in `App.test.ts`; known routes are unchanged.
+
 | Path | Component | Description |
 |------|-----------|-------------|
 | `/login` | Login | Public, unauthenticated |
@@ -357,6 +363,8 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 - Auth: fetches Amplify session, attaches ID token as `Authorization: Bearer` header
 - Tenant: reads `AMODX_TENANT_ID` from localStorage, sends as `x-tenant-id` header
 - Config: checks `window.AMODX_CONFIG` (runtime, from `/config.json`) before `import.meta.env` (build-time)
+- URL join (SCHED-APPT-FIXES-1): strips trailing `/` from the base and leading `/` from the path, then joins with one
+  `/` at the fetch site. Base subpaths and request queries stay intact; `lib/api.test.ts` tests the actual request.
 - Error handling: 401/403 triggers sign-out and redirect to `/login`; any other non-OK answer throws `ApiError` — `message` = `API Error (<status>): <error>` (as before), plus `status` and the parsed JSON `body` (`null` when not JSON)
 - File uploads: POST to `/assets` returns presigned URL, then client PUTs binary directly to S3
 
