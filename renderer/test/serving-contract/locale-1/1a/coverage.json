@@ -506,7 +506,7 @@
     "site.shareLabel": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       },
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
@@ -516,31 +516,31 @@
     "site.shareOnX": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       }
     ],
     "site.shareOnLinkedIn": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       }
     ],
     "site.shareOnFacebook": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       }
     ],
     "site.shareByEmail": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       }
     ],
     "site.shareCopyLink": [
       {
         "test": "renderer/test/unit/locale-1a-client.test.ts",
-        "case": "label and the five button titles (rendered in the browser only)"
+        "case": "browser render: label and the five button titles"
       }
     ],
     "site.quickContactCall": [

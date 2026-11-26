@@ -150,8 +150,8 @@ describe("[1a-client] CommentsSection", () => {
 
 describe("[1a-client] SocialShare", () => {
     for (const [name, s] of TABLES) {
-        it(`[1a-client] ${name}: label and the five button titles (rendered in the browser only)`, () => {
-            mount(createElement(SocialShare, { title: "Post", strings: {
+        it(`[1a-client] ${name}: browser render: label and the five button titles`, () => {
+            mount(createElement(SocialShare, { title: "Post", url: "https://t1.test/post", strings: {
                 shareLabel: s.shareLabel, shareOnX: s.shareOnX, shareOnLinkedIn: s.shareOnLinkedIn, shareOnFacebook: s.shareOnFacebook, shareByEmail: s.shareByEmail, shareCopyLink: s.shareCopyLink,
             } }));
             expect(host.querySelector("span")!.textContent).toBe(s.shareLabel);
@@ -228,15 +228,15 @@ describe("[1a-client] CookieConsent (the banner renders only in the browser, aft
     });
 });
 
-// review-0 R3: § 5.2 pattern D at one direct reader of each client-only component — the tenant table resolved with a
+// review-0 R3: § 5.2 pattern D at one direct browser reader of each component — the tenant table resolved with a
 // stored override absent / "" / "X", passed as the layout/SitePage pass it; expected values written out (§ 6.1).
-describe("[1a-client] § 5.2 pattern D — client-only readers: absent → default, \"\" → empty, \"X\" → X (EN and RO)", () => {
+describe("[1a-client] § 5.2 pattern D — browser-rendered readers: absent → default, \"\" → empty, \"X\" → X (EN and RO)", () => {
     const site = (locale: string, siteStrings?: Record<string, string>) => resolveLocaleStrings({ locale, ...(siteStrings ? { siteStrings } : {}) }).strings.site;
     for (const [lang, locale, shareLabel, submitting] of [["EN", "en-US", "Share:", "Submitting..."], ["RO", "ro-RO", "Distribuie:", "Se trimite..."]] as const) {
         it(`[1a-client] D SocialShare shareLabel, ${lang}`, () => {
             for (const [stored, expected] of [[undefined, shareLabel], ["", ""], ["Spread it:", "Spread it:"]] as const) {
                 const s = site(locale, stored === undefined ? undefined : { shareLabel: stored });
-                mount(createElement(SocialShare, { title: "Post", strings: {
+                mount(createElement(SocialShare, { title: "Post", url: "https://t1.test/post", strings: {
                     shareLabel: s.shareLabel, shareOnX: s.shareOnX, shareOnLinkedIn: s.shareOnLinkedIn, shareOnFacebook: s.shareOnFacebook, shareByEmail: s.shareByEmail, shareCopyLink: s.shareCopyLink,
                 } }));
                 expect(host.querySelector("span")!.textContent).toBe(expected);

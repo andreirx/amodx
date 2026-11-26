@@ -414,3 +414,10 @@ is visually smooth are MEASUREMENTS and remain the operator's — see
    resolving to `{ default: <Name>Render }`; do NOT eagerly import (perf-1 code-splitting)
 5. Add block schema to MCP server's `get_block_schemas` tool if AI should use it
 6. Rebuild: `cd packages/plugins && npm run build`
+
+## Hydration prefix fallback (hydration-1)
+
+`CategoryShowcaseRender` uses injected product/category prefixes or fixed defaults in both first renders.
+Document meta tags are a browser-only fallback, read in an effect after mount; injected values still win.
+The renderer's `test/unit/hydration-1-client.test.ts` covers both hrefs with custom meta tags, with and without
+injected prefixes, using `renderToString` then `hydrateRoot` and both React error channels. No new dependency.

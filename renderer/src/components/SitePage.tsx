@@ -239,12 +239,25 @@ function interestPrefix(config: any): string {
     return config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest;
 }
 
+/** Next-equivalent public address for parseable inputs; keep the existing raw value if parsing fails.
+ * Never invent a replacement origin or throw in the page render. This is not tenant-domain validation.
+ * Next omits the root slash when there is no query, and otherwise emits the WHATWG URL's href. */
+function normalizePageAddressOrKeepRaw(domain: string, slugPath: string): string {
+    const raw = `https://${domain}${slugPath === '/' ? '' : slugPath}`;
+    try {
+        const url = new URL(raw);
+        return url.pathname === '/' && url.searchParams.size === 0 ? url.origin : url.href;
+    } catch {
+        return raw;
+    }
+}
+
 export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePageInput, "siteId" | "slug" | "query">): Promise<Metadata> {
     const config = await getTenantConfig(siteId);
     if (!config) return {};
 
     const slugPath = slug ? "/" + slug.join("/") : "/";
-    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
+    const canonicalUrl = normalizePageAddressOrKeepRaw(config.domain, slugPath);
 
     // LOCALE-1B: the tenant's locale table for the titles below (docs/slices/locale-1.md § 6.2, § 6.3).
     const { commerce: texts, catalog: catalogTexts } = resolveLocaleStrings(config).strings;
@@ -610,7 +623,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
     // If it's an internal page, we default to WebPage unless overridden (e.g. Article)
     const isHome = slugPath === '/';
     const effectiveType = pageSchemaType || (isHome ? globalSchemaType : 'WebPage');
-    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
+    const canonicalUrl = normalizePageAddressOrKeepRaw(config.domain, slugPath);
 
     let jsonLd: any = {
         "@context": "https://schema.org",
@@ -745,7 +758,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
             {!content.hideSharing && !config.hideSocialSharing && (
                 <div className={`${cw} mx-auto px-6`}>
-                    <SocialShare title={content.title} strings={{ shareLabel: site.shareLabel, shareOnX: site.shareOnX, shareOnLinkedIn: site.shareOnLinkedIn, shareOnFacebook: site.shareOnFacebook, shareByEmail: site.shareByEmail, shareCopyLink: site.shareCopyLink }} />
+                    <SocialShare title={content.title} url={canonicalUrl} strings={{ shareLabel: site.shareLabel, shareOnX: site.shareOnX, shareOnLinkedIn: site.shareOnLinkedIn, shareOnFacebook: site.shareOnFacebook, shareByEmail: site.shareByEmail, shareCopyLink: site.shareCopyLink }} />
                 </div>
             )}
 

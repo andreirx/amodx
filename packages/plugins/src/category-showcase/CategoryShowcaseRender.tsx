@@ -173,14 +173,18 @@ export function CategoryShowcaseRender({ attrs, tenantId, strings }: { attrs: an
     // Falls back to identity function when not provided (e.g. editor preview).
     const getUrl: (slug: string) => string = _getUrl || ((s: string) => s);
 
-    // URL prefixes: prefer server-injected values (SSR-correct), fall back to
-    // document meta tags (client-only contexts like editor preview), then defaults.
+    // Both first renders use injected prefixes or defaults. Read editor-preview meta tags only after mount.
+    const [metaPrefixes, setMetaPrefixes] = useState({ product: "/product", category: "/category" });
+    useEffect(() => {
+        setMetaPrefixes({
+            product: (document.querySelector('meta[name="x-product-prefix"]') as HTMLMetaElement)?.content || "/product",
+            category: (document.querySelector('meta[name="x-category-prefix"]') as HTMLMetaElement)?.content || "/category",
+        });
+    }, []);
     const productPrefix = _productPrefix
-        || (typeof document !== "undefined" ? (document.querySelector('meta[name="x-product-prefix"]') as HTMLMetaElement)?.content : null)
-        || "/product";
+        || metaPrefixes.product;
     const categoryPrefix = _categoryPrefix
-        || (typeof document !== "undefined" ? (document.querySelector('meta[name="x-category-prefix"]') as HTMLMetaElement)?.content : null)
-        || "/category";
+        || metaPrefixes.category;
 
     // Client-side fallback fetch — only runs when server prefetch is absent
     useEffect(() => {

@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { Twitter, Linkedin, Facebook, Mail, Link as LinkIcon, Check } from "lucide-react";
 import { useState } from "react";
 import type { LocaleStrings } from "@amodx/shared";
@@ -8,14 +7,9 @@ import type { LocaleStrings } from "@amodx/shared";
 /** LOCALE-1A: the site keys this component renders (docs/slices/locale-1.md § 6.1). */
 export type SocialShareStrings = Pick<LocaleStrings["site"], "shareLabel" | "shareOnX" | "shareOnLinkedIn" | "shareOnFacebook" | "shareByEmail" | "shareCopyLink">;
 
-export function SocialShare({ title, strings }: { title: string; strings: SocialShareStrings }) {
-    const pathname = usePathname();
+export function SocialShare({ title, url, strings }: { title: string; url: string; strings: SocialShareStrings }) {
     const [copied, setCopied] = useState(false);
 
-    // Safety check for SSR
-    if (typeof window === 'undefined') return null;
-
-    const url = window.location.origin + pathname;
     const text = encodeURIComponent(title);
     const link = encodeURIComponent(url);
 

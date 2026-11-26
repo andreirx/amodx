@@ -1,9 +1,17 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export function useTenantUrl() {
     const pathname = usePathname(); // e.g. "/_site/client-123/about" or "/about"
+    const [cookiePrefix, setCookiePrefix] = useState("");
+    useEffect(() => {
+        // A preview pathname is authoritative. Do not read or decode an unused cookie.
+        if (pathname?.startsWith("/_site/")) return;
+        const match = document.cookie.match(/amodx_preview_base=([^;]+)/);
+        setCookiePrefix(match ? decodeURIComponent(match[1]) : "");
+    }, [pathname]);
 
     // Detect if we are in the special preview path
     // Pattern: /_site/[tenantId]/...
@@ -17,13 +25,10 @@ export function useTenantUrl() {
             prefix = `/${parts[1]}/${parts[2]}`; // "/_site/client-123"
         }
     } else {
-        // Check cookie fallback (set by middleware for rewritten preview URLs)
-        if (typeof document !== 'undefined') {
-            const match = document.cookie.match(/amodx_preview_base=([^;]+)/);
-            if (match) {
-                prefix = decodeURIComponent(match[1]);
-                isPreview = true;
-            }
+        // The cookie fallback is browser-only state, read after hydration.
+        if (cookiePrefix) {
+            prefix = cookiePrefix;
+            isPreview = true;
         }
     }
 

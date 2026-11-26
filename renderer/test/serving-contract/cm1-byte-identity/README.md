@@ -86,3 +86,16 @@ the encoder's size-based row cuts are ignored, nothing else; it does not apply h
 
 Rule for the next slice (`docs/slices/locale-1.md` § 8.5 rule 5): it starts from this `baseline/`; its own byte changes need its
 own `expected-diff.json` against its own start-commit capture, and only then may it re-capture `baseline/`.
+
+## HYDRATION-1 expected-data derivation (2026-11-26)
+
+The packet assigns all local-server gates to the operator. Historical captures stay unchanged.
+`contract.test.mjs` now reads EXPECTED capture sets through `../hydration-1-expected.mjs`: fill the old empty
+share wrapper using frozen `../hydration-1-share.html` and recorded title/locale strings/canonical, and add only
+the canonical `url` prop to the recorded SocialShare element. Revision 1 also normalizes only the root `url` of
+`json-ld-schema` to the recorded canonical (including when sharing is hidden); nested URLs and other fields remain
+compared. None of the current recorded JSON-LD URLs needs normalization: zero existing JSON-LD lines move.
+No share element and no JSON-LD normalization means unchanged bytes.
+Candidate captures and CM1 masks are unchanged. This is forward-derived expected data, NOT a fresh capture or a
+claim that serving passed. Exact affected sets/tenant/path lines and operator gates: `docs/slices/hydration-1.md`.
+The no-server `renderer/test/unit/hydration-1-expectations.test.ts` checks the derivation and retained mutation detection.

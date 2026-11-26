@@ -34,9 +34,10 @@ import {
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import { execFile } from "node:child_process";
 import {
-    CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
+    CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readClientModules, splitFlight, writeCaptures,
     bootstrapChunks, bootstrapChunkProblems, bootstrapChunkProblemsOfJournal, readRootNotFoundScript,
 } from "./cm1-byte-identity.mjs";
+import { readHydration1ExpectedCaptures } from "./hydration-1-expected.mjs";
 import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
 import {
@@ -1152,10 +1153,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             }
             return cm1Candidate;
         }
-        const cm1Base = async () => (cm1Baseline ??= await readCaptures(CM1_BASELINE_DIR));
+        const cm1Base = async () => (cm1Baseline ??= await readHydration1ExpectedCaptures(CM1_BASELINE_DIR));
         let cm1Control;
         /** The de4ad52 capture set (the pre-catalog-mode renderer), kept for `cm1-control` when locale-1a advanced `baseline/`. */
-        const cm1ControlSet = async () => (cm1Control ??= await readCaptures(CM1_CONTROL_DIR));
+        const cm1ControlSet = async () => (cm1Control ??= await readHydration1ExpectedCaptures(CM1_CONTROL_DIR));
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
@@ -1851,21 +1852,21 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const LOC1_EN_MOVE = { category: 4, row: "LOC1E-ROOT-LAYOUT", lang: "en" };
         /** The start of a `__next_error__` shell (the 307 handoffs, the 404 landings): category 4's error-shell predicate. */
         const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
-        const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
+        const loc1BeforeSet = async () => (loc1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
         let loc1eBefore, cq1Cand, cq1Before, ct1Cand, ct1Before, cvg1Before;
         /** CDL-2: the cat-variant-gallery-1 record set (27fa7ca + its lists), read explicitly by the cvg1-text-removal-*
          *  rows (they pin CVG1's listed text removal against ITS start commit) and, for `cq1RoNone`, by cq1-quote-channels. */
-        const cvg1BeforeSet = async () => (cvg1Before ??= await readCaptures(path.join(LOC1_DIR, "variant-gallery-1", "before")));
+        const cvg1BeforeSet = async () => (cvg1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "variant-gallery-1", "before")));
         const cvg1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "variant-gallery-1", file), "utf8"));
         /** CAT-VARIANT-GALLERY-1: the cat-theme-1 record set (0865ac6), read explicitly by the ct1-* rows (the current set
          *  is variant-gallery-1). */
-        const ct1BeforeSet = async () => (ct1Before ??= await readCaptures(path.join(LOC1_DIR, "theme-1", "before")));
+        const ct1BeforeSet = async () => (ct1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "theme-1", "before")));
         /** CAT-THEME-1: the cat-quote-1 record set (29a2282), read explicitly by the cq1-* rows (the current set is variant-gallery-1). */
-        const cq1BeforeSet = async () => (cq1Before ??= await readCaptures(path.join(LOC1_DIR, "quote-1", "before")));
+        const cq1BeforeSet = async () => (cq1Before ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "quote-1", "before")));
         /** This run's captures of the CT1 tenants (fixtures.mjs `CT1`, requests `CT1_REQUESTS`). */
         const ct1Set = async () => (ct1Cand ??= await captureRequests(request, server.port, Object.values(CT1_REQUESTS).flat()));
-        const loc1eBeforeSet = async () => (loc1eBefore ??= await readCaptures(path.join(LOC1_DIR, "1e", "before")));
+        const loc1eBeforeSet = async () => (loc1eBefore ??= await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before")));
         const loc1eJson = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "1e", file), "utf8"));
         /** This run's captures of the CQ1 tenants (fixtures.mjs `CQ1`, requests `CQ1_REQUESTS`). */
         const cq1Set = async () => (cq1Cand ??= await captureRequests(request, server.port, Object.values(CQ1_REQUESTS).flat()));
@@ -3669,7 +3670,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // EVERY variant d9999d2 produced in 60 requests (`<file>.variant-<n>`), and each of 8 live responses must equal ONE
         // of them exactly under category 4 — nothing is masked for the race.
         test("(loc1e-404-document) the 404 landings of a known tenant, the RO copy and a missing tenant: a d9999d2 shell, and a payload whose root 404 boundary is the document <html lang=\"en\"><body class> + Next's 404", async () => {
-            const before = await readCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const before = await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
             // locale-1e.md § 18: a 404 shell's [siteId] resources are anchored to the live 200 pages captured by this run
             // from the same build and server (the en-US set); the 404 probe set itself holds only the 404 response.
             const reference = liveSiteIdReference(await loc1EnSet());
@@ -4958,7 +4959,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         test("(np1-bootstrap-chunks) every chunk the _R_ bootstrap of every document the suite served lists is in the build's static output and answers 200; a plain GET without the bootstrap where its stored baseline has one fails; a bad chunk is reported, also in a response of the HC1, CC1, SL1A and BPF1 rows", async () => {
             const hasBootstrap = (body) => /<script id="_R_">/.test(body);
             const cdl2 = await loc1BeforeSet();
-            const before404 = await readCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const before404 = await readHydration1ExpectedCaptures(path.join(LOC1_DIR, "1e", "before-404"));
             const baseline = new Map();
             for (const r of [...Object.values(EN_US_REQUESTS), ...Object.values(LOC1_REQUESTS), ...Object.values(CQ1_REQUESTS), ...Object.values(CT1_REQUESTS)].flat()) {
                 const b = cdl2.captures.find((x) => x.tenant === r.tenant && x.path === r.path);

@@ -51,7 +51,7 @@ src/
 │   ├── ThemeInjector.tsx                      # CSS variable injection + Google Fonts loading
 │   ├── Navbar.tsx                             # Responsive header with logo, title, nav links (HEADER-COLOURS-1: optional `colorStyle` on the <nav>; SHOP-LOOK-1A: optional `tagline`, `categoryBar` second row)
 │   ├── CommentsSection.tsx                    # Comment list + form (requires NextAuth session)
-│   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link
+│   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link — canonical URL prop from SitePage (hydration-1)
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
 │   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny (texts = resolved site keys, from the layout)
 │   ├── QuoteRequest.tsx                       # CAT-QUOTE-1: "Request a quote" button + native <dialog> (showModal) with Call / WhatsApp / E-mail
@@ -74,7 +74,7 @@ src/
     ├── widths.ts                              # WIDTH_CLASSES (cat-theme-1): max-w-[1440px] / [1600px] / [1920px] written literally so Tailwind 4 compiles them; read by no runtime code
     ├── sanitize.ts                            # sanitizeHtml / sanitizeCssColor (injection-safety filter, also applied to the new colours) / sanitizeFontFamily / sanitizeCssLength
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
-    ├── routing.ts                             # useTenantUrl() client hook for preview-mode URL generation
+    ├── routing.ts                             # useTenantUrl() client hook for preview-mode URLs; pathname first, cookie fallback after mount (hydration-1)
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
 test/
 └── serving-contract/                          # `npm run test:serving` — see README.md there
@@ -1095,3 +1095,14 @@ Tiptap marks (bold, italic, link) and auto-rewrites internal links for preview m
   `scripts/verify-opennext-patch.mjs` and the bundle suite `npm run test:serving-bundle`)
 - Lint: `npm run lint` (ESLint with next config)
 - Tailwind v4 via `@tailwindcss/postcss`
+
+## Hydration contract (hydration-1)
+
+`SitePage` uses its local `normalizePageAddressOrKeepRaw` function for metadata and JSON-LD/share data.
+For parseable inputs it matches Next's WHATWG normalization and root-origin rule, including JSON-LD.
+If parsing fails, it preserves the pre-existing raw value without throwing in SitePage; it does not validate malformed tenant configuration.
+`SocialShare` receives that address string; all links and copy use it, including on preview URLs.
+Its block is in server HTML. `useTenantUrl` reads its cookie fallback after mount; pathname routing stays immediate and bypasses the cookie read/decoder entirely.
+Headless SSR/hydration bindings and the render-read audit: `docs/slices/hydration-1.md`.
+Serving expected data is forward-derived from recorded share props and canonicals, not re-captured by the builder;
+no candidate output is masked. The local-server/browser/staging proofs remain operator gates.

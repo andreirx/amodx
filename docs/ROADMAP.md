@@ -265,7 +265,7 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
 | `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
 | `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
-| `hydration-1` | Every tenant page load raises one React hydration error (#418) in the browser; present before `lang-1b` (`lang-1.md`, `lang-1c` closeout, F-HYDRATION-418). Root cause first, then the fix. | PLANNED |
+| `hydration-1` | Deterministic share SSR with the metadata canonical URL; showcase meta and preview-cookie fallbacks after mount; hydration regressions and render-read audit. `docs/slices/hydration-1.md` | SHIPPED 2026-11-26, staging (`docs/slices/hydration-1.md`); production deploy pending |
 | `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 (texts reviewed by `gpt-6.1-terra`) |
 
 ## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)

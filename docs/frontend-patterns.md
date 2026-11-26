@@ -3,7 +3,7 @@
 ## Renderer (Next.js 16 + OpenNext)
 
 - **SEO Pre-fetching:** Dynamic blocks (PostGrid, etc.) must have their data fetched server-side in `page.tsx` and injected into `block.attrs`. Never rely solely on `useEffect` for SEO-critical content.
-- **Hydration safety:** No `window` or `localStorage` access without `useEffect` or `typeof window !== 'undefined'` guard.
+- **Hydration safety:** Server output and the browser's FIRST render must match. A `typeof window` guard alone does not ensure this. Pass server-known values as props (e.g. SocialShare receives the metadata canonical URL); read browser-only state in an effect after mount. See `docs/slices/hydration-1.md`.
 - **Images:** Use `<img>` tags or unoptimized `next/image` for external CDN images to avoid Lambda bandwidth costs.
 - **Multi-tenancy:** Edge middleware (`renderer/src/middleware.ts`) maps domains to tenant IDs via `x-tenant-id` header. All routes are under `app/[siteId]/`.
 
