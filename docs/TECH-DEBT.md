@@ -691,9 +691,10 @@ infra. That section now states the four roles and the split that matters: 3 **re
 Lambdas (the least-privilege claim) + 1 **deploy-time** role that holds the action only during
 `cdk deploy`. Assertion `(d)` pins both categories by name and fails on a fifth grant.
 
-### `playwright.yml` still deletes the lockfile; lockfile Linux entries are fragile
+### Lockfile Linux entries are fragile (`playwright.yml` no longer deletes the lockfile)
 Recorded by slice `test-1` (2026-07-27), **updated after the lockfile was repaired** in the same
-slice's revise cycle.
+slice's revise cycle. Residual 1 closed by `ci-lockfile-1` (2026-11-28): every workflow now installs
+with `npm ci`.
 
 **Was:** the committed lockfile carried `@rollup/rollup-darwin-arm64`, `lightningcss-darwin-arm64`,
 `@tailwindcss/oxide-darwin-arm64`, `@unrs/resolver-binding-darwin-arm64` and `@img/sharp-darwin-arm64`
@@ -733,16 +734,17 @@ their own e2e evidence.
 
 **Residual debt:**
 
-1. **`playwright.yml` still runs `rm -f package-lock.json && npm install`** (line 21). It is
-   therefore still unpinned, and installs a *different, floating* dependency set than `ci.yml`.
-   Migrating it to `npm ci` is mechanical but was out of `test-1`'s packet scope
-   (the packet forbids touching that file). Do it as its own change.
+1. **CLOSED 2026-11-28 by `ci-lockfile-1`.** Was: `playwright.yml` (and `staging-e2e.yml`) ran
+   `rm -f package-lock.json && npm install`, so they installed a floating dependency set, not the
+   one in the lockfile. All four workflows (`ci.yml`, `playwright.yml`, `staging-e2e.yml`,
+   `security-audit.yml`) now run `npm ci` and pin Node `'22'`
+   (`docs/slices/ci-lockfile-1.md`).
 2. **The lockfile's Linux entries are fragile.** They are hand-maintained: any future `npm install`
    that re-resolves one of these five families can prune its foreign-platform siblings back to
    darwin-only, silently reverting CI to red — and the failure appears in `npm run build`, not in
    `npm ci`, so it reads as a build bug rather than an install bug. There is no guard. A cheap one
    would be a CI step asserting `@rollup/rollup-linux-x64-gnu` is present in `package-lock.json`;
-   not implemented, and worth doing when `playwright.yml` is migrated.
+   not implemented (`playwright.yml` is migrated since `ci-lockfile-1`; the guard is still open).
 3. **Coverage is linux + win32 + the pre-existing darwin only.** The `wasm32-wasi` siblings of
    `@tailwindcss/oxide`, `unrs-resolver` and `sharp` were deliberately left out: they depend on
    `@emnapi/*`, `@napi-rs/wasm-runtime` and `@tybys/wasm-util`, none of which are in this lockfile,

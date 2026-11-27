@@ -33,11 +33,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          # Pinned to 22 for the same reason as ci.yml: `lts/*` rolls to the next LTS silently.
+          node-version: '22'
 
       - name: Install dependencies
-        # Must delete lockfile: it's generated on macOS but CI runs Linux (see playwright.yml).
-        run: rm -f package-lock.json && npm install
+        # `npm ci`: install the versions recorded in package-lock.json. See the note at the install step
+        # of ci.yml (the Linux entries of the lockfile).
+        run: npm ci
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium

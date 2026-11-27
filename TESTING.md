@@ -271,9 +271,8 @@ Three workflows exist in `.github/workflows/`. Target architecture and the gap l
 Two rules when editing them:
 
 - **Use `npm ci`, never `rm -f package-lock.json && npm install`.** The lockfile pins what CI
-  builds; deleting it lets CI float to whatever the registry serves that day. `ci.yml` uses
-  `npm ci`. `playwright.yml` still carries the delete-and-install workaround and should be
-  migrated to `npm ci` — see `docs/TECH-DEBT.md`.
+  builds; deleting it lets CI float to whatever the registry serves that day. Every workflow
+  uses `npm ci` (`playwright.yml` and `staging-e2e.yml` since `ci-lockfile-1`, 2026-11-28).
 - **Do not add secrets to `ci.yml`.** It is the every-push gate and must be green from a bare
   checkout. Anything needing AWS belongs in `playwright.yml`.
 
