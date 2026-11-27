@@ -33,13 +33,15 @@ const TENANT_ADMIN_T1: Ctx = { sub: "u2", email: "admin@t1.test", role: "TENANT_
 const GLOBAL_ADMIN: Ctx = { sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL" };
 const CUSTOMER_T1: Ctx = { sub: "c1", email: "buyer@t1.test", role: "CUSTOMER", tenantId: "t1" };
 
-// [file under test, handler, extra event fields]
+// [file under test, handler, extra event fields, items an authorised call addresses]
+// NEWSLETTER-1: leads/list.ts also queries the NEWSLETTER# subscriptions (two queries); leads/delete.ts deletes the lead
+// and its subscription in one transaction (two items) — every one in the bound tenant's partition.
 const HANDLERS = [
-    ["leads/list.ts", leadsList, {}],
-    ["leads/delete.ts", leadsDelete, { pathParameters: { email: "lead%40t.test" } }],
-    ["audit/list.ts", auditList, {}],
-    ["signals/list.ts", signalsList, {}],
-    ["assets/list.ts", assetsList, {}],
+    ["leads/list.ts", leadsList, {}, 2],
+    ["leads/delete.ts", leadsDelete, { pathParameters: { email: "lead%40t.test" } }, 2],
+    ["audit/list.ts", auditList, {}, 1],
+    ["signals/list.ts", signalsList, {}, 1],
+    ["assets/list.ts", assetsList, {}, 1],
 ] as const;
 
 function event(ctx: Ctx, header: string | undefined, extra: object) {
@@ -50,10 +52,12 @@ function event(ctx: Ctx, header: string | undefined, extra: object) {
     } as any;
 }
 
-/** The partition key of the one DynamoDB command sent (Query → :pk value, Delete → Key.PK). */
-function sentPk(): string {
-    const input = ddbSend.mock.calls[0][0].input;
-    return input.Key?.PK ?? input.ExpressionAttributeValues?.[":pk"];
+/** The partition key of every item a DynamoDB command addresses (Query → :pk value, Delete → Key.PK; a transaction → the key
+ *  of each of its items), in order. */
+function sentPks(): string[] {
+    return ddbSend.mock.calls.flatMap(([cmd]) => cmd.input.TransactItems
+        ? cmd.input.TransactItems.map((t: any) => (Object.values(t)[0] as any).Key?.PK ?? (Object.values(t)[0] as any).Item?.PK)
+        : [cmd.input.Key?.PK ?? cmd.input.ExpressionAttributeValues?.[":pk"]]);
 }
 
 beforeEach(() => {
@@ -61,15 +65,15 @@ beforeEach(() => {
     ddbSend.mockResolvedValue({ Items: [] });
 });
 
-describe.each(HANDLERS)("TENANT-BIND-1 — %s", (name, handler, extra) => {
+describe.each(HANDLERS)("TENANT-BIND-1 — %s", (name, handler, extra, calls) => {
     const run = async (ctx: Ctx, header: string | undefined) =>
         (await handler(event(ctx, header, extra), {} as any, () => {})) as any;
 
     it(`${name}: EDITOR of t1 with header t1 → authorised (DynamoDB called, status 200)`, async () => {
         const res = await run(EDITOR_T1, "t1");
         expect(res.statusCode).toBe(200);
-        expect(ddbSend).toHaveBeenCalledTimes(1);
-        expect(sentPk()).toBe("TENANT#t1");
+        expect(ddbSend).toHaveBeenCalled();
+        expect(sentPks()).toEqual(Array(calls).fill("TENANT#t1"));
     });
 
     it(`${name}: EDITOR of t1 with header t2 → 403, no DynamoDB call`, async () => {
@@ -89,8 +93,8 @@ describe.each(HANDLERS)("TENANT-BIND-1 — %s", (name, handler, extra) => {
     it(`${name}: GLOBAL_ADMIN with header t2 → authorised (DynamoDB called)`, async () => {
         const res = await run(GLOBAL_ADMIN, "t2");
         expect(res.statusCode).toBe(200);
-        expect(ddbSend).toHaveBeenCalledTimes(1);
-        expect(sentPk()).toBe("TENANT#t2");
+        expect(ddbSend).toHaveBeenCalled();
+        expect(sentPks()).toEqual(Array(calls).fill("TENANT#t2"));
     });
 
     it(`${name}: CUSTOMER (public pool) with header t1 → 403, no DynamoDB call`, async () => {

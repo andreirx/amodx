@@ -5,6 +5,46 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NewsletterSubscriptionSchema, newsletterCanSendAgain, type NewsletterPush, type NewsletterSubscription } from "@amodx/shared";
+
+/**
+ * NEWSLETTER-1 — the push state of a lead's newsletter subscription, in words for the owner. Exhaustive over the
+ * states and the failure reasons: a new one must be worded here. The 422 wording follows MailerLite's documentation
+ * (invalid data; also a person who unsubscribed in MailerLite earlier — AMODX does not re-subscribe them).
+ */
+export function newsletterPushText(push: NewsletterPush): string {
+    switch (push.state) {
+        case "NoSettings": return "Not sent: MailerLite was not connected";
+        case "Pending": return "Pending: no MailerLite result is stored — use Send again";
+        case "Sent": return `Sent to MailerLite ${new Date(push.at).toLocaleString()}`;
+        case "Failed": {
+            const reason = push.reason;
+            switch (reason.kind) {
+                case "http":
+                    return reason.status === 401 ? "Failed: MailerLite refused the API token (401)"
+                        : reason.status === 422 ? "Failed: MailerLite refused the address, or the person unsubscribed there (422)"
+                        : reason.status === 429 ? "Failed: too many requests to MailerLite (429)"
+                        : `Failed: MailerLite answered ${reason.status}`;
+                case "timeout": return "Failed: no answer from MailerLite in time";
+                case "network": return "Failed: could not reach MailerLite";
+                default: {
+                    const unreachable: never = reason;
+                    return unreachable;
+                }
+            }
+        }
+        default: {
+            const unreachable: never = push;
+            return unreachable;
+        }
+    }
+}
+
+/** The lead's subscription from GET /leads (`newsletter`), or null when it has none or it is not readable. */
+export function subscriptionOf(lead: { newsletter?: unknown }): NewsletterSubscription | null {
+    const parsed = NewsletterSubscriptionSchema.safeParse(lead.newsletter);
+    return parsed.success ? parsed.data : null;
+}
 
 export default function Leads() {
     const { currentTenant } = useTenant();
@@ -24,6 +64,21 @@ export default function Leads() {
             console.error(e);
         } finally {
             setLoading(false);
+        }
+    }
+
+    // NEWSLETTER-1 (ruling 10): "Send again" — POST /leads/{email}/push. Its answer (`resultWrite`: recorded | unconfirmed)
+    // is not shown; the page reloads the list, because the STORED state is the only truth (NL1-WRITE-ACK-UNCERTAINTY = A).
+    const [sending, setSending] = useState<string | null>(null);
+    async function sendAgain(email: string) {
+        setSending(email);
+        try {
+            await apiRequest(`/leads/${encodeURIComponent(email)}/push`, { method: "POST" });
+            await loadLeads();
+        } catch (e: any) {
+            alert(e?.message || "Send again failed");
+        } finally {
+            setSending(null);
         }
     }
 
@@ -82,6 +137,7 @@ export default function Leads() {
                                 <TableHead>Source</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Date</TableHead>
+                                <TableHead>Newsletter</TableHead>
                                 <TableHead>Context</TableHead>
                                 <TableHead className="w-[60px]"></TableHead>
                             </TableRow>
@@ -106,6 +162,23 @@ export default function Leads() {
                                     <TableCell className="text-sm text-muted-foreground">
                                         {new Date(lead.createdAt).toLocaleDateString()}
                                     </TableCell>
+                                    <TableCell className="text-xs max-w-[240px]">
+                                        {(() => {
+                                            const sub = subscriptionOf(lead);
+                                            if (!sub) return <span className="text-muted-foreground">—</span>;
+                                            return (
+                                                <div className="flex flex-col gap-1">
+                                                    <span title={sub.consent.text}>Consent {new Date(sub.consent.at).toLocaleString()} ({sub.consent.locale})</span>
+                                                    <span className="text-muted-foreground">{newsletterPushText(sub.push)}</span>
+                                                    {newsletterCanSendAgain(sub.push) && (
+                                                        <Button variant="outline" size="sm" className="h-7 w-fit" disabled={sending === lead.email} onClick={() => sendAgain(lead.email)}>
+                                                            {sending === lead.email ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send again"}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                    </TableCell>
                                     <TableCell className="text-xs font-mono text-muted-foreground max-w-[200px] truncate">
                                         {/* Show resource ID if they downloaded something */}
                                         {lead.resourceId ? `Downloaded: ${lead.resourceId}` : JSON.stringify(lead.data)}
@@ -124,7 +197,7 @@ export default function Leads() {
                             ))}
                             {leads.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                                         No leads yet. Check your forms!
                                     </TableCell>
                                 </TableRow>

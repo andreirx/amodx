@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { errorName, INTERNAL_ERROR } from "../lib/value-free.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -18,6 +19,9 @@ type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerConte
  *   - recaptcha.secretKey
  *   - integrations.google.clientSecret
  *   - integrations.braveApiKey
+ *
+ * NOT returned: `integrations.mailerlite.apiToken` (NEWSLETTER-1, ruling 7). It is write-only — no answer to the admin
+ * holds it; PUT /settings keeps the stored token when the page sends none (`mailerLiteSave` in settings.ts).
  */
 export const handler: AmodxHandler = async (event) => {
     try {
@@ -64,7 +68,9 @@ export const handler: AmodxHandler = async (event) => {
             headers: { "Cache-Control": "no-store" },
             body: JSON.stringify(secrets),
         };
-    } catch (error: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    } catch (error: unknown) {
+        // NL1-R1 (lib/value-free.ts): the name only; the answer is a fixed text.
+        console.error(`[settings/secrets] error=${errorName(error)}`);
+        return INTERNAL_ERROR;
     }
 };

@@ -521,6 +521,12 @@ export default function Labels() {
                         <F section="site" label="Lead magnet: unlocked (heading)" field="leadUnlocked" />
                         <F section="site" label="Lead magnet: file ready" field="leadFileReady" />
                         <F section="site" label="Lead magnet: download button" field="leadDownload" />
+                        <F section="site" label="Newsletter: Email (screen readers)" field="newsletterEmail" />
+                        <F section="site" label="Newsletter: email placeholder" field="newsletterEmailPlaceholder" />
+                        <F section="site" label="Newsletter: consent line beside the box (stored with each signup; empty = the default)" field="newsletterConsent" />
+                        <F section="site" label="Newsletter: button (when the block has none)" field="newsletterSubscribe" />
+                        <F section="site" label="Newsletter: subscribing" field="newsletterSubscribing" />
+                        <F section="site" label="Newsletter: thank you" field="newsletterThanks" />
                         <F section="site" label="Hero: no image" field="heroNoImage" />
                         <F section="site" label="Image: description, when the block has none" field="imageAltFallback" />
                         <F section="site" label="Video: title, when the block has no caption" field="videoTitle" />

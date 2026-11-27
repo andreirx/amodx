@@ -40,13 +40,14 @@ import {
 // LANDING-1: derive only EXPECTED root-class additions after HYDRATION-1; stored captures and candidates stay intact.
 import { readLanding1ExpectedCaptures } from "./landing-1-expected.mjs";
 import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
-import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, newsletterTexts, urlPrefixesOf } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
     SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
+    NL1, NL1_PATH, NL1_TOKEN, NL1_GROUP, NL1_BLOCK,
     SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS, SCHEDLABELS1, SCHEDLABELS1_TEXTS,
     LANG1B, LANG1B_OVERRIDES, LANG1B_PAGES, LANG1C, LANG1C_MENUS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
@@ -3520,6 +3521,35 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const flightBack = swapOnce(none.flight, noneBlocks, JSON.stringify({ type: "form", attrs: SL1E_BLANK_BLOCK }), "payload blocks");
             assert.deepEqual(sl1aResolved(flightBack), sl1aResolved(blank.flight), `payload equal to the twin but for the stored blocks (resolved); ${sl1aDiff(flightBack, blank.flight)}`);
             console.log("  (sl1e-draws-nothing) blank slug, disabled form, slug of no form: nothing drawn, no _form");
+        });
+
+        // ── ROW (newsletter-1-page) — NEWSLETTER-1 (docs/slices/newsletter-1.md). Server HTML and payload of the running build for
+        // the NL1 tenant (fixtures.mjs `NL1`: a CM1 content copy storing a MailerLite connection with a sentinel token; page
+        // `/nl1-newsletter` = a paragraph and one `newsletter` block). Proves, in the built site: the form drawn from the
+        // tenant's locale table (headline, text, email field, a required consent box with the consent line, the button);
+        // `_newsletter` in the payload is exactly `newsletterTexts` of the tenant; the stored token, the group id and the
+        // `mailerlite` key reach no page of the tenant (ruling 7). "No block → today's bytes" (ruling 11) is every other row.
+        test("(newsletter-1-page) a page with a newsletter block: the form with the tenant's consent line beside a required box (HTML), `_newsletter` = the en-US newsletter texts (payload); the stored MailerLite token reaches no page of the tenant (HTML or payload)", async () => {
+            const texts = newsletterTexts(resolveLocaleStrings({ locale: "en-US" }));
+            const res = await request({ port: server.port, path: NL1_PATH, host: NL1.site.host });
+            assert.equal(res.status, 200);
+            const { html, flight } = splitFlight(res.body);
+            const start = html.indexOf('<section class="my-12 max-w-md mx-auto">');
+            assert.ok(start >= 0, "the block's section is drawn");
+            const section = html.slice(start, html.indexOf("</section>", start) + "</section>".length);
+            assert.ok(section.includes(`<h2 class="text-2xl font-bold mb-2">${NL1_BLOCK.headline}</h2><p class="text-muted-foreground">${NL1_BLOCK.description}</p>`), "headline and text");
+            assert.match(section, /<input id="[^"]+-email" type="email" required="" autoComplete="email" placeholder="name@example\.com"/, "the email field");
+            assert.match(section, new RegExp(`<input id="([^"]+)-consent" type="checkbox" required=""[^>]*/><label for="\\1-consent" class="text-sm text-muted-foreground">${texts.consent.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</label>`), "the consent line beside a required box");
+            assert.ok(section.endsWith(`>${texts.subscribe}</button></form></section>`), "the locale button text closes the form");
+            assert.equal(flight.split(`"_newsletter":${JSON.stringify(texts)}`).length - 1, 1, "payload: `_newsletter` = the tenant's newsletter texts, once");
+            const lines = [];
+            for (const p of [NL1_PATH, "/"]) {
+                const page = p === NL1_PATH ? res : await request({ port: server.port, path: p, host: NL1.site.host });
+                assert.equal(page.status, 200, `${p}: 200`);
+                for (const secret of [NL1_TOKEN, NL1_GROUP, "mailerlite"]) assert.ok(!page.body.includes(secret), `${p}: no ${secret} in the HTML or the payload`);
+                lines.push(`${p} ${page.body.length} B`);
+            }
+            console.log(`  (newsletter-1-page) form drawn with the en-US consent line; _newsletter once; no token, group id or mailerlite key in ${lines.join(", ")}`);
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

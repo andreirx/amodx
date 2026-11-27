@@ -168,10 +168,14 @@ describe("schemas — the new fields are optional and change no existing record 
     const inputs = JSON.parse(readFileSync(new URL("./fixtures/lang-1a-existing-records.json", import.meta.url), "utf8"));
     const head = JSON.parse(readFileSync(new URL("./fixtures/lang-1a-head-parse-4cb6b96.json", import.meta.url), "utf8"));
 
-    it("L1A-PRESERVE-RECORDS: an existing tenant (en-US, ro-RO) and content item parse exactly as at HEAD 4cb6b96 and read back unchanged from JSON", () => {
+    it("L1A-PRESERVE-RECORDS: an existing tenant (en-US, ro-RO) and content item parse exactly as at HEAD 4cb6b96, less the retired `integrations.mailerlite: false` default (NEWSLETTER-1 ruling 8), and read back unchanged from JSON", () => {
         for (const name of ["tenantEn", "tenantRo"] as const) {
             const parsed = TenantConfigSchema.parse(inputs[name]);
-            expect(parsed, name).toEqual(head[name]);
+            // NEWSLETTER-1 (ruling 8): the unused boolean `integrations.mailerlite` (default false) is replaced by an
+            // optional settings object, absent = off. The capture at 4cb6b96 stays as captured; its one retired key is removed here.
+            const { mailerlite: retired, ...integrations } = head[name].integrations;
+            expect(retired, `${name}: the capture holds the retired default`).toBe(false);
+            expect(parsed, name).toEqual({ ...head[name], integrations });
             for (const key of ["languages", "navLinksByLang", "footerLinksByLang"]) expect(Object.hasOwn(parsed, key), `${name}.${key}`).toBe(false);
             // The stored record (JSON) parses to the same output. (Not a re-parse of the OUTPUT: the schema's own default
             // `integrations.contactEmail: ""` fails its `.email()` check — pre-existing, outside this slice.)

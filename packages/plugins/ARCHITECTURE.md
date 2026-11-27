@@ -41,7 +41,7 @@ src/blocks/<name>/
 └── <Name>Render.tsx  # Pure React render component (SSR-safe)
 ```
 
-## All 22 Plugins
+## All 23 Plugins
 
 This table lists every key in `RENDER_LOADERS` (`src/render.ts`) — one row per registered
 render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`; 22 since `shop-look-1e`).
@@ -70,6 +70,7 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since 
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText, chips[] (label, href; ≤ 12), blockWidth; server data `_categories` (see § *The `category-grid` block*) | 2 / 3 / 4 columns from `lg` |
 | `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
 | `form` | Custom Form | formSlug, eyebrow, headline, text, card, blockWidth; server data `_form` (see § *The `form` block*) | plain or in a card |
+| `newsletter` | Newsletter Signup | headline, description, buttonText, blockWidth; server data `_newsletter` (the locale texts); form component also exported as `@amodx/plugins/newsletter/NewsletterForm` for the renderer's popup (NEWSLETTER-1, `docs/block-types.md` § *Newsletter signup*) | — |
 
 ## Tiptap Integration Pattern
 

@@ -211,6 +211,7 @@ All queries use QueryCommand with PK+SK. Zero scans.
 │  SK: FORMSUB#<formId>#<uuid>         form submission               │
 │  SK: POPUP#<uuid>                    marketing popup               │
 │  SK: LEAD#<email>                    lead capture                  │
+│  SK: NEWSLETTER#<normalized email>   newsletter consent + push     │
 │  SK: COMMENT#<pageId>#<uuid>         page comment                  │
 │                                                                    │
 │  ── System ───────────────────────────────────────────────────     │

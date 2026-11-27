@@ -245,6 +245,19 @@ export class EngagementApi extends NestedStack {
         addRoute('PublicSubmitInterest', 'POST /public/interest', publicInterestFunc, { noAuth: true });
         addRoute('PublicResolveInterest', 'POST /public/interest/resolve', publicInterestFunc, { noAuth: true });
 
+        // ===================== NEWSLETTER: SEND AGAIN (NEWSLETTER-1, ruling 10) =====================
+        // The admin Leads page's "Send again": reads the lead's NEWSLETTER# subscription and the tenant's MailerLite
+        // settings, calls MailerLite (outbound HTTPS, no AWS permission needed), writes the push state. Named gain: the
+        // owner recovers a failed push. In this nested stack, not the parent (beside the other leads routes), because the
+        // parent template is near CloudFormation's 500-resource limit (test (split1-5)).
+        const pushLeadFunc = new nodejs.NodejsFunction(this, 'PushLeadFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/leads/push.ts'),
+            handler: 'handler',
+        });
+        table.grantReadWriteData(pushLeadFunc);
+        addRoute('PushLead', 'POST /leads/{email}/push', pushLeadFunc);
+
         // Grant EventBus permissions to all Lambdas in this stack
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {

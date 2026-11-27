@@ -103,9 +103,10 @@ describe("the language packs", () => {
         }
     });
 
-    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c) + navCategoryBarLabel (shop-look-1a); 39 catalog keys and 21 shared commerce keys (1b) + 7 quote keys (cat-quote-1) + 9 server-text keys (cdl-1); 80 commerce-only keys (1d) + showcaseEmpty (1c) + pricesChanged (order-confirm-1); the count keys", () => {
-        expect(SITE_KEYS).toHaveLength(52 + 26 + 1);
-        expect(Object.keys(SiteStringsSchema.shape).slice(51)).toEqual(["errorTryAgain", ...SITE_1C.map(([k]) => k), "navCategoryBarLabel"]);
+    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c) + navCategoryBarLabel (shop-look-1a) + 6 newsletter keys (newsletter-1); 39 catalog keys and 21 shared commerce keys (1b) + 7 quote keys (cat-quote-1) + 9 server-text keys (cdl-1); 80 commerce-only keys (1d) + showcaseEmpty (1c) + pricesChanged (order-confirm-1); the count keys", () => {
+        expect(SITE_KEYS).toHaveLength(52 + 26 + 1 + 6);
+        expect(Object.keys(SiteStringsSchema.shape).slice(51)).toEqual(["errorTryAgain", ...SITE_1C.map(([k]) => k), "navCategoryBarLabel",
+            "newsletterEmail", "newsletterEmailPlaceholder", "newsletterConsent", "newsletterSubscribe", "newsletterSubscribing", "newsletterThanks"]);
         expect(COMMERCE_1D_KEYS).toHaveLength(80);
         expect(new Set(COMMERCE_1D_KEYS).size).toBe(80);
         expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80 + 1 + 1);

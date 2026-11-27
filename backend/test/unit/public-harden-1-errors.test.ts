@@ -29,6 +29,9 @@ type Row = {
     route: string;
     /** The handler's name as the log line carries it. */
     name: string;
+    /** NEWSLETTER-1 (finding NL1-R1, backend/src/lib/value-free.ts): the handler logs ONE line — its name and the error's
+     *  NAME, never the error object or message (a message can quote the request: the visitor's address). */
+    nameOnlyLog?: true;
     load: () => Promise<{ handler: unknown }>;
     event: Record<string, unknown>;
 };
@@ -37,7 +40,7 @@ const headers = { "x-tenant-id": "t1", origin: "https://site.test" };
 const json = (body: unknown) => JSON.stringify(body);
 
 const ROWS: Row[] = [
-    { route: "POST /leads", name: "leads/create", load: () => import("../../src/leads/create.js"),
+    { route: "POST /leads", name: "leads/create", load: () => import("../../src/leads/create.js"), nameOnlyLog: true,
       event: { headers, body: json({ email: "a@b.co" }) } },
     { route: "POST /contact", name: "contact/send", load: () => import("../../src/contact/send.js"),
       event: { headers, body: json({ name: "A", email: "a@b.co", message: "Hi" }) } },
@@ -87,7 +90,12 @@ describe("PUBLIC-HARDEN-1 B — DynamoDB fails in a public handler → 500 \"Int
             expect({ status: res.statusCode, body: JSON.parse(res.body) }).toEqual({ status: 500, body: { error: "Internal error" } });
             expect(res.body).not.toContain("arn:");
             expect(res.body).not.toContain("amodx-table");
-            expect(logged).toHaveBeenCalledWith(expect.stringContaining(`[${row.name}]`), expect.objectContaining({ message: FAILURE_TEXT }));
+            if (row.nameOnlyLog) {
+                expect(logged).toHaveBeenCalledWith(`[${row.name}] error=Error`);
+                for (const args of logged.mock.calls) expect(JSON.stringify(args)).not.toContain("a@b.co");
+            } else {
+                expect(logged).toHaveBeenCalledWith(expect.stringContaining(`[${row.name}]`), expect.objectContaining({ message: FAILURE_TEXT }));
+            }
         });
     }
 });

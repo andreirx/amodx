@@ -354,6 +354,13 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         postsEmpty: "No posts found.",
         postsLoadFailed: "API {status}",
         navCategoryBarLabel: "Categories",
+        // NEWSLETTER-1: the newsletter block and popup field (`newsletterTexts`).
+        newsletterEmail: "Email",
+        newsletterEmailPlaceholder: "name@example.com",
+        newsletterConsent: "Yes, send me the newsletter by email. I can unsubscribe at any time.",
+        newsletterSubscribe: "Subscribe",
+        newsletterSubscribing: "Subscribing...",
+        newsletterThanks: "Thank you for subscribing!",
     },
     // SCHED-1G2 (docs/slices/sched-1.md § 10.1): the hosted booking pages. New texts (no literal they replace).
     booking: {

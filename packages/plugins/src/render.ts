@@ -43,4 +43,5 @@ export const RENDER_LOADERS: Record<string, RenderLoader> = {
     'categoryGrid': () => import('./category-grid/CategoryGridRender').then(m => ({ default: m.CategoryGridRender })),
     'markdown': () => import('./markdown/MarkdownRender').then(m => ({ default: m.MarkdownRender })),
     'form': () => import('./form/FormRender').then(m => ({ default: m.FormRender })),
+    'newsletter': () => import('./newsletter/NewsletterRender').then(m => ({ default: m.NewsletterRender })),
 };

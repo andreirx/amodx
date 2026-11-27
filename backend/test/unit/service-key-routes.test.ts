@@ -56,7 +56,9 @@ describe("SERVICE-ACCOUNT-1 — scoped routes", () => {
     it("GET /leads with SERVICE holding leads:read → 200", async () => {
         const res = await run(leadsList, service("leads:read"), "t1");
         expect(res.statusCode).toBe(200);
-        expect(ddbSend).toHaveBeenCalledTimes(1);
+        // NEWSLETTER-1: the leads query and the NEWSLETTER# subscriptions query, both in the caller's partition.
+        expect(ddbSend).toHaveBeenCalledTimes(2);
+        expect(ddbSend.mock.calls.map(([cmd]) => cmd.input.ExpressionAttributeValues[":pk"])).toEqual(["TENANT#t1", "TENANT#t1"]);
     });
 
     it("GET /leads with SERVICE lacking leads:read → 403", async () => {

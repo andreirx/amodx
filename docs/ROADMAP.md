@@ -318,7 +318,7 @@ school's orders; the school's scheduling is new work; the guesthouse books throu
 | `voucher-1` | A gift voucher product (amount or one course) issues a one-use code when paid; a printable page with a QR code. `docs/slices/voucher-1.md` | `coupon-fix-1`, `pay-1` | DRAFT |
 | `loyalty-1` | Discount levels by total spent; counters follow paid orders. `docs/slices/loyalty-1.md` | `cmrc-4` | DRAFT |
 | `tags-1` | Google Ads id, GA4 purchase and Ads conversion on the confirmation page, Consent Mode; item 4 shipped as `pixel-consent-1` (Facebook consent fix; build/deployment status in its row). `docs/slices/tags-1.md` | — | DRAFT |
-| `newsletter-1` | A newsletter signup that stores the address with consent and pushes it to MailerLite; the `newsletter` popup collects nothing today. `docs/slices/newsletter-1.md` | — | DRAFT — NEWSLETTER-SENDER |
+| `newsletter-1` | A newsletter signup that stores the address with consent and pushes it to MailerLite: the `newsletter` block, the opt-in field of a `newsletter` popup, the MailerLite settings (write-only token), "Send again" on the Leads page. `docs/slices/newsletter-1.md` | — | IMPLEMENTED 2026-11-27 — SHIPPED 2026-11-27, staging; production deploy pending; live delivery to MailerLite not verified (no account); revision 1 after review-0 (consent in `NEWSLETTER#<normalized email>`, ruling NL1-CONSENT-STORAGE = A; one transaction per signup and per deletion; id fences; 4 s bound) (sender MailerLite = A, 2026-11-22; build 2026-11-27; scope item 4 cut → `newsletter-2`, the checkout box; one new admin route `POST /leads/{email}/push` in EngagementApi; live MailerLite proof not verified — steps in the record) |
 | `landing-1` | `hideNav` / `hideFooter` hide the site's own bars and nothing inside blocks. `docs/slices/landing-1.md` | — | SHIPPED 2026-11-26, staging (`docs/slices/landing-1.md`); production deploy pending |
 | `pixel-consent-1` | Facebook pixel loader only after marketing consent; no consent-bypassing noscript image. `docs/slices/pixel-consent-1.md` | — | SHIPPED 2026-11-26, staging (`docs/slices/pixel-consent-1.md`); production deploy pending — a site with a pixel id then reports to Facebook only after consent |
 | `import-paths-1` | The WordPress importer keeps the old addresses (it flattens them today), writes redirects for the ones it cannot keep, resolves featured images; WooCommerce CSV with quoted line breaks. `docs/slices/import-paths-1.md` | — | RATIFIED 2026-11-27 (human: "I do want b") — SHIPPED 2026-11-27, staging (API and, with `migration-upload-1`, the admin Migration screen); production deploy pending (2026-11-27: option `keepOldAddresses` + `?dryRun=1` address report; option off = byte-equal golden of 30421e3; same item = equal `wordpressSourceItem`; content + route written in one conditioned transaction; addresses the renderer answers first cannot be kept or redirected and are listed — scope 3 amended by IP1-BUILTIN-REDIRECTS = A, F-IP1-BUILTIN-ADDRESS-LOST; revisions 1 and 2 after review-0 and review-1; record § "Build record") |
@@ -363,7 +363,12 @@ Hygiene work, not a feature track.
   ASCII addresses the derived key is byte-identical to the old `.toLowerCase()` form, so
   live records stay reachable. The **persisted-key backfill** (expand-before-contract for the
   rare non-ASCII/whitespace key written pre-`fnd-2`) is the remaining key migration, deferred
-  as finding **F-FND2-1** to a future data slice gated behind Track B.
+  as finding **F-FND2-1** to a future data slice gated behind Track B. **`newsletter-1` (2026-11-27) adds lead items to
+  it:** the newsletter writes `LEAD#<normalizeEmail(email)>` together with `NEWSLETTER#<normalizeEmail(email)>`, while the
+  lead magnet (`leads/create.ts`), the contact form (`contact/send.ts`, trim only) and comments (`comments/create.ts`)
+  still write `LEAD#<email as typed>` — they were not among the 14 `fnd-2` sites. A person whose address reached those
+  writers in another spelling has two lead rows (the subscription shows on the normalized one) until those writers are
+  migrated and F-FND2-1 merges the stored items.
 - `cmrc-*` proves the private-table + cross-table-transaction pattern that `appt-*`
   reuses.
 - Track C's renderer-proxy customer sessions precede `appt-4` customer endpoints.
@@ -395,12 +400,14 @@ and D-EMAIL-6 before any `email-*` slice doc** — then `REV` (API/media/legal u
 ## Order of work from 2026-11-27 (human)
 
 `findings-1` (shipped) → `import-paths-1` (shipped) → `migration-upload-1` (shipped; the admin Migration screen could not upload
-an XML export: F-MIGRATION-UPLOAD-REFUSED, `docs/slices/import-paths-1.md` closeout) → `newsletter-1` → the
+an XML export: F-MIGRATION-UPLOAD-REFUSED, `docs/slices/import-paths-1.md` closeout) → `newsletter-1` (shipped) → the
 satulbanului gaps (`gallery-1`, `redirect-1`, `stay-1` part A) → five pure-move refactor slices, one file each → Track B
 (the private commerce table; builder `claude-fable-5-2`).
 
 | Slice | Scope | Status |
 |---|---|---|
+| `lead-normalize-1` | The three lead writers that store the address as typed (`leads/create.ts`, `contact/send.ts`, `comments/create.ts`) store the normalized key (NL1-LEAD-WRITERS, `docs/slices/newsletter-1.md` closeout). The merge of stored items stays F-FND2-1 | PLANNED |
+| `newsletter-2` | The unticked "send me news" box at checkout, on the path of `newsletter-1` | PLANNED — when a shop asks |
 | `refactor-shared-1` | `packages/shared/src/index.ts` (2,938 lines) into one file per domain; `index.ts` re-exports only. Proof: identical exported names and types; every package builds unchanged | PLANNED |
 | `refactor-settings-1` | `admin/src/pages/Settings.tsx` (2,595 lines) into one component per section. Proof: identical markup captures | PLANNED |
 | `refactor-sitepage-1` | `renderer/src/components/SitePage.tsx` (2,039 lines) into block-data preparation, search-engine data, page body. Proof: no serving baseline moves | PLANNED |

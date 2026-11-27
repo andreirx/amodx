@@ -23,7 +23,7 @@ import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { localeInputFor } from "@/lib/site-segment";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, newsletterTexts, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -703,7 +703,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
     }
 
     // --- SERVER PRE-FETCH FOR PLUGIN BLOCKS --- (CATEGORY-CONTENT-1: the pass is `prepareBlocks`, shared with the category page)
-    await prepareBlocks(content.blocks, config);
+    await prepareBlocks(content.blocks, config, resolved);
 
     // --- RENDER: CONTENT ---
     const mergedTheme = {
@@ -893,7 +893,9 @@ function formForBlock(form: Record<string, any>, slug: string, site: LocaleStrin
     };
 }
 
-async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
+/** `resolved`: the page's texts (its language, LANG-1B) — read only by the `newsletter` branch; a caller without a page
+ *  language (the category page) gets the tenant's default language. */
+async function prepareBlocks(blocks: unknown, config: any, resolved: ResolvedLocaleStrings = resolveLocaleStrings(config)): Promise<void> {
     if (!Array.isArray(blocks)) return;
     await Promise.all(blocks.map(async (block: any) => {
         if (block.type === 'postGrid') {
@@ -973,6 +975,14 @@ async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
             const slug = typeof block.attrs.formSlug === "string" ? block.attrs.formSlug.trim() : "";
             const form = slug !== "" ? await getFormBySlug(config.id, slug) : null;
             if (form) block.attrs._form = formForBlock(form, slug, resolveLocaleStrings(config).strings.site);
+        }
+
+        // NEWSLETTER-1 (docs/slices/newsletter-1.md): the `newsletter` block's visitor texts from the tenant's locale table in
+        // the page's language (`resolved`, as the page's other block texts; `newsletterTexts` gives the consent line the
+        // backend checks the signup against — the default language's or an extra language's). Only this block's attrs
+        // gain `_newsletter`; no read. Never the MailerLite settings: the push runs in the backend.
+        if (block.type === 'newsletter') {
+            block.attrs._newsletter = newsletterTexts(resolved);
         }
 
         // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here

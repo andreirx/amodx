@@ -32,6 +32,7 @@ export default function PopupEditor() {
         triggerValue: "",
         showOnPages: "",
         showOncePerSession: false,
+        collectEmail: false,
     });
 
     useEffect(() => {
@@ -69,6 +70,9 @@ export default function PopupEditor() {
                 showOnPages: form.showOnPages
                     ? form.showOnPages.split(",").map(s => s.trim()).filter(Boolean)
                     : [],
+                // NEWSLETTER-1: always an explicit boolean — PUT merges over the stored popup, so an omitted key would keep
+                // a stored `true` after the box is unticked. Only a newsletter popup can collect addresses.
+                collectEmail: form.type === "newsletter" && form.collectEmail === true,
             };
 
             if (isNew) {
@@ -200,6 +204,32 @@ export default function PopupEditor() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* NEWSLETTER-1: the signup field of a newsletter popup (opt-in; a popup without it stays a link popup) */}
+                    {form.type === "newsletter" && (
+                        <Card>
+                            <CardHeader><CardTitle>Newsletter Signup</CardTitle></CardHeader>
+                            <CardContent className="space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        id="collectEmail"
+                                        checked={form.collectEmail === true}
+                                        onChange={e => setForm({ ...form, collectEmail: e.target.checked })}
+                                        className="h-4 w-4 rounded border-input accent-primary"
+                                    />
+                                    <Label htmlFor="collectEmail" className="cursor-pointer">
+                                        Collect email addresses
+                                    </Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Shows an email field and the consent box (text from the Labels page) in place of the CTA link.
+                                    The CTA text, when set, is the button label. Signups appear on the Leads page and go to
+                                    MailerLite when it is connected in Settings.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Call to Action */}
                     <Card>

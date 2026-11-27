@@ -242,8 +242,10 @@ legacy `/products/<id>` route. Steps:
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
 5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
    products (+ the catalog-mode reduction, the URL prefixes; the card options' data, SHOP-LOOK-1D), `reviewsCarousel`
-   reviews, `categoryGrid` categories (SHOP-LOOK-1C), the `form` block's custom form (SHOP-LOOK-1E) (avoids client fetches). One
-   function, two users: the content page and the category page (CATEGORY-CONTENT-1)
+   reviews, `categoryGrid` categories (SHOP-LOOK-1C), the `form` block's custom form (SHOP-LOOK-1E) (avoids client fetches),
+   the `newsletter` block's `_newsletter` (NEWSLETTER-1: `newsletterTexts` of the page's resolved texts, which SitePage passes
+   as a third argument; no read, never the MailerLite settings). One function, two users: the content page and the category
+   page (CATEGORY-CONTENT-1; the category page passes no texts → the tenant's default language)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
 8. Shows draft watermark banner for unpublished content
@@ -1161,3 +1163,18 @@ resources disabled. They are not browser network or deployed Next proofs. Servin
 row `sched1g-g6` now requires no loader/image on the pixel-configured home, and (control)
 the `FBPixelLoader` client reference with the tenant's pixel id. Test rows, capture delta and gates:
 `docs/slices/pixel-consent-1.md`.
+
+## Newsletter signup (NEWSLETTER-1)
+
+Record `docs/slices/newsletter-1.md` § *Build record*. The renderer's part:
+- `mapTenant` (`lib/dynamo.ts`) never maps `integrations.mailerlite` (`withoutMailerLite`): the token reaches no renderer
+  setting and no page payload (`test/unit/newsletter-1-map-tenant.test.ts`, serving row `(newsletter-1-page)`).
+- `prepareBlocks` gives the `newsletter` block `_newsletter` (above). The block's form (`NewsletterForm`, plugins entry
+  `@amodx/plugins/newsletter/NewsletterForm`) posts `{ email, source: "newsletter", consentText, consentLocale,
+  recaptchaToken }` to the same-origin proxy `app/api/leads/route.ts` (unchanged path; its catch answers a fixed text,
+  finding NL1-R1).
+- `components/PopupManager.tsx` draws the same form in a `newsletter` popup with `collectEmail: true` when the public
+  popups answer holds `newsletter` texts; every other popup draws as before. The texts come from that answer (not from a
+  layout prop), so no page of a tenant without such a popup changes.
+- No renderer file names the subscription item's key prefix (`test/unit/newsletter-1-boundaries.test.ts`): the renderer
+  never reads consent evidence or push state.

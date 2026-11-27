@@ -374,10 +374,10 @@ describe("IntegrationsSchema — third-party defaults are the safe ones", () => 
             .toBe(false);
     });
 
-    it("defaults privacy analytics to none, and the two boolean integrations to false", () => {
+    it("defaults privacy analytics to none, perplexity to false, and MailerLite to absent (off; NEWSLETTER-1 ruling 8)", () => {
         const i = IntegrationsSchema.parse({});
         expect(i.analytics.provider).toBe("none");
-        expect(i.mailerlite).toBe(false);
+        expect(i.mailerlite).toBeUndefined();
         expect(i.perplexity).toBe(false);
     });
 

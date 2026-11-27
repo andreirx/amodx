@@ -7,8 +7,9 @@ import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { withoutRetiredTemplateKeys } from "../lib/scheduling-email.js";
+import { errorName, parseJsonObject, MALFORMED_BODY, INTERNAL_ERROR } from "../lib/value-free.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, readLanguageSettings, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, readLanguageSettings, MailerLiteSettingsSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -258,6 +259,8 @@ function schedulingTimezoneError(merged: Record<string, any>): string | null {
  *   - recaptcha.secretKey
  *   - integrations.google.clientSecret
  *   - integrations.braveApiKey
+ *   - integrations.mailerlite.apiToken (NEWSLETTER-1: write-only — GET /settings/secrets does not return it either; the
+ *     answer keeps `groupId`, and a stored object always holds a token, so the admin can show "a token is stored")
  */
 function redactSecrets(config: Record<string, any>): Record<string, any> {
     const redacted = structuredClone(config);
@@ -271,9 +274,32 @@ function redactSecrets(config: Record<string, any>): Record<string, any> {
             delete redacted.integrations.google.clientSecret;
         }
         delete redacted.integrations.braveApiKey;
+        const mailerlite = redacted.integrations.mailerlite;
+        if (mailerlite !== null && typeof mailerlite === "object") delete mailerlite.apiToken;
     }
 
     return redacted;
+}
+
+/**
+ * NEWSLETTER-1 (ruling 7, ruling 8) — what a save does to `integrations.mailerlite`, when the body's `integrations` names
+ * it. The token is write-only: GET never returns it, so the page sends `{ groupId }` (keep the stored token) or
+ * `{ groupId, apiToken }` (replace it); a blank token also keeps the stored one. `null` removes the connection (off). A
+ * boolean (the retired field, sent back by a page that loaded a legacy record) changes nothing. The result is checked
+ * with the shared schema; an error never repeats a sent value (it could be the token).
+ */
+type MailerLiteSave = { kind: "keep" } | { kind: "remove" } | { kind: "set"; value: { apiToken: string; groupId: string } } | { kind: "error"; error: string };
+
+function mailerLiteSave(stored: unknown, sent: unknown): MailerLiteSave {
+    if (sent === undefined || typeof sent === "boolean") return { kind: "keep" };
+    if (sent === null) return { kind: "remove" };
+    if (typeof sent !== "object" || Array.isArray(sent)) return { kind: "error", error: "integrations.mailerlite: an object with groupId and apiToken, or null." };
+    const s = sent as Record<string, unknown>;
+    const storedToken = stored !== null && typeof stored === "object" ? (stored as Record<string, unknown>).apiToken : undefined;
+    const sentToken = typeof s.apiToken === "string" && s.apiToken.trim() !== "" ? s.apiToken : undefined;
+    const parsed = MailerLiteSettingsSchema.safeParse({ apiToken: sentToken ?? storedToken, groupId: s.groupId });
+    if (!parsed.success) return { kind: "error", error: "integrations.mailerlite: a group ID and an API token are required (or null to disconnect)." };
+    return { kind: "set", value: parsed.data };
 }
 
 export const getHandler: AmodxHandler = async (event) => {
@@ -307,8 +333,10 @@ export const getHandler: AmodxHandler = async (event) => {
 
         // SECURITY: Strip secrets for all callers. Use GET /settings/secrets for privileged access.
         return { statusCode: 200, body: JSON.stringify(redactSecrets(config)) };
-    } catch (error: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    } catch (error: unknown) {
+        // NL1-R1 (lib/value-free.ts): the record holds secrets; an error's message could quote one. The name only.
+        console.error(`[settings] error=${errorName(error)}`);
+        return INTERNAL_ERROR;
     }
 };
 
@@ -377,7 +405,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         }
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
-        const body = JSON.parse(event.body);
+        // NL1-R1: a malformed body → 400 with a fixed text (a JSON SyntaxError quotes the body, which can hold a token).
+        const parsedBody = parseJsonObject(event.body);
+        if (!parsedBody.ok) return MALFORMED_BODY;
+        const body = parsedBody.value;
         const rejectedFields = SERVER_OWNED_FIELDS.filter((field) => Object.hasOwn(body, field));
         for (const field of rejectedFields) delete body[field];
 
@@ -433,6 +464,29 @@ const _updateHandler: AmodxHandler = async (event) => {
         }
         if (body.recaptcha && current.recaptcha) {
             merged.recaptcha = { ...current.recaptcha, ...body.recaptcha };
+        }
+        // NEWSLETTER-1: the MailerLite connection (write-only token; `mailerLiteSave`).
+        if (body.integrations && typeof body.integrations === "object" && Object.hasOwn(body.integrations, "mailerlite")) {
+            const stored = current.integrations?.mailerlite;
+            const save = mailerLiteSave(stored, body.integrations.mailerlite);
+            switch (save.kind) {
+                case "error":
+                    return { statusCode: 400, body: JSON.stringify({ error: save.error }) };
+                case "keep":
+                    if (stored === undefined) delete merged.integrations.mailerlite;
+                    else merged.integrations.mailerlite = stored;
+                    break;
+                case "remove":
+                    delete merged.integrations.mailerlite;
+                    break;
+                case "set":
+                    merged.integrations.mailerlite = save.value;
+                    break;
+                default: {
+                    const unreachable: never = save;
+                    return unreachable;
+                }
+            }
         }
         // CAT-QUOTE-1: `null` removes the attribute (contactAttributesError).
         if (body.interestListEmail === null) delete merged.interestListEmail;
@@ -531,8 +585,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         if (languageSetChanged(current, merged)) await armDeferredEdgeFlush(Date.now());
 
         return { statusCode: 200, body: JSON.stringify({ message: "Settings Saved" }) };
-    } catch (error: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    } catch (error: unknown) {
+        // NL1-R1 (lib/value-free.ts): the record holds secrets; an error's message could quote one. The name only.
+        console.error(`[settings] error=${errorName(error)}`);
+        return INTERNAL_ERROR;
     }
 };
 

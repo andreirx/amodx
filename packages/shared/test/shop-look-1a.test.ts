@@ -89,8 +89,10 @@ describe("footer.brandText and footer.columns (§ 4.1)", () => {
 });
 
 describe("site key navCategoryBarLabel (§ 5)", () => {
-    it("is the last site key; EN Categories, RO Categorii", () => {
-        expect(Object.keys(SiteStringsSchema.shape).at(-1)).toBe("navCategoryBarLabel");
+    it("directly follows the 26 block keys (appended after every older key; NEWSLETTER-1 appends its keys after it); EN Categories, RO Categorii", () => {
+        const keys = Object.keys(SiteStringsSchema.shape);
+        expect(keys.indexOf("navCategoryBarLabel")).toBe(keys.indexOf("postsLoadFailed") + 1);
+        expect(keys.indexOf("navCategoryBarLabel")).toBe(78);
         expect(EN_LANGUAGE_PACK.site.navCategoryBarLabel).toBe("Categories");
         expect(RO_LANGUAGE_PACK.site.navCategoryBarLabel).toBe("Categorii");
     });

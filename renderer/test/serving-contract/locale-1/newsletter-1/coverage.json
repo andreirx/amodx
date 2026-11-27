@@ -1,0 +1,35 @@
+{
+  "slice": "newsletter-1",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for NEWSLETTER-1 (docs/slices/newsletter-1.md): the six site keys of the newsletter form (`newsletterTexts`, packages/shared/src/locale-strings.ts). They reach a page only in the `_newsletter` of a newsletter block (renderer prepareBlocks) or in the public popups answer of a newsletter popup that collects addresses; the reader is `NewsletterForm` (packages/plugins/src/newsletter). Their checks render the real block (server HTML in German and French, the browser states in Romanian) and the serving row asserts the en-US form on the running build; the consent line is also the text the backend stores (backend/test/unit/newsletter-1.test.ts). None is a count key. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": ["newsletterEmail", "newsletterEmailPlaceholder", "newsletterConsent", "newsletterSubscribe", "newsletterSubscribing", "newsletterThanks"],
+    "catalog": [],
+    "commerce": []
+  },
+  "checks": {
+    "site.newsletterEmail": [
+      { "test": "packages/plugins/test/newsletterBlock.test.ts", "case": "German tenant: the German consent line beside a required box, the email field, the German button" },
+      { "test": "renderer/test/unit/newsletter-1-client.test.ts", "case": "submits { email, source: \\\"newsletter\\\", consentText: the line drawn, consentLocale: its locale, recaptchaToken: null } to /api/leads" }
+    ],
+    "site.newsletterEmailPlaceholder": [
+      { "test": "renderer/test/unit/newsletter-1-client.test.ts", "case": "submits { email, source: \\\"newsletter\\\", consentText: the line drawn, consentLocale: its locale, recaptchaToken: null } to /api/leads" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(newsletter-1-page)" }
+    ],
+    "site.newsletterConsent": [
+      { "test": "packages/plugins/test/newsletterBlock.test.ts", "case": "German tenant: the German consent line beside a required box, the email field, the German button" },
+      { "test": "renderer/test/unit/newsletter-1-client.test.ts", "case": "opted in with the answer's texts: the form in place of the link" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(newsletter-1-page)" },
+      { "test": "backend/test/unit/newsletter-1.test.ts", "case": "the subscription holds an id, the time, the presentation locale and the exact line of its locale table (German pack for de-DE)" }
+    ],
+    "site.newsletterSubscribe": [
+      { "test": "packages/plugins/test/newsletterBlock.test.ts", "case": "the owner's button label wins over the locale text; a blank one does not" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(newsletter-1-page)" }
+    ],
+    "site.newsletterSubscribing": [
+      { "test": "renderer/test/unit/newsletter-1-client.test.ts", "case": "while the answer is pending the button shows the locale \\\"subscribing\\\" text and is disabled" }
+    ],
+    "site.newsletterThanks": [
+      { "test": "renderer/test/unit/newsletter-1-client.test.ts", "case": "success → the thanks text" }
+    ]
+  }
+}

@@ -1640,6 +1640,37 @@ describe('CAT-INTEREST-1 — POST /public/interest and POST /public/interest/res
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// NEWSLETTER-1 (docs/slices/newsletter-1.md, ruling 10) — the one new admin route, "Send again": the function, its
+// route (behind the authorizer, once in the stack tree, in EngagementApi) and read/write on the table. Nothing else.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('NEWSLETTER-1 — POST /leads/{email}/push', () => {
+    test('(newsletter-1) the route exists once, in EngagementApi, behind the authorizer, integrating PushLeadFunc; the function reads and writes the table and has no other permission than the stack-wide event bus', () => {
+        const key = 'POST /leads/{email}/push';
+        const everywhere = allTemplates.flatMap((t) => Object.values(t.findResources('AWS::ApiGatewayV2::Route')))
+            .filter((r: any) => r.Properties.RouteKey === key);
+        expect(everywhere).toHaveLength(1);
+        const routes = Object.values(engagementTemplate.findResources('AWS::ApiGatewayV2::Route')).filter((r: any) => r.Properties.RouteKey === key);
+        expect(routes).toHaveLength(1);
+        const route = (routes[0] as any).Properties;
+        expect(route.AuthorizationType).toBe('CUSTOM');
+        expect(route.AuthorizerId).toBeDefined();
+        const integrationId = JSON.stringify(route.Target).match(/"Ref":"([^"]+)"/)![1];
+        const integration = engagementTemplate.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+        expect(JSON.stringify(integration.Properties.IntegrationUri)).toMatch(/PushLeadFunc/);
+
+        const fn = Object.entries(engagementTemplate.findResources('AWS::Lambda::Function')).filter(([id]) => id.includes('PushLeadFunc'));
+        expect(fn).toHaveLength(1);
+        const role = (fn[0][1] as any).Properties.Role['Fn::GetAtt'][0] as string;
+        const actions = Object.values(engagementTemplate.findResources('AWS::IAM::Policy'))
+            .filter((p: any) => (p.Properties.Roles as any[]).some((r) => r.Ref === role))
+            .flatMap((p: any) => p.Properties.PolicyDocument.Statement as any[])
+            .flatMap((st) => (Array.isArray(st.Action) ? st.Action : [st.Action]) as string[]);
+        for (const needed of ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem']) expect(actions).toContain(needed);
+        expect(actions.filter((a) => !a.startsWith('dynamodb:') && a !== 'events:PutEvents')).toEqual([]);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (sched1b) SCHED-1B — the inert scheduling-private table (docs/slices/sched-1.md § 6.1; § 17.3 rows B1…B4).
 //     Customer booking data gets a table that the renderer's role cannot read; `sched-1c` tests against it.
 //     "Inert" in `sched-1b`: no function had the table's name or a grant on it. SCHED-1D1 wires it into the functions

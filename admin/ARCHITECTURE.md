@@ -81,7 +81,7 @@ src/
     ├── StrategyEditor.tsx      # Block editor for strategy docs with tags
     ├── Signals.tsx             # Outbound lead signals list + detail side panel
     ├── MediaLibrary.tsx        # Asset grid gallery with copy-URL
-    ├── Leads.tsx               # Lead table with CSV export
+    ├── Leads.tsx               # Lead table with CSV export; newsletter consent + push state, "Send again" (NEWSLETTER-1)
     ├── Comments.tsx            # Moderation queue with status control
     ├── Resources.tsx           # Private file manager for gated downloads
     ├── Users.tsx               # Team management with invite dialog and role assignment

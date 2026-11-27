@@ -1579,3 +1579,22 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   `withoutRetiredTemplateKeys` (read in `storedOverrides`, write-back in PUT /settings) and `RETIRED_VARIABLES` (booking
   mails only) (`scheduling-email.ts`). Remove them only after a read of every tenant shows no group
   `BOOKING#`, no stored `unplaced` mail override and no override naming `{{courseName}}` or `{{groupLink}}`.
+
+## newsletter-1 residuals (2026-11-27)
+
+`docs/slices/newsletter-1.md` § *Build record* → *Findings and deferred debt*. Deliberately deferred:
+- **No sync back from MailerLite.** An unsubscribe made in MailerLite is not seen by AMODX; deleting a lead in AMODX
+  does not remove the MailerLite subscriber. AMODX never re-subscribes (no `resubscribe`; "Send again" is refused for a
+  `Sent` subscription). Follow-up named in the specification's Non-scope.
+- **The checkout "send me news" box** (scope item 4) → `newsletter-2` (it touches the order path).
+- **`GET /leads` reads one page of leads** (1 MB; older limit). Since revision 1 it has a projection and reads EVERY
+  subscription page, so each returned lead has its subscription; leads beyond the first page are not returned.
+- **Popup editor name mismatch:** `admin/src/pages/PopupEditor.tsx` edits `imageUrl`, `PopupSchema` names it
+  `imageLink`: a popup image is never saved. Rename proposed, not applied (outside the slice).
+- **`form` block texts use the tenant's default language** (`formForBlock(…, resolveLocaleStrings(config)…)` in
+  `SitePage.tsx`), not the page's language as the other block texts (LANG-1B).
+- **The Leads CSV export has no consent columns.**
+- **Lead identity is split (NL1-R8; F-FND2-1).** The newsletter writes `LEAD#<normalized email>`; the lead magnet
+  (`leads/create.ts:84`), the contact form (`contact/send.ts:39,99`, trim only) and comments (`comments/create.ts:68`)
+  write the address as typed. A person reaching both in another spelling has two lead rows (the subscription on the
+  normalized one) until those writers normalize and F-FND2-1 merges stored items. Decision NL1-LEAD-WRITERS (build-2).

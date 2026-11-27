@@ -7,6 +7,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { productIdsReferencingResource } from "../lib/resource-products.js";
+import { newsletterSignup } from "./newsletter.js";
+import { errorName, parseJsonObject, MALFORMED_BODY, INTERNAL_ERROR } from "../lib/value-free.js";
 
 
 const s3 = new S3Client({});
@@ -25,7 +27,10 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
         }
 
-        const body = JSON.parse(event.body || "{}");
+        // NL1-R1 (value-free rule, lib/value-free.ts): a malformed body → 400 with a fixed text; nothing is logged.
+        const parsed = parseJsonObject(event.body || "{}");
+        if (!parsed.ok) return MALFORMED_BODY;
+        const body = parsed.value;
 
         // reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold)
         const tenantRes = await db.send(new GetCommand({
@@ -54,6 +59,18 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
 
             console.log(`reCAPTCHA passed [${recaptchaConfig.source}]: score=${result.score}, action=${result.action}`);
+        }
+
+        // NEWSLETTER-1 (docs/slices/newsletter-1.md): a newsletter signup has its own write (consent + push) and returns
+        // before the lead-magnet write and the resource lookup below — it never yields a download link. Its errors are
+        // logged by name only: the newsletter path logs neither the address nor the MailerLite token (ruling 7).
+        if (body.source === "newsletter") {
+            try {
+                return await newsletterSignup(tenantId, tenantConfig, body);
+            } catch (e: unknown) {
+                console.error(`[leads/create] newsletter signup failed: tenant=${tenantId} error=${errorName(e)}`);
+                return INTERNAL_ERROR;
+            }
         }
 
         // 1. Save Lead
@@ -115,9 +132,10 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             })
         };
 
-    } catch (e: any) {
-        console.error("[leads/create] Error:", e);
-        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
+    } catch (e: unknown) {
+        // NL1-R1: the error's name only — its message or object can quote the request (the address).
+        console.error(`[leads/create] error=${errorName(e)}`);
+        return INTERNAL_ERROR;
     }
 };
 

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { X } from "lucide-react";
 import { sanitizeHtml } from "@/lib/sanitize";
+import type { NewsletterTexts } from "@amodx/shared";
+import { NewsletterForm } from "@amodx/plugins/newsletter/NewsletterForm";
 
 interface PopupData {
     id: string;
@@ -16,6 +18,18 @@ interface PopupData {
     triggerValue: string;
     showOnPages: string[];
     showOncePerSession: boolean;
+    collectEmail?: boolean;
+}
+
+/**
+ * NEWSLETTER-1 (scope item 5): the `newsletter` texts of the public popups answer (the tenant's locale table; present
+ * only when an active newsletter popup collects addresses), or null when absent or not of that shape.
+ */
+const NEWSLETTER_TEXT_KEYS = ["locale", "email", "emailPlaceholder", "consent", "subscribe", "subscribing", "thanks", "failed"] as const;
+function newsletterTextsOf(value: unknown): NewsletterTexts | null {
+    if (typeof value !== "object" || value === null) return null;
+    const t = value as Record<string, unknown>;
+    return NEWSLETTER_TEXT_KEYS.every((k) => typeof t[k] === "string") && t.consent !== "" ? (t as unknown as NewsletterTexts) : null;
 }
 
 interface PopupManagerProps {
@@ -28,6 +42,7 @@ export function PopupManager({ tenantId, apiUrl, currentPath }: PopupManagerProp
     const [popups, setPopups] = useState<PopupData[]>([]);
     const [activePopup, setActivePopup] = useState<PopupData | null>(null);
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+    const [newsletterTexts, setNewsletterTexts] = useState<NewsletterTexts | null>(null);
 
     // Load popups on mount
     useEffect(() => {
@@ -44,6 +59,7 @@ export function PopupManager({ tenantId, apiUrl, currentPath }: PopupManagerProp
                     return p.showOnPages.some((page: string) => currentPath.startsWith(page));
                 });
                 setPopups(applicable);
+                setNewsletterTexts(newsletterTextsOf(data.newsletter));
             })
             .catch(() => {});
     }, [tenantId, apiUrl, currentPath]);
@@ -135,6 +151,11 @@ export function PopupManager({ tenantId, apiUrl, currentPath }: PopupManagerProp
 
     if (!activePopup) return null;
 
+    // NEWSLETTER-1: a newsletter popup whose owner opted in (`collectEmail: true`) shows the signup form (email, consent
+    // box) in place of the link button; its CTA text, when set, is the button label. Every other popup — including a
+    // newsletter popup without the opt-in, or an answer without the texts — draws exactly as before.
+    const collects = activePopup.type === "newsletter" && activePopup.collectEmail === true && newsletterTexts !== null;
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={() => dismiss(activePopup.id)}>
             <div
@@ -161,7 +182,8 @@ export function PopupManager({ tenantId, apiUrl, currentPath }: PopupManagerProp
                     {activePopup.body && (
                         <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(activePopup.body) }} />
                     )}
-                    {activePopup.ctaText && activePopup.ctaLink && (
+                    {collects && <NewsletterForm texts={newsletterTexts!} buttonText={activePopup.ctaText} />}
+                    {!collects && activePopup.ctaText && activePopup.ctaLink && (
                         <a
                             href={activePopup.ctaLink}
                             className="inline-flex items-center justify-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium text-sm hover:opacity-90 transition-opacity"

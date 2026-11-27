@@ -16,6 +16,7 @@ All entities share one table with composite keys:
 | Product | `TENANT#<id>` | `PRODUCT#<productId>` |
 | Comment | `TENANT#<id>` | `COMMENT#<pageId>#<timestamp>` |
 | Lead | `TENANT#<id>` | `LEAD#<email>` |
+| Newsletter subscription (NEWSLETTER-1: consent evidence + MailerLite push state; written with its lead in one transaction, deleted with it in one transaction; the renderer never reads it) | `TENANT#<id>` | `NEWSLETTER#<normalizeEmail(email)>` |
 | Context | `TENANT#<id>` | `CONTEXT#<id>` |
 | Asset | `TENANT#<id>` | `ASSET#<assetId>` |
 | Resource | `TENANT#<id>` | `RESOURCE#<resourceId>` |

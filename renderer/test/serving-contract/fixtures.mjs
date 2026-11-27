@@ -1053,6 +1053,29 @@ const SL1E_ITEMS = [
     ...sl1eTenant("none", SL1E_NONE_BLOCKS),
 ];
 
+// ── NEWSLETTER-1 fixture (docs/slices/newsletter-1.md; row `newsletter-1-page`) ───────────────────────────────────────
+// A copy of the CM1 content tenant with `locale: "en-US"` written out (so it is not an en-US subject of the `loc1-*` rows
+// and is in no `before/` capture: the row reads the running build only). Its record stores a MailerLite connection with a
+// sentinel token — the secret that must reach no page (ruling 7). Its page `/nl1-newsletter` holds a paragraph and one
+// `newsletter` block; its other pages hold none. "A page without the block → today's bytes" is proven by every existing
+// row, unchanged (no existing fixture page holds the block, ruling 11).
+export const NL1 = { site: { id: "nl1-site", host: "nl1-site.serving-contract.test" } };
+export const NL1_PATH = "/nl1-newsletter";
+export const NL1_TOKEN = "SENTINEL-ML-TOKEN-serving-9c41e";
+export const NL1_GROUP = "nl1-group-778899";
+export const NL1_BLOCK = { headline: "NL1 monthly letter", description: "One letter a month.", buttonText: "", blockWidth: "content" };
+const NL1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.content, NL1.site, {
+        locale: "en-US", name: "NL1 Site",
+        integrations: { contactEmail: "office@nl1.serving-contract.test", mailerlite: { apiToken: NL1_TOKEN, groupId: NL1_GROUP } },
+    }),
+    siteRouteItem(NL1.site.id, NL1_PATH, "nl1-newsletter"),
+    siteContentItem(NL1.site.id, "nl1-newsletter", NL1_PATH, "NL1 Newsletter", {
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "NL1 paragraph." }] }, { type: "newsletter", attrs: NL1_BLOCK }],
+        createdAt: CM1_AT,
+    }),
+];
+
 // ── SCHED-1G2 fixtures (docs/slices/sched-1.md § 10.1, § 9.1; rows `sched1g-*`) ─────────────────────────────────────────
 // Two tenants with an explicit `locale` (so neither is an en-US subject of the `loc1-*` rows nor in any `before/` capture;
 // rows `sched1g-*` read the running build only):
@@ -1318,6 +1341,8 @@ export const ITEMS = [
     ...SL1D_ITEMS,
     // shop-look-1e: the custom-form tenants (above).
     ...SL1E_ITEMS,
+    // newsletter-1: the newsletter-block tenant with a stored MailerLite token (above).
+    ...NL1_ITEMS,
     // sched-1g2: the booking-page tenants (above).
     ...SCHED1G_ITEMS,
     // sched-labels-1: the tenant with its own booking texts (above).

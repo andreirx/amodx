@@ -246,6 +246,41 @@ export function blockStrings(resolved: ResolvedLocaleStrings, { catalogMode }: {
 }
 
 /**
+ * NEWSLETTER-1 (docs/slices/newsletter-1.md, ruling 3) — the visitor texts of the newsletter form (the `newsletter`
+ * block and a newsletter popup that collects addresses), from the tenant's locale table. Every text as resolved
+ * (pattern D), except `consent`: a stored "" or blank override gives the language default (pattern F), because a box
+ * with no line beside it records no informed consent. Users: the renderer's server pass (`_newsletter` of the block),
+ * the backend's public popups answer, and the lead write, which stores `consent` only when the browser sent exactly this
+ * text — so the page, the popup and the stored evidence can never disagree on the rule.
+ */
+export type NewsletterTexts = {
+    /** The normalised locale these texts were resolved for (NL1-R3): the browser sends it with the consent line, and the
+     *  backend checks the pair (locale, line) — a line alone does not identify its locale. */
+    locale: string;
+    email: string;
+    emailPlaceholder: string;
+    consent: string;
+    subscribe: string;
+    subscribing: string;
+    thanks: string;
+    failed: string;
+};
+
+export function newsletterTexts(resolved: ResolvedLocaleStrings): NewsletterTexts {
+    const s = resolved.strings.site;
+    return {
+        locale: resolved.locale,
+        email: s.newsletterEmail,
+        emailPlaceholder: s.newsletterEmailPlaceholder,
+        consent: s.newsletterConsent.trim() || resolved.defaults.site.newsletterConsent,
+        subscribe: s.newsletterSubscribe,
+        subscribing: s.newsletterSubscribing,
+        thanks: s.newsletterThanks,
+        failed: s.formSubmissionFailed,
+    };
+}
+
+/**
  * CDL-1 (docs/slices/catalog-data-labels-1.md § 3.3, § 3.5) — the catalog texts the backend WRITES into products or
  * MAILS to the site owner, in the tenant's language with its overrides. Every text is non-empty: a stored override
  * that is "" or only whitespace gives the language default (LOCALE-1 pattern F), because an empty attribute key is

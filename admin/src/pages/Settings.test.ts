@@ -55,7 +55,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HeaderTaglineAndCategoryBarControls, FooterBrandAndColumnsControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS, LanguageListControls, MenuLanguageSelect, languageName, withLanguageAdded, withLanguageRemoved, linksFor, withLinksFor } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HeaderTaglineAndCategoryBarControls, FooterBrandAndColumnsControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS, LanguageListControls, MailerLiteCard, MenuLanguageSelect, languageName, withLanguageAdded, withLanguageRemoved, linksFor, withLinksFor } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -260,8 +260,21 @@ function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES):
 
 // SCHED-MENU-1: remove only the new off-state card for the old byte-preservation comparisons.
 // The two fixtures below have scheduling off. Native controls + one fragment keep all existing useId slots.
-function renderSettingsWithoutSchedulingSwitch(config: Record<string, unknown>): string {
-    const html = renderSettings(config);
+// NEWSLETTER-1: also remove the MailerLite card (admin only; the fixtures render as TENANT_ADMIN) — exactly its own render
+// for the fixture's value, once, directly before the Research card (it shares the Research card's slot in one fragment,
+// so no React tree id of the page moves).
+const RESEARCH_CARD_START = '<div class="rounded-xl border bg-card text-card-foreground shadow"><div class="flex flex-col space-y-1.5 p-6"><div class="flex items-center gap-2"><svg';
+function withoutNewsletter1(html: string, config: Record<string, unknown>): string {
+    const card = renderToStaticMarkup(createElement(MailerLiteCard, { value: (config.integrations as Record<string, unknown> | undefined)?.mailerlite, stored: false, onChange: () => {} }));
+    expect(card).toContain(">Newsletter (MailerLite)</div>");
+    expect(html.split(card).length - 1, "the MailerLite card occurs once").toBe(1);
+    const after = html.slice(html.indexOf(card) + card.length);
+    expect(after.startsWith(RESEARCH_CARD_START), "the MailerLite card directly precedes the Research card").toBe(true);
+    expect(after.indexOf(">Research</div>")).toBeLessThan(after.indexOf("rounded-xl", RESEARCH_CARD_START.length));
+    return html.replace(card, "");
+}
+function renderSettingsWithoutLaterCards(config: Record<string, unknown>): string {
+    const html = withoutNewsletter1(renderSettings(config), config);
     const cards = html.match(/<div class="rounded-xl[^"]*" data-scheduling-switch="true">[\s\S]*?<\/label><\/div><\/div>/g) ?? [];
     expect(cards).toHaveLength(1);
     expect(cards[0]).toContain(">Scheduling</div>");
@@ -271,14 +284,14 @@ function renderSettingsWithoutSchedulingSwitch(config: Record<string, unknown>):
 
 describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups and the CDL-2 field, with the ADMIN-ENGLISH-2 example texts", () => {
     it("content site", () => {
-        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutSchedulingSwitch(CONTENT), CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutLaterCards(CONTENT), CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
     });
     it("commerce site", () => {
-        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutSchedulingSwitch(COMMERCE), COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutLaterCards(COMMERCE), COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
     });
     it("control (CDL-2): without the listed removal the comparison fails; a moved, doubled or changed field is refused", () => {
         for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
-            const html = renderSettingsWithoutSchedulingSwitch(config);
+            const html = renderSettingsWithoutLaterCards(config);
             expect(withoutCatTheme(html, config), name).not.toBe(capture(name));
             const field = confirmationField(config.urlPrefixes.checkoutConfirmation);
             const moved = html.replace(field, "").replace(">URL Prefixes<", `>URL Prefixes<${field}`);
@@ -289,7 +302,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
     });
     it("control (LANG-1A): without the listed removal the comparison fails; a moved, doubled or preceded group is refused; a byte after it fails", () => {
         for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
-            const html = renderSettingsWithoutSchedulingSwitch(config);
+            const html = renderSettingsWithoutLaterCards(config);
             const group = languageGroup(config);
             expect(withoutCatTheme(withoutCdl2(html, config), config), name).not.toBe(capture(name));
             const moved = html.replace(group, "").replace(">URL Prefixes<", `>URL Prefixes<${group}`);
@@ -300,7 +313,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         }
     });
     it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {
-        const pages = [["content", renderSettingsWithoutSchedulingSwitch(CONTENT), CONTENT], ["commerce", renderSettingsWithoutSchedulingSwitch(COMMERCE), COMMERCE]] as const;
+        const pages = [["content", renderSettingsWithoutLaterCards(CONTENT), CONTENT], ["commerce", renderSettingsWithoutLaterCards(COMMERCE), COMMERCE]] as const;
         for (const [name, html, config] of pages) {
             for (let i = 0; i < ENGLISH_EXAMPLES.length; i++) {
                 const without = ENGLISH_EXAMPLES.filter((_, j) => j !== i);
@@ -309,7 +322,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         }
     });
     it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
-        const content = renderSettingsWithoutSchedulingSwitch(CONTENT), commerce = renderSettingsWithoutSchedulingSwitch(COMMERCE);
+        const content = renderSettingsWithoutLaterCards(CONTENT), commerce = renderSettingsWithoutLaterCards(COMMERCE);
         expect(withoutCatTheme(withoutCdl2(withoutLang1a(content, CONTENT), CONTENT), CONTENT)).toBe(capture("content"));            // positive control
         expect(withoutCatTheme(withoutCdl2(withoutLang1a(commerce, COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };

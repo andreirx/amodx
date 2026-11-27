@@ -33,7 +33,9 @@ This plan does not fully solve every renderer read-exposure in one step.
 The first boundary is customer-private commerce data:
 
 - moved out: `ORDER#`, `CUSTORDER#`, `CUSTOMER#`, `COUNTER#ORDER`
-- not moved in this phase: `LEAD#`, `FORMSUB#`, `AUDIT#`, `SIGNAL#`, `CONSENT#`, `COUPON#`
+- not moved in this phase: `LEAD#`, `FORMSUB#`, `AUDIT#`, `SIGNAL#`, `CONSENT#`, `COUPON#`, and `NEWSLETTER#` (added by
+  `newsletter-1`, 2026-11-27: consent evidence and push state; no renderer code reads it, proven by
+  `renderer/test/unit/newsletter-1-boundaries.test.ts`, but the renderer's role can)
 
 That means this phase materially reduces blast radius, but it does not produce perfect renderer least-privilege for the remaining single-table entities. Those can be addressed in a later hardening phase.
 

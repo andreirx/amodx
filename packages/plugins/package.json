@@ -24,6 +24,10 @@
     "./common/EffectPreview": {
       "types": "./dist/common/EffectPreview.d.ts",
       "default": "./dist/common/EffectPreview.js"
+    },
+    "./newsletter/NewsletterForm": {
+      "types": "./dist/newsletter/NewsletterForm.d.ts",
+      "default": "./dist/newsletter/NewsletterForm.js"
     }
   },
   "typesVersions": {
@@ -39,6 +43,9 @@
       ],
       "common/EffectPreview": [
         "dist/common/EffectPreview.d.ts"
+      ],
+      "newsletter/NewsletterForm": [
+        "dist/newsletter/NewsletterForm.d.ts"
       ]
     }
   },

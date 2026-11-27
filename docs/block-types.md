@@ -28,6 +28,7 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText; optional (absent = not shown, SHOP-LOOK-1D): eyebrow, badgeTags[] (≤ 10), showCategoryLabel, showDescription, showRating (see § *Category showcase card options*) | 2, 3, 4 columns |
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText (foot text of every tile), chips[] (label, href; ≤ 12), blockWidth (SHOP-LOOK-1C; see § *Category grid*) | 2, 3, 4 columns from large screens; 1 on a phone, 2 from `sm` |
 | `form` | Custom Form | formSlug (a form of admin Forms), eyebrow, headline, text, card, blockWidth (SHOP-LOOK-1E; see § *Custom form*) | plain or in a card |
+| `newsletter` | Newsletter Signup | headline, description, buttonText (blank = the site's label), blockWidth (NEWSLETTER-1; see § *Newsletter signup*) | — |
 
 ## Category grid (`categoryGrid`, slice `shop-look-1c`)
 
@@ -68,6 +69,37 @@ the block. Offered on every site kind.
   refusal shows the server's error text, else the locale text `formSubmissionFailed`.
 - Submissions are listed on admin **Forms → Submissions**; the notify mail (if the form has an address) lists each field
   label with its value.
+
+## Newsletter signup (`newsletter`, slice `newsletter-1`)
+
+An email field, a consent box with the site's consent line, and a button; optional headline and text above (blank =
+absent). Offered on every site kind. The same form is drawn by a popup of type **Newsletter** whose owner ticks
+**Collect email addresses** (admin Popups); there it replaces the popup's link button and the CTA text, when set, is
+the button label. A stored newsletter popup without the tick stays a link popup.
+
+- Texts: the email label and placeholder, the consent line, the button, "subscribing", the thanks text — site keys
+  `newsletterEmail`, `newsletterEmailPlaceholder`, `newsletterConsent`, `newsletterSubscribe`, `newsletterSubscribing`,
+  `newsletterThanks` (Labels page; packs en, ro, de, fr); the failure text is `formSubmissionFailed`. A blank consent
+  override gives the language default (a box needs a line). The renderer's server pass gives the block `_newsletter`
+  (the texts of the page's language); without it (the admin editor) the block draws nothing. Never the MailerLite
+  settings: no page receives them.
+- Submit: the browser posts to the same-origin proxy `/api/leads` → `POST /leads` (origin check, reCAPTCHA) with
+  `{ email, source: "newsletter", consentText, consentLocale, recaptchaToken }`. `consentText` is the line drawn and
+  `consentLocale` the locale it was resolved for; the backend stores them only when the pair is a line the site shows
+  now, else 409 (reload). No line or no locale → 400. Success → the thanks text; any error → the failure text.
+- Stored, in ONE transaction: the subscription `NEWSLETTER#<normalized email>` = `{ consent: { id, at, locale, text },
+  push }` and the lead `LEAD#<normalized email>` only when the address has none (an existing lead is not written). The
+  same line twice keeps the first consent; a new line (the owner changed it) replaces it. Deleting the lead deletes both
+  in one transaction.
+- With a MailerLite connection (admin Settings → Newsletter (MailerLite): group id + API token, the token write-only)
+  the address is added to that group in the same request. One deadline of 4 s covers the call (at most 3 s) and the
+  recording of its result (a timer race outside the database client); the answer is success whatever MailerLite does.
+  The STORED push state is the truth: `Pending` (no result stored), `Sent` or `Failed`; Send again is offered for
+  `Pending` and `Failed` (and for a signup stored without a connection).
+- One identity per person: the normalized address. A lead row under another spelling (written by the lead magnet,
+  contact form or comments, which do not normalize) is a separate row and shows no subscription; deleting it deletes
+  that row only. The Leads page shows the consent and the push state (`Sent`, `Failed` with the reason, `Pending`, not connected)
+  and **Send again** for every state except `Sent`. Details: `docs/slices/newsletter-1.md` § *Build record*.
 
 ## Category showcase card options (`categoryShowcase`, slice `shop-look-1d`)
 

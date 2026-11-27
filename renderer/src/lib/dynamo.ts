@@ -124,6 +124,13 @@ function hasOwnRecaptchaPair(recaptcha: unknown): recaptcha is { siteKey: string
     return typeof r.siteKey === "string" && r.siteKey !== "" && typeof r.secretKey === "string" && r.secretKey !== "";
 }
 
+/** The stored `integrations` without `mailerlite` (NEWSLETTER-1); absent → `{}` as before. */
+function withoutMailerLite(integrations: any): any {
+    if (!integrations || typeof integrations !== "object") return integrations || {};
+    const { mailerlite: _secret, ...rest } = integrations;
+    return rest;
+}
+
 function mapTenant(item: any): TenantConfig {
     let theme = item.theme;
     if (typeof theme === 'string') {
@@ -183,7 +190,9 @@ function mapTenant(item: any): TenantConfig {
         homePageSlug: item.homePageSlug || undefined,
         legalLinks: item.legalLinks || undefined,
         theme: theme || {},
-        integrations: item.integrations || {},
+        // NEWSLETTER-1 (ruling 7): the MailerLite connection holds a secret token and no renderer code reads it (the push
+        // runs in the backend), so it is never mapped: not in the settings the renderer reads, not in any page payload.
+        integrations: withoutMailerLite(item.integrations),
         // SCHED-1G2 (docs/slices/sched-1.md § 9.1, finding G8): the tenant's reCAPTCHA SITE key, ONLY when the stored
         // record has both keys — the condition under which the backend verifies with the tenant's secret
         // (`resolveRecaptchaConfig` branch 1, backend/src/lib/recaptcha.ts). Otherwise absent, and every page uses the

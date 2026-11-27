@@ -346,6 +346,13 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         postsEmpty: "Nu s-au găsit articole.",
         postsLoadFailed: "Eroare API {status}",
         navCategoryBarLabel: "Categorii",
+        // NEWSLETTER-1: the newsletter block and popup field (`newsletterTexts`).
+        newsletterEmail: "Email",
+        newsletterEmailPlaceholder: "nume@exemplu.ro",
+        newsletterConsent: "Da, vreau să primesc newsletterul pe email. Mă pot dezabona oricând.",
+        newsletterSubscribe: "Abonează-mă",
+        newsletterSubscribing: "Se trimite...",
+        newsletterThanks: "Mulțumim pentru abonare!",
     },
     // SCHED-1G2 (docs/slices/sched-1.md § 10.1): the hosted booking pages. PROPOSED Romanian texts — the human approves
     // them as a table (key, EN, RO) before the production deploy (locale-1 § 16.2 item 4); complete for every key.

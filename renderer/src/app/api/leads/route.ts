@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
 
         const data = await response.json();
         return NextResponse.json(data);
-    } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+    } catch {
+        // NEWSLETTER-1 (NL1-R1): a fixed text — `req.json()`'s SyntaxError quotes the body (the visitor's address).
+        return NextResponse.json({ error: "Submission Failed" }, { status: 500 });
     }
 }

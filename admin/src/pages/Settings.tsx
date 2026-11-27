@@ -465,6 +465,68 @@ export function MenuLanguageSelect({ config, setConfig, field, language, setLang
  * The page's config state: `interestListEmail: null` = "send to the contact e-mail" chosen.
  * Scheduling can start with just an explicit time zone; the backend schema supplies absent numeric defaults.
  */
+/**
+ * NEWSLETTER-1 (ruling 7, ruling 8) — the MailerLite connection as the card edits it: the object form of
+ * `integrations.mailerlite` (`groupId`, and `apiToken` only when the owner typed a new one — GET /settings never returns
+ * the token), or null when there is none (absent, null, or the retired boolean). Saving `{ groupId }` keeps the stored
+ * token; `{ groupId, apiToken }` replaces it; `null` disconnects (backend `mailerLiteSave`).
+ */
+export function mailerLiteDraft(value: unknown): { groupId: string; apiToken: string } | null {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const v = value as Record<string, unknown>;
+    return { groupId: typeof v.groupId === "string" ? v.groupId : "", apiToken: typeof v.apiToken === "string" ? v.apiToken : "" };
+}
+
+/**
+ * NEWSLETTER-1 — the MailerLite card of the Settings page (admin only). `value`: the loaded or edited
+ * `integrations.mailerlite`; `stored`: the loaded record holds a connection (so a token is stored); `onChange`: the new
+ * value — `{ groupId, apiToken }` (an empty token keeps the stored one) or null (disconnect on save).
+ */
+export function MailerLiteCard({ value, stored, onChange }: { value: unknown; stored: boolean; onChange: (next: { groupId: string; apiToken: string } | null) => void }) {
+    const ml = mailerLiteDraft(value);
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                    <Mail className="h-5 w-5 text-muted-foreground" />
+                    <CardTitle>Newsletter (MailerLite)</CardTitle>
+                </div>
+                <CardDescription>
+                    Newsletter signups (the newsletter block and newsletter popups) are always stored on the Leads page, with
+                    the visitor's consent. With a MailerLite group ID and API token, each signup is also added to that group.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label>Group ID</Label>
+                    <Input
+                        value={ml?.groupId ?? ""}
+                        onChange={e => onChange({ ...(ml ?? { apiToken: "" }), groupId: e.target.value })}
+                        placeholder="e.g. 112233445566 (MailerLite → Subscribers → Groups)"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label>API token</Label>
+                    <Input
+                        type="password"
+                        autoComplete="off"
+                        value={ml?.apiToken ?? ""}
+                        onChange={e => onChange({ ...(ml ?? { groupId: "" }), apiToken: e.target.value })}
+                        placeholder={stored ? "A token is stored. Type a new token to replace it." : "Token from MailerLite → Integrations → API"}
+                    />
+                    <p className="text-[10px] text-muted-foreground">The token is never shown again after you save it.</p>
+                </div>
+                {(stored || ml !== null) && (
+                    <Button variant="outline" size="sm" onClick={() => onChange(null)}>Disconnect MailerLite</Button>
+                )}
+                {stored && ml === null && (
+                    <p className="text-xs text-muted-foreground">MailerLite will be disconnected when you save.</p>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 export type SettingsDraft = Omit<Partial<TenantConfig>, "interestListEmail" | "scheduling"> & {
     interestListEmail?: string | null;
     scheduling?: Partial<NonNullable<TenantConfig["scheduling"]>>;
@@ -563,6 +625,9 @@ export default function SettingsPage() {
     // Tracks whether secrets have been merged into config.
     // Guards the secrets effect so it only fires once per settings load.
     const [secretsLoaded, setSecretsLoaded] = useState(false);
+    // NEWSLETTER-1: whether the loaded record holds a MailerLite connection (so a token is stored: the backend refuses a
+    // connection without one). Only the placeholder of the token field and the Disconnect button read it.
+    const [mailerLiteStored, setMailerLiteStored] = useState(false);
 
     const isAdmin = userRole === "TENANT_ADMIN" || userRole === "GLOBAL_ADMIN";
 
@@ -609,6 +674,7 @@ export default function SettingsPage() {
         try {
             const data = await apiRequest("/settings");
             setConfig(data);
+            setMailerLiteStored(mailerLiteDraft(data?.integrations?.mailerlite) !== null);
         } catch (e: any) {
             console.error(e);
             setError(e.message || "Failed to load settings");
@@ -662,6 +728,7 @@ export default function SettingsPage() {
                 method: "PUT",
                 body: JSON.stringify(withContactForSave(config))
             });
+            setMailerLiteStored(mailerLiteDraft(config.integrations?.mailerlite) !== null);
             // Both commerce and scheduling navigation read the existing tenant-list context.
             await refreshTenants();
         } catch (e: any) {
@@ -2367,8 +2434,11 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* RESEARCH — admin only (contains braveApiKey) */}
+                    {/* NEWSLETTER (MailerLite) and RESEARCH — admin only (secrets). One fragment in the Research card's slot, so the
+                        column keeps its number of children and no React tree id of the page moves (NEWSLETTER-1). */}
                     {isAdmin && (
+                    <>
+                    <MailerLiteCard value={config.integrations?.mailerlite} stored={mailerLiteStored} onChange={(next) => updateIntegration("mailerlite", next)} />
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
@@ -2392,6 +2462,7 @@ export default function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    </>
                     )}
                 </div>
 

@@ -339,6 +339,13 @@ export const FR_LANGUAGE_PACK: CompleteLanguagePack = {
         postsEmpty: "Aucun article trouvé.",
         postsLoadFailed: "Erreur API {status}",
         navCategoryBarLabel: "Catégories",
+        // NEWSLETTER-1: the newsletter block and popup field (`newsletterTexts`).
+        newsletterEmail: "E-mail",
+        newsletterEmailPlaceholder: "nom@example.com",
+        newsletterConsent: "Oui, je souhaite recevoir la newsletter par e-mail. Je peux me désabonner à tout moment.",
+        newsletterSubscribe: "S’abonner",
+        newsletterSubscribing: "Envoi en cours...",
+        newsletterThanks: "Merci pour votre inscription\u00a0!",
     },
     booking: {
         bookTitle: "Réserver",

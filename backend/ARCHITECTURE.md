@@ -108,6 +108,12 @@ src/
 │   │                      #   authorizes a lead link, so it must see completed writes). Throws on a failed read.
 │   │                      #   Users: resources/presign.ts (download) and leads/create.ts (DIGITAL-FILE-GUARD-1)
 │   ├── events.ts          # EventBridge publishAudit() helper
+│   ├── mailerlite.ts      # NEWSLETTER-1: the one MailerLite call (upsert subscriber + group), ≤ 3 s and stopped by the
+│   │                      #   caller's deadline; contract from the published docs in its header; never logs; no SDK,
+│   │                      #   no provider interface
+│   ├── value-free.ts      # NEWSLETTER-1 (NL1-R1): errorName / parseJsonObject / fixed 400 and 500 answers for the
+│   │                      #   handlers that receive an address or the MailerLite token: logs and answers never hold
+│   │                      #   an error's message or the request text
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha() (a success answer without a
 │   │                      #   finite numeric score, or an answer that is not an object → refusal; PUBLIC-HARDEN-1)
 │   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
@@ -240,8 +246,21 @@ src/
 │   ├── create.ts          # POST /leads: the authorizer admits it anonymously (auth/authorizer.ts:236; the handler
 │   │                      #   then checks Origin) or as RENDERER (the site proxy /api/leads sends the renderer key).
 │   │                      #   Stores the lead; signs a 15-min link for body.resourceId only when no product
-│   │                      #   references that resource (DIGITAL-FILE-GUARD-1; product file → 201, no link, warn)
-│   └── list.ts            # GET /leads
+│   │                      #   references that resource (DIGITAL-FILE-GUARD-1; product file → 201, no link, warn).
+│   │                      #   `source: "newsletter"` → newsletter.ts (NEWSLETTER-1), before the lead write: no link
+│   ├── newsletter.ts      # NEWSLETTER-1: (consentLocale, consentText) must be a line the site shows → else 400/409;
+│   │                      #   ONE transaction: NEWSLETTER#<normalized email> = { consent{id,…}, push } fenced by the
+│   │                      #   consent id read + LEAD# Put-if-absent (or ConditionCheck when it exists); then the push
+│   │                      #   (lib/mailerlite.ts) and its result, both inside POST_STORE_DEADLINE_MS (4 s); the result
+│   │                      #   write is fenced by consent id + attempt id; a timer race bounds it (pushWithinDeadline →
+│   │                      #   { attempted?, resultWrite: recorded | unconfirmed }). A cancelled transaction: re-read,
+│   │                      #   one retry, then 503. One lead identity: LEAD#/NEWSLETTER#<normalized>
+│   ├── push.ts            # POST /leads/{email}/push — admin "Send again": claims a new attempt (fenced), then pushes;
+│   │                      #   a concurrent claim → 409 (EngagementApi nested stack)
+│   ├── delete.ts          # DELETE /leads/{email} — the normalized lead and its NEWSLETTER# subscription in ONE
+│   │                      #   transaction; a lead under another spelling: that item only
+│   └── list.ts            # GET /leads — projected leads (one page); every NEWSLETTER# subscription read to the last
+│                          #   page; shown as `newsletter` on the NORMALIZED lead row only
 ├── forms/
 │   ├── create/list/get/update/delete.ts, submissions.ts   # admin forms (FORM#<id> + FORMSLUG#<slug> pointer)
 │   └── public-submit.ts   # POST /public/forms/{slug}/submit (public): origin check, then the body parsed once (not a
