@@ -41,10 +41,11 @@ src/blocks/<name>/
 └── <Name>Render.tsx  # Pure React render component (SSR-safe)
 ```
 
-## All 23 Plugins
+## All 24 Plugins
 
 This table lists every key in `RENDER_LOADERS` (`src/render.ts`) — one row per registered
-render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`; 22 since `shop-look-1e`).
+render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`; 22 since `shop-look-1e`;
+23 since `newsletter-1`; 24 since `gallery-1`).
 
 | Key | Label | Attributes | Styles/Variants |
 |-----|-------|-----------|-----------------|
@@ -71,6 +72,7 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since 
 | `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
 | `form` | Custom Form | formSlug, eyebrow, headline, text, card, blockWidth; server data `_form` (see § *The `form` block*) | plain or in a card |
 | `newsletter` | Newsletter Signup | headline, description, buttonText, blockWidth; server data `_newsletter` (the locale texts); form component also exported as `@amodx/plugins/newsletter/NewsletterForm` for the renderer's popup (NEWSLETTER-1, `docs/block-types.md` § *Newsletter signup*) | — |
+| `gallery` | Photo Gallery | items[] (src, thumb?, alt, caption?, width?, height?), columns, blockWidth; server data `_gallery` (the viewer's locale texts; see § *The `gallery` block*) | 2, 3, 4 columns from larger screens; 2 on a phone |
 
 ## Tiptap Integration Pattern
 
@@ -90,6 +92,8 @@ Plugins access runtime dependencies via `editor.storage.<key>`:
 - `editor.storage.categoryShowcase.fetchCategoriesFn`, `editor.storage.categoryGrid.fetchCategoriesFn` — the tenant's
   category list (`GET /categories`; one function, both storages)
 - `editor.storage.form.fetchFormsFn` — the tenant's custom forms (`GET /forms`: `id, name, slug, status`), SHOP-LOOK-1E
+- `editor.storage.gallery.pickManyFn` — the media picker in its multi-select mode: `pickManyFn(callback(urls), { mediaType })`;
+  the addresses come in the order the owner marked them (GALLERY-1)
 
 These are injected by the admin's BlockEditor component before the editor mounts.
 
@@ -352,6 +356,49 @@ FormEditor.tsx, FormRender.tsx, DynamicForm.tsx}`; record `docs/slices/shop-look
   says why the site would draw nothing.
 - Render imports: `react`, `lucide-react`, and `@amodx/shared` as a type only (D3).
 
+## The `gallery` block (slice `gallery-1`)
+
+A grid of photo tiles; each tile is a plain link to its large photo, and with script a viewer opens it. Files:
+`src/gallery/{schema.ts, index.ts, GalleryEditor.tsx, GalleryRender.tsx, GalleryViewer.tsx}`; record
+`docs/slices/gallery-1.md` § *Build record*. Offered on every site kind (no `offeredOn`). Maturity: PROTOTYPE.
+
+- **Server data (`_gallery`).** The renderer's `prepareBlocks` gives `galleryTexts` of the page's language: `{ viewer,
+  close, previous, next, counter, photo }` (every text non-blank; `counter` holds `{n}` `{total}`, `photo` `{n}`). No
+  `_gallery`, or one not of that shape → the render draws nothing (no English text on a page in another language).
+- **Stored items are checked by the render** (the backend does not check block attributes): an item whose `src` is not a
+  string, is blank, or fails the address rule is dropped; the others render, numbered again. Address rule
+  (`galleryAddress`): the trimmed value is `https://<host>…` or a root-relative `/…` (not `//…`), and holds no control
+  character and no backslash (a browser removes the first and reads the second as `/`, which could turn `/…` into a
+  `//host` address after the check). Not `isDirectMediaUrl` of `common/videoSource.ts`: that rule accepts `http:`, `//host`
+  and relative paths and needs a video extension. A `thumb` that fails the rule counts as absent. `alt` absent or blank →
+  `alt=""`, never the file name. `width`/`height`: both positive integers, else neither.
+- **Grid (`GalleryRender.tsx`, server-rendered).** `<ul>` of `<li><a href={src} data-gallery-index={i}><img src={thumb ??
+  src} alt loading="lazy" decoding="async" width? height?></a></li>`. Every tile is a 4:3 box, photo `object-cover`, so it
+  reserves its space before the photo loads. The tile link is named by `alt`; without one by the locale text `photo`
+  with its position (`aria-label`). `GRID_CLASS`: two columns on a phone, `sm:`/`lg:` up to `columns` ("2" | "3" | "4",
+  strings as `category-grid`; anything else → "3").
+- **Tile loading (ruling 9 as narrowed, GALLERY1-TILE-FILES = A).** A tile with `thumb` loads the small file. A tile
+  without `thumb` loads the LARGE file, deferred only by native lazy loading, and the browser loads every lazy image within
+  its distance of the screen (fixture GL1: 30 of 30 tiles by default, 28 of 30 under 4G emulation), so no page-load
+  guarantee is claimed for it. Small files made at upload: follow-up `gallery-thumbs-1`.
+- **Viewer (`GalleryViewer.tsx`, `"use client"`).** Wraps the grid; a plain left click on a tile opens the native
+  `<dialog>` with `showModal()` at that position (a modifier key or another button keeps the browser's action). Named by
+  `viewer`; Close, Previous, Next are 44 px buttons named by the locale texts; Escape, arrow keys, a horizontal swipe
+  (`swipeStep`: ≥ 40 px, mostly horizontal); steps wrap (`steppedIndex`); a click on the empty area around the photo
+  closes; on close, focus returns to the opening tile. The counter (`aria-live="polite"`) is the `counter` template.
+  Closed, the dialog itself holds no image; open, the photo of its position only, and the next one is fetched ahead
+  (`new Image()` in an effect). First render = the closed viewer on server and browser (no `window`/`document` read in
+  render). No animation or transition. It takes a plain photo list (`ViewerPhoto[]`), but only this block uses it.
+- **Template rule.** `fillLocaleTemplate` (in `GalleryViewer.tsx`) is a copy of `@amodx/shared` `fillTemplate`, bound to
+  it by `test/galleryBlock.test.ts`. Kept by the stop condition of ruling GALLERY1-TEMPLATE-IMPORT = C: importing
+  `fillTemplate` in this lazy chunk moved the stylesheet link and a script of every page (the same 11 serving rows) both
+  from the shared barrel and from an import-free module `@amodx/shared/dist/template.js`. Render imports:
+  `react`, `lucide-react`, and `@amodx/shared` as a type only.
+- **Editor (`GalleryEditor.tsx`).** English; "Add photos" calls `editor.storage.gallery.pickManyFn` (images only) and
+  appends the picked addresses in the picked order (`withPhotosAdded`, exported pure function); per photo a description
+  and a caption input; move up / move down / remove buttons (`withItemMoved`, `withoutItem` of `category-grid`'s editor,
+  reused). `thumb` and the sizes are not asked for (tools write them) and are kept when a photo is edited.
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -369,7 +416,8 @@ FormEditor.tsx, FormRender.tsx, DynamicForm.tsx}`; record `docs/slices/shop-look
 | `test/categoryGrid.test.ts` (`shop-look-1c`) | `RENDER_LOADERS["categoryGrid"]`: no `_categories` → nothing; 0 / 1 / 12 tiles in the given order (one tile byte for byte); photo and description fallbacks (no element); the scrim around every tile text and no palette colour class; `columns` 2 / 3 / 4 and unknown → the grid class; `ctaText`, eyebrow, headline blank / set; chips none / valid / without label or href; `_getUrl` on tiles and chips; schema defaults and limits (13th id refused); Tiptap defaults = schema defaults; the render imports only `react`; the editor's options and its three list functions |
 | `test/formBlock.test.ts` (`shop-look-1e`) | `RENDER_LOADERS["form"]`: no `_form` or a malformed one → nothing; each field type's element, labels in order tied to their controls, required marks, the select's locale placeholder (EN, RO; a field placeholder wins), button text, no success text before a submit; eyebrow / headline / text blank vs set; `card` exactly `true`; owner texts escaped; schema defaults; Tiptap attributes = schema defaults, storage `fetchFormsFn`; registration in both entries (`offeredOn: []`); the editor's controls and `formSlugNote`; no renderer/admin import, type-only `@amodx/shared`; the renderer copy gone; only `text-green-500` as a palette class |
 | `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` and `categoryGrid` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
-| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 22 (20 before `shop-look-1c`, 21 before `shop-look-1e`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
+| `test/galleryBlock.test.ts` (`gallery-1`) | `RENDER_LOADERS["gallery"]`: registration and schema defaults; every row of the slice's Evidence taxonomy (absent/empty, thumb + sizes, no thumb, bad `src`, other schemes, no `alt`); the address rule table; no `_gallery` or a malformed one → nothing; Romanian texts; accessible names, 44 px buttons, polite counter; ruling 9 as narrowed: (a) the closed viewer holds no image, (c) 30 tiles with `thumb` load the small files lazily, (d) 30 tiles without `thumb` ARE the large files, lazy only — no page-load guarantee claimed; no motion class; columns; sizes; `fillLocaleTemplate` = `fillTemplate`; `steppedIndex`, `swipeStep`, `withPhotosAdded` |
+| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 24 (20 before `shop-look-1c`, 21 before `shop-look-1e`, 22 before `newsletter-1`, 23 before `gallery-1`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that). GALLERY-1: no module reachable from `RENDER_LOADERS` imports a runtime value from `@amodx/shared`, by the barrel or any deep path (relative-import walk; a positive control for each measured form) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
@@ -386,7 +434,7 @@ is NO LONGER a whole-entry SSR smoke test on its own. The per-plugin suites belo
 render only THEIR loader, so each covers only its own module. The whole-entry guarantee now lives
 in `test/renderLoaders.test.ts`: it `await`s every `RENDER_LOADERS` entry in `environment: "node"`,
 which forces each render module to load. That detects **module-load** SSR hazards (a top-level
-`window`/`document` reference in any registered render module) for all 22 loaders. It does NOT
+`window`/`document` reference in any registered render module) for every loader (24 since `gallery-1`). It does NOT
 render each component, so it does not prove browser-free *render execution* — the per-plugin
 suites do that for the components they exercise.
 

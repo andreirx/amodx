@@ -22,6 +22,7 @@ import { MarkdownPlugin } from './markdown';
 import { VideoHeroPlugin } from './video-hero';
 import { FormPlugin } from './form';
 import { NewsletterPlugin } from './newsletter';
+import { GalleryPlugin } from './gallery';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -46,7 +47,8 @@ const REGISTRY: PluginDefinition[] = [
     CategoryGridPlugin,
     MarkdownPlugin,
     FormPlugin,
-    NewsletterPlugin
+    NewsletterPlugin,
+    GalleryPlugin
 ];
 
 

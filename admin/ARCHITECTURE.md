@@ -380,8 +380,13 @@ No new switch is added. Their renderer contract and A1–A5 evidence are in `doc
 - Injects storage callbacks: `uploadFn`, `pickFn` (media), `fetchTagsFn` (post grid tags), `fetchCategoriesFn` (the
   tenant's categories, `GET /categories`: one function for `categoryShowcase` and `categoryGrid`, SHOP-LOOK-1C),
   `fetchFormsFn` (the tenant's custom forms, `GET /forms` — the list the Forms page shows; for the `form` block's
-  picker, SHOP-LOOK-1E; a failed call → `[]`). Test: `formBlockPicker.test.ts` mounts the real `BlockEditor` in jsdom
+  picker, SHOP-LOOK-1E; a failed call → `[]`), `pickManyFn` (the media picker in its multi-select mode, for the `gallery`
+  block, GALLERY-1). Test: `formBlockPicker.test.ts` mounts the real `BlockEditor` in jsdom
   (`apiRequest` replaced) and reads the picker's options
+- The pending pick is one value, `PickRequest` = `{ mode: "one", onPick(url) }` (`pickFn`: image, hero) or
+  `{ mode: "many", onPick(urls) }` (`pickManyFn`: gallery); `MediaPicker` gets `onSelect` or `onSelectMany` to match.
+  Test: `galleryPicker.test.ts` (real `BlockEditor` + real `MediaPicker`, jsdom): several images marked in one step and
+  added in the order marked; unmark; the single pick of the image block unchanged
 - `FormSubmissions.shop-look-1e.test.ts` (jsdom): the submissions page shows a submission in the shape the corrected
   public submit handler stores (`data` keyed by label; `submitterEmail` at the top level). A label-keyed checkbox value
   reads `true` / `false` (the `Yes` / `No` form is used only for id-keyed values; finding F-1E-SUBMISSIONS-CHECKBOX)
@@ -389,7 +394,10 @@ No new switch is added. Their renderer contract and A1–A5 evidence are in `doc
   `offeredPlugins()` (CAT-ADMIN-2: the site kind is "catalog" by `isCatalogMode`, else "commerce" by `commerceEnabled`,
   else none; a block is offered when its `offeredOn` is empty or holds the kind), and `AdminLayout.tsx` loads product
   and category link suggestions on a commerce or a catalog site
-- `MediaPicker.tsx` opens as a dialog to browse/select uploaded assets
+- `MediaPicker.tsx` opens as a dialog to browse/select uploaded assets. Two modes, one per callback prop (a union type, so
+  a caller names exactly one): `onSelect` — one click picks and closes (every caller before GALLERY-1, unchanged);
+  `onSelectMany` — clicks mark and unmark (`aria-pressed`, the order number on the tile), "Add N items" gives the marked
+  addresses in the order marked and closes
 
 ## Auth Flow
 

@@ -244,8 +244,9 @@ legacy `/products/<id>` route. Steps:
    products (+ the catalog-mode reduction, the URL prefixes; the card options' data, SHOP-LOOK-1D), `reviewsCarousel`
    reviews, `categoryGrid` categories (SHOP-LOOK-1C), the `form` block's custom form (SHOP-LOOK-1E) (avoids client fetches),
    the `newsletter` block's `_newsletter` (NEWSLETTER-1: `newsletterTexts` of the page's resolved texts, which SitePage passes
-   as a third argument; no read, never the MailerLite settings). One function, two users: the content page and the category
-   page (CATEGORY-CONTENT-1; the category page passes no texts → the tenant's default language)
+   as a third argument; no read, never the MailerLite settings), the `gallery` block's `_gallery` (GALLERY-1: `galleryTexts`
+   of the same resolved texts; no read; a stored block without an attrs object is skipped). One function, two users: the
+   content page and the category page (CATEGORY-CONTENT-1; the category page passes no texts → the tenant's default language)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
 8. Shows draft watermark banner for unpublished content
@@ -1178,3 +1179,18 @@ Record `docs/slices/newsletter-1.md` § *Build record*. The renderer's part:
   layout prop), so no page of a tenant without such a popup changes.
 - No renderer file names the subscription item's key prefix (`test/unit/newsletter-1-boundaries.test.ts`): the renderer
   never reads consent evidence or push state.
+
+## Photo gallery (GALLERY-1)
+
+Record `docs/slices/gallery-1.md` § *Build record*. The renderer's part is one branch of `prepareBlocks`: a `gallery`
+block gets `_gallery` = `galleryTexts` of the page's resolved texts (the viewer's name, Close, Previous, Next, the counter
+and tile-name templates); the photos stay as stored (the plugin checks each). Tests: `test/unit/gallery-1-site-page.test.ts`
+(real `SitePage`: en, ro with an override, a `/de/…` extra-language page, a block without attrs),
+`test/unit/gallery-1-client.test.ts` (jsdom: server render without browser globals, hydration without a warning, the
+viewer's open / step / close / focus / keys / swipe / photo fetched ahead), serving row `(gallery-1-page)` (fixture `GL1`).
+The gallery's client code is its own chunk, named only by the chunk of the lazy loader map (no page names it).
+Bundler fact found here (ruling GALLERY1-TEMPLATE-IMPORT = C, stop condition met): a lazily loaded plugin render chunk that
+imports a RUNTIME value from `@amodx/shared` — the barrel, and also the import-free module `dist/template.js` — moves the
+stylesheet link and a script of every page into the payload's root segment (the same 11 byte-identity rows each time).
+`packages/plugins/test/renderLoaders.test.ts` keeps every render module on `import type`. The gallery's tiles without
+`thumb` load the large files (lazy only; no page-load guarantee, GALLERY1-TILE-FILES = A; follow-up `gallery-thumbs-1`).

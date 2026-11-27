@@ -361,6 +361,13 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         newsletterSubscribe: "Subscribe",
         newsletterSubscribing: "Subscribing...",
         newsletterThanks: "Thank you for subscribing!",
+        // GALLERY-1: the photo viewer of the gallery block (`galleryTexts`).
+        galleryViewer: "Photo viewer",
+        galleryClose: "Close",
+        galleryPrevious: "Previous photo",
+        galleryNext: "Next photo",
+        galleryCounter: "{n} of {total}",
+        galleryPhoto: "Photo {n}",
     },
     // SCHED-1G2 (docs/slices/sched-1.md § 10.1): the hosted booking pages. New texts (no literal they replace).
     booking: {

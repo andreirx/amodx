@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import { chromium } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
-import { createTenantBody, createProductBody, createCategoryBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "./tool-shapes.js";
+import { createTenantBody, createProductBody, createCategoryBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE } from "./tool-shapes.js";
 
 // Storage directory for browser auth states
 const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
@@ -682,6 +682,8 @@ const BLOCK_SCHEMAS = {
             }
         }
     },
+    // GALLERY-1: the shape lives in tool-shapes.ts (bound to the plugin's schema by test/tool-shapes.test.ts).
+    gallery: GALLERY_BLOCK_SHAPE,
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -981,7 +983,8 @@ server.tool("add_block",
             "reviewsCarousel",
             "categoryShowcase",
             "categoryGrid",
-            "form"
+            "form",
+            "gallery"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -2701,6 +2704,7 @@ TIPS:
 - categoryShowcase requires commerce-enabled tenant and valid category ID
 - categoryGrid takes category IDs (list_categories); hidden or deleted categories are left out
 - form takes the slug of a form (list_forms); the form's fields are edited with update_form, not on the page
+- gallery takes photo addresses (https:// or /...); give alt for every photo, thumb when a smaller file exists
 - bulk_price_adjust defaults to dry_run=true (preview only) — call with dry_run=false to apply
 - Currency is set per-tenant in settings (default RON), inherited by new products`
         }],

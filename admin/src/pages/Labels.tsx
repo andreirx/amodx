@@ -527,6 +527,12 @@ export default function Labels() {
                         <F section="site" label="Newsletter: button (when the block has none)" field="newsletterSubscribe" />
                         <F section="site" label="Newsletter: subscribing" field="newsletterSubscribing" />
                         <F section="site" label="Newsletter: thank you" field="newsletterThanks" />
+                        <F section="site" label="Photo gallery: viewer name (screen readers; empty = the default)" field="galleryViewer" />
+                        <F section="site" label="Photo gallery: Close (empty = the default)" field="galleryClose" />
+                        <F section="site" label="Photo gallery: Previous photo (empty = the default)" field="galleryPrevious" />
+                        <F section="site" label="Photo gallery: Next photo (empty = the default)" field="galleryNext" />
+                        <F section="site" label="Photo gallery: position, keep {n} and {total} (empty = the default)" field="galleryCounter" />
+                        <F section="site" label="Photo gallery: photo without a description, keep {n} (empty = the default)" field="galleryPhoto" />
                         <F section="site" label="Hero: no image" field="heroNoImage" />
                         <F section="site" label="Image: description, when the block has none" field="imageAltFallback" />
                         <F section="site" label="Video: title, when the block has no caption" field="videoTitle" />

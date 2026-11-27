@@ -11,14 +11,14 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
-export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts, newsletterTexts, templatePlaceholders, BOOKING_TEXT_KEYS, bookingStandardTexts } from "./locale-strings.js";
+export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts, newsletterTexts, galleryTexts, templatePlaceholders, BOOKING_TEXT_KEYS, bookingStandardTexts } from "./locale-strings.js";
 import { normalizeLocale, localeLanguageSubtag, BOOKING_TEXT_KEYS } from "./locale-strings.js";
 // LANG-1 (docs/slices/lang-1.md § 5): the page-language derivation and the read rule of the language settings. Pure and
 // import-free (the renderer middleware loads the built module alone, `lang-1b`).
 export { readLanguageSettings, pageLanguageOf, languageTagOf } from "./languages.js";
 export type { PageLanguage, LanguageSettings, LanguageLink } from "./languages.js";
 import { pageLanguageOf, type PageLanguage } from "./languages.js";
-export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings, CatalogServerTexts, NewsletterTexts } from "./locale-strings.js";
+export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings, CatalogServerTexts, NewsletterTexts, GalleryTexts } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack, BookingStrings } from "./language-packs/index.js";
 import type { BookingStrings } from "./language-packs/index.js";
@@ -1206,6 +1206,16 @@ export const SiteStringsSchema = z.object({
     newsletterSubscribe: z.string().optional(),         // "Subscribe" (block field buttonText wins)
     newsletterSubscribing: z.string().optional(),       // "Subscribing..."
     newsletterThanks: z.string().optional(),            // "Thank you for subscribing!"
+    // GALLERY-1 (docs/slices/gallery-1.md, ruling 2): the photo viewer of the `gallery` block (`galleryTexts`,
+    // locale-strings.ts). After the older keys, so their order is unchanged. Not block keys: they reach a page only in
+    // the `_gallery` of a gallery block (renderer prepareBlocks). Blank → the language default (each is an accessible
+    // name or the position announcement).
+    galleryViewer: z.string().optional(),               // "Photo viewer" (the dialog's accessible name)
+    galleryClose: z.string().optional(),                // "Close"
+    galleryPrevious: z.string().optional(),             // "Previous photo"
+    galleryNext: z.string().optional(),                 // "Next photo"
+    galleryCounter: z.string().optional(),              // "{n} of {total}" (the position in the viewer)
+    galleryPhoto: z.string().optional(),                // "Photo {n}" (a tile's name when the photo has no description)
 });
 export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 

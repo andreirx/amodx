@@ -15,25 +15,39 @@ interface BlockEditorProps {
     onChange: (json: any) => void;
 }
 
+/** The pick a block asked for (GALLERY-1, ruling 5): one asset (`pickFn`: image, hero) or several in one step
+ *  (`pickManyFn`: gallery). Each mode carries the callback of its own result type. */
+type PickRequest =
+    | { mode: "one"; onPick: (url: string) => void }
+    | { mode: "many"; onPick: (urls: string[]) => void };
+
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
     const [pickerOpen, setPickerOpen] = useState(false);
     const [pickerMediaType, setPickerMediaType] = useState<"image" | "video" | "all">("all");
-
-    // Parentheses around the function type allow 'null' as a state value
-    const [pickerCallback, setPickerCallback] = useState<((url: string) => void) | null>(null);
+    const [pickRequest, setPickRequest] = useState<PickRequest | null>(null);
 
     // Parameterized picker: plugins call openPicker(callback, { mediaType: "video" })
     const openPicker = (callback: (url: string) => void, opts?: { mediaType?: "image" | "video" | "all" }) => {
         setPickerMediaType(opts?.mediaType || "all");
-        // We pass a function that RETURNS the callback, so React doesn't execute the callback immediately as an updater
-        setPickerCallback(() => callback);
+        setPickRequest({ mode: "one", onPick: callback });
+        setPickerOpen(true);
+    };
+    // GALLERY-1: the same picker in its multi-select mode; the callback receives the picked addresses in picked order.
+    const openManyPicker = (callback: (urls: string[]) => void, opts?: { mediaType?: "image" | "video" | "all" }) => {
+        setPickerMediaType(opts?.mediaType || "all");
+        setPickRequest({ mode: "many", onPick: callback });
         setPickerOpen(true);
     };
 
     const handleSelect = (url: string) => {
-        if (pickerCallback) pickerCallback(url);
+        if (pickRequest?.mode === "one") pickRequest.onPick(url);
         setPickerOpen(false);
-        setPickerCallback(null);
+        setPickRequest(null);
+    };
+    const handleSelectMany = (urls: string[]) => {
+        if (pickRequest?.mode === "many") pickRequest.onPick(urls);
+        setPickerOpen(false);
+        setPickRequest(null);
     };
 
     // DEFINE THE TAG FETCHER
@@ -80,6 +94,11 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
             if (storage.hero) {
                 storage.hero.uploadFn = uploadFile;
                 storage.hero.pickFn = openPicker;
+            }
+
+            // Photo gallery (GALLERY-1): several images in one pick
+            if (storage.gallery) {
+                storage.gallery.pickManyFn = openManyPicker;
             }
 
             // NEW: PostGrid Handlers
@@ -134,12 +153,21 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
             </div>
 
             {/* Media Picker Dialog */}
-            <MediaPicker
-                open={pickerOpen}
-                onOpenChange={setPickerOpen}
-                onSelect={handleSelect}
-                mediaType={pickerMediaType}
-            />
+            {pickRequest?.mode === "many" ? (
+                <MediaPicker
+                    open={pickerOpen}
+                    onOpenChange={setPickerOpen}
+                    onSelectMany={handleSelectMany}
+                    mediaType={pickerMediaType}
+                />
+            ) : (
+                <MediaPicker
+                    open={pickerOpen}
+                    onOpenChange={setPickerOpen}
+                    onSelect={handleSelect}
+                    mediaType={pickerMediaType}
+                />
+            )}
         </div>
     );
 }

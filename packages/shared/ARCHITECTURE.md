@@ -233,6 +233,14 @@ consent line and the backend checks the pair. Users: renderer `prepareBlocks` (`
 `GET /public/popups` and the signup check (`shownConsentLines`). The keys are NOT block keys (`BLOCK_SITE_KEYS` travel in
 every block's payload).
 
+### Gallery texts (`galleryTexts`, GALLERY-1)
+
+`galleryTexts(resolved)` → `{ viewer, close, previous, next, counter, photo }` from the six site keys `gallery*` (packs
+en, ro, de, fr; Labels page). Pattern F for every text: a blank override gives the language default, because each is an
+accessible name (the dialog, the three buttons, a tile without a description) or the position the viewer announces.
+`counter` is a template with `{n}` and `{total}`, `photo` one with `{n}` (every pack keeps them, `test/lang-1d.test.ts`).
+User: renderer `prepareBlocks` (`_gallery`, the page's language). Not block keys. Test: `test/gallery-1.test.ts`.
+
 ## Key Patterns
 
 - **Zod-first design:** Types are inferred from schemas via `z.infer<>`, never manually defined

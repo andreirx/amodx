@@ -175,3 +175,37 @@ export function glamPricelistSummary(report: {
     if (report.dryRun) lines.push("To apply, call again with dry_run=false");
     return lines.join("\n");
 }
+
+/**
+ * GALLERY-1 (docs/slices/gallery-1.md, scope item 6; ruling 6) — the `gallery` block as `get_block_schemas` describes it
+ * (an entry of `BLOCK_SCHEMAS` in `index.ts`). Here, not in `index.ts`, so `test/tool-shapes.test.ts` can bind its keys
+ * and its example to the plugin's schema (`packages/plugins/src/gallery/schema.ts`). `thumb` and the sizes are accepted
+ * from tools; the admin editor does not ask for them.
+ */
+export const GALLERY_BLOCK_SHAPE = {
+    description: "A grid of photo tiles. Each tile links to its large photo (works without script, indexable); with script a full-screen viewer opens it, with previous / next, swipe, arrow keys, Escape, a position counter and the caption. The viewer's button names and counter come from the site's labels in the page's language. Tiles load lazily; the viewer loads the photo of its position and fetches the next one ahead. Offered on every site kind.",
+    attrs: {
+        items: "array of photo objects (see itemStructure), in tile order. An item whose src is not https:// or a root-relative path (/...) is not shown",
+        columns: "'2' | '3' | '4' (default '3'; columns from larger screens, 2 on a phone)",
+        blockWidth: "'content' | 'wide' | 'full' (default 'content')",
+    },
+    itemStructure: {
+        src: "string — the large photo: https://… or /… (required)",
+        thumb: "string (optional) — a smaller file of the same photo for the tile; absent = the tile uses src",
+        alt: "string — what the photo shows, for screen readers and search engines ('' = none; never the file name)",
+        caption: "string (optional) — text under the photo in the viewer",
+        width: "number (optional) — the photo's width in pixels; with height, the viewer knows its shape before it loads",
+        height: "number (optional) — the photo's height in pixels",
+    },
+    example: {
+        type: "gallery",
+        attrs: {
+            items: [
+                { src: "https://cdn.example.com/rooms/garden.jpg", thumb: "https://cdn.example.com/rooms/garden-480.jpg", alt: "The garden with the old walnut tree", caption: "The garden in May", width: 2000, height: 1500 },
+                { src: "https://cdn.example.com/rooms/blue-room.jpg", alt: "The blue room with a double bed" },
+            ],
+            columns: "3",
+            blockWidth: "wide",
+        },
+    },
+} as const;

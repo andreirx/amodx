@@ -343,6 +343,13 @@ export const DE_LANGUAGE_PACK: CompleteLanguagePack = {
         newsletterSubscribe: "Abonnieren",
         newsletterSubscribing: "Wird gesendet...",
         newsletterThanks: "Danke für Ihre Anmeldung!",
+        // GALLERY-1: the photo viewer of the gallery block (`galleryTexts`).
+        galleryViewer: "Fotoansicht",
+        galleryClose: "Schließen",
+        galleryPrevious: "Vorheriges Foto",
+        galleryNext: "Nächstes Foto",
+        galleryCounter: "{n} von {total}",
+        galleryPhoto: "Foto {n}",
     },
     booking: {
         bookTitle: "Buchen",

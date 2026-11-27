@@ -117,9 +117,11 @@ describe("Reset to the language defaults", () => {
         expect(SECTION_KEYS.labels).toHaveLength(9);
         // LOCALE-1D: + errorTryAgain (the checkout's generic error; site part). LOCALE-1C: + the 26 block-chrome keys.
         // SHOP-LOOK-1A: + navCategoryBarLabel (the category bar's accessible name). NEWSLETTER-1: + the 6 newsletter keys.
-        expect(SECTION_KEYS.site).toHaveLength(43 + 26 + 1 + 6);
+        // GALLERY-1: + the 6 gallery viewer keys.
+        expect(SECTION_KEYS.site).toHaveLength(43 + 26 + 1 + 6 + 6);
         expect(SECTION_KEYS.site).toContain("navCategoryBarLabel");
         for (const k of ["newsletterEmail", "newsletterEmailPlaceholder", "newsletterConsent", "newsletterSubscribe", "newsletterSubscribing", "newsletterThanks"]) expect(SECTION_KEYS.site).toContain(k);
+        for (const k of ["galleryViewer", "galleryClose", "galleryPrevious", "galleryNext", "galleryCounter", "galleryPhoto"]) expect(SECTION_KEYS.site).toContain(k);
         // LOCALE-1B: 28 commerce-part keys in "Product pages & search" (21 new + 7 a catalog renders), LOCALE-1C + showcaseEmpty;
         // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150, + ORDER-CONFIRM-1's pricesChanged = 151
         // (the commerce part has 180 keys).

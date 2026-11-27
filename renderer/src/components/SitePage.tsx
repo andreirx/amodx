@@ -23,7 +23,7 @@ import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { localeInputFor } from "@/lib/site-segment";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, newsletterTexts, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, newsletterTexts, galleryTexts, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -893,7 +893,7 @@ function formForBlock(form: Record<string, any>, slug: string, site: LocaleStrin
     };
 }
 
-/** `resolved`: the page's texts (its language, LANG-1B) — read only by the `newsletter` branch; a caller without a page
+/** `resolved`: the page's texts (its language, LANG-1B) — read only by the `newsletter` and `gallery` branches; a caller without a page
  *  language (the category page) gets the tenant's default language. */
 async function prepareBlocks(blocks: unknown, config: any, resolved: ResolvedLocaleStrings = resolveLocaleStrings(config)): Promise<void> {
     if (!Array.isArray(blocks)) return;
@@ -983,6 +983,14 @@ async function prepareBlocks(blocks: unknown, config: any, resolved: ResolvedLoc
         // gain `_newsletter`; no read. Never the MailerLite settings: the push runs in the backend.
         if (block.type === 'newsletter') {
             block.attrs._newsletter = newsletterTexts(resolved);
+        }
+
+        // GALLERY-1 (docs/slices/gallery-1.md, ruling 2): the `gallery` block's viewer and tile texts from the tenant's locale
+        // table in the page's language (`resolved`, as the newsletter). Only this block's attrs gain `_gallery`; no read. The
+        // photos stay as stored: the plugin checks each one. A stored block without an attrs object (a tool can write
+        // `{ type }` alone) has no photos and draws nothing: it is skipped, so it cannot throw here and fail the page.
+        if (block.type === 'gallery' && typeof block.attrs === 'object' && block.attrs !== null) {
+            block.attrs._gallery = galleryTexts(resolved);
         }
 
         // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here

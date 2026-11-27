@@ -29,6 +29,7 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText (foot text of every tile), chips[] (label, href; ≤ 12), blockWidth (SHOP-LOOK-1C; see § *Category grid*) | 2, 3, 4 columns from large screens; 1 on a phone, 2 from `sm` |
 | `form` | Custom Form | formSlug (a form of admin Forms), eyebrow, headline, text, card, blockWidth (SHOP-LOOK-1E; see § *Custom form*) | plain or in a card |
 | `newsletter` | Newsletter Signup | headline, description, buttonText (blank = the site's label), blockWidth (NEWSLETTER-1; see § *Newsletter signup*) | — |
+| `gallery` | Photo Gallery | items[] (src, thumb?, alt, caption?, width?, height?), columns, blockWidth (GALLERY-1; see § *Photo gallery*) | 2, 3, 4 columns from larger screens; 2 on a phone |
 
 ## Category grid (`categoryGrid`, slice `shop-look-1c`)
 
@@ -100,6 +101,36 @@ the button label. A stored newsletter popup without the tick stays a link popup.
   contact form or comments, which do not normalize) is a separate row and shows no subscription; deleting it deletes
   that row only. The Leads page shows the consent and the push state (`Sent`, `Failed` with the reason, `Pending`, not connected)
   and **Send again** for every state except `Sent`. Details: `docs/slices/newsletter-1.md` § *Build record*.
+
+## Photo gallery (`gallery`, slice `gallery-1`)
+
+A grid of photo tiles. Every tile is a plain link to its large photo, so without script each tile opens the photo and a
+search engine indexes the photos and their descriptions; with script a full-screen viewer opens instead. Offered on every
+site kind. Maturity: PROTOTYPE.
+
+- Photos: `items[]`, each `{ src, thumb?, alt, caption?, width?, height? }`. `src` = the large photo, `https://…` or a
+  root-relative `/…`; any other address (`http:`, `javascript:`, `data:`, `//host`, a relative path, or one with a control
+  character or a backslash) is dropped and the others render. `thumb` = a smaller file for the tile (written by tools;
+  the editor does not ask for it); absent or not a valid address → the tile uses `src`. `alt` = what the photo shows
+  (absent → `alt=""`, never the file name). `caption` = text under the photo in the viewer. `width`/`height` (both, in
+  pixels) go on the `<img>`. Every tile is a 4:3 crop, so it keeps its space before the photo loads. No photo left → the
+  block draws nothing.
+- Loading: every tile photo has `loading="lazy"`. A tile with `thumb` loads the small file; a tile without `thumb`
+  loads the LARGE file, deferred only by the browser's lazy loading (which loads every tile within about 1,250 px of the
+  screen: 28 of 30 on a phone, measured), so a gallery built in the editor (no `thumb`) has no page-load guarantee. Small
+  files made at upload: the follow-up `gallery-thumbs-1`. The closed viewer holds no image; open, it loads the photo of
+  its position and fetches the next one ahead.
+- Viewer: the native `<dialog>` (the page behind is inert; focus stays inside); Close, Previous, Next buttons (44 px);
+  Escape, arrow keys, swipe; the steps wrap around; a click beside the photo closes; focus returns to the tile that
+  opened it; a counter ("3 of 30"); the caption. No animation.
+- Texts: site keys `galleryViewer` (the dialog's name), `galleryClose`, `galleryPrevious`, `galleryNext`,
+  `galleryCounter` (keep `{n}` and `{total}`), `galleryPhoto` (a tile's name when the photo has no description; keep
+  `{n}`) — Labels page; packs en, ro, de, fr; a blank override gives the language default. The renderer's server pass
+  gives the block `_gallery` (the texts of the page's language); without it (the admin editor) the block draws nothing.
+- Editor: **Add photos** opens the media library in its multi-select mode (images only): mark several, **Add N items**
+  appends them in the order marked. Per photo a description and a caption; move up / move down / remove buttons.
+- MCP: `get_block_schemas` describes the block (`thumb` and the sizes accepted); `add_block` accepts the type. Details:
+  `docs/slices/gallery-1.md` § *Build record*.
 
 ## Category showcase card options (`categoryShowcase`, slice `shop-look-1d`)
 

@@ -353,6 +353,13 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         newsletterSubscribe: "Abonează-mă",
         newsletterSubscribing: "Se trimite...",
         newsletterThanks: "Mulțumim pentru abonare!",
+        // GALLERY-1: the photo viewer of the gallery block (`galleryTexts`).
+        galleryViewer: "Vizualizare fotografii",
+        galleryClose: "Închide",
+        galleryPrevious: "Fotografia anterioară",
+        galleryNext: "Fotografia următoare",
+        galleryCounter: "{n} din {total}",
+        galleryPhoto: "Fotografia {n}",
     },
     // SCHED-1G2 (docs/slices/sched-1.md § 10.1): the hosted booking pages. PROPOSED Romanian texts — the human approves
     // them as a table (key, EN, RO) before the production deploy (locale-1 § 16.2 item 4); complete for every key.

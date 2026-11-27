@@ -281,6 +281,39 @@ export function newsletterTexts(resolved: ResolvedLocaleStrings): NewsletterText
 }
 
 /**
+ * GALLERY-1 (docs/slices/gallery-1.md, ruling 2) — the visitor texts of the `gallery` block's photo viewer and tiles,
+ * from the tenant's locale table in the page's language. Every text is non-blank: a stored "" or blank override gives the
+ * language default (pattern F), because each one is an accessible name (the dialog, the three buttons, a tile whose photo
+ * has no description) or the position the viewer announces. `counter` keeps `{n}` and `{total}`, `photo` keeps `{n}`;
+ * the plugin fills them with `fillTemplate`. User: the renderer's server pass (`_gallery` of the block).
+ */
+export type GalleryTexts = {
+    /** The dialog's accessible name. */
+    viewer: string;
+    close: string;
+    previous: string;
+    next: string;
+    /** The position in the viewer: a template with `{n}` and `{total}`. */
+    counter: string;
+    /** A tile's accessible name when its photo has no description: a template with `{n}`. */
+    photo: string;
+};
+
+export function galleryTexts(resolved: ResolvedLocaleStrings): GalleryTexts {
+    const s = resolved.strings.site;
+    const d = resolved.defaults.site;
+    const nonBlank = (own: string, languageDefault: string) => own.trim() || languageDefault;
+    return {
+        viewer: nonBlank(s.galleryViewer, d.galleryViewer),
+        close: nonBlank(s.galleryClose, d.galleryClose),
+        previous: nonBlank(s.galleryPrevious, d.galleryPrevious),
+        next: nonBlank(s.galleryNext, d.galleryNext),
+        counter: nonBlank(s.galleryCounter, d.galleryCounter),
+        photo: nonBlank(s.galleryPhoto, d.galleryPhoto),
+    };
+}
+
+/**
  * CDL-1 (docs/slices/catalog-data-labels-1.md § 3.3, § 3.5) — the catalog texts the backend WRITES into products or
  * MAILS to the site owner, in the tenant's language with its overrides. Every text is non-empty: a stored override
  * that is "" or only whitespace gives the language default (LOCALE-1 pattern F), because an empty attribute key is

@@ -1076,6 +1076,31 @@ const NL1_ITEMS = [
     }),
 ];
 
+// ── GALLERY-1 fixture (docs/slices/gallery-1.md, ruling 4; row `gallery-1-page`) ─────────────────────────────────────────
+// A copy of the CM1 content tenant with `locale: "en-US"` written out (so it is not an en-US subject of the `loc1-*` rows
+// and is in no `before/` capture: the row reads the running build only). Its page `/gl1-gallery` holds a paragraph and one
+// `gallery` block of 30 photos (even positions with a tile file `thumb`, odd positions with a description; position 3 with
+// sizes and a caption) plus one item whose address the plugin must drop (`javascript:`). Its other pages hold none. "A page
+// without the block → today's bytes" is proven by every existing row, unchanged (no existing fixture page holds the block).
+export const GL1 = { site: { id: "gl1-site", host: "gl1-site.serving-contract.test" } };
+export const GL1_PATH = "/gl1-gallery";
+export const GL1_DROPPED_SRC = "javascript:alert(1)";
+export const GL1_ITEMS = Array.from({ length: 30 }, (_, i) => ({
+    src: `https://img.serving-contract.test/gl1/large-${i + 1}.jpg`,
+    ...(i % 2 === 0 ? { thumb: `https://img.serving-contract.test/gl1/thumb-${i + 1}.jpg` } : {}),
+    alt: i % 2 === 1 ? `GL1 room ${i + 1}` : "",
+    ...(i === 2 ? { caption: "GL1 caption", width: 1600, height: 1200 } : {}),
+}));
+export const GL1_BLOCK = { items: [...GL1_ITEMS.slice(0, 5), { src: GL1_DROPPED_SRC, alt: "dropped" }, ...GL1_ITEMS.slice(5)], columns: "4", blockWidth: "wide" };
+const GL1_ITEMS_ALL = [
+    ...localeCopy(CM1_ITEMS, CM1.content, GL1.site, { locale: "en-US", name: "GL1 Site" }),
+    siteRouteItem(GL1.site.id, GL1_PATH, "gl1-gallery"),
+    siteContentItem(GL1.site.id, "gl1-gallery", GL1_PATH, "GL1 Gallery", {
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "GL1 paragraph." }] }, { type: "gallery", attrs: GL1_BLOCK }],
+        createdAt: CM1_AT,
+    }),
+];
+
 // ── SCHED-1G2 fixtures (docs/slices/sched-1.md § 10.1, § 9.1; rows `sched1g-*`) ─────────────────────────────────────────
 // Two tenants with an explicit `locale` (so neither is an en-US subject of the `loc1-*` rows nor in any `before/` capture;
 // rows `sched1g-*` read the running build only):
@@ -1343,6 +1368,8 @@ export const ITEMS = [
     ...SL1E_ITEMS,
     // newsletter-1: the newsletter-block tenant with a stored MailerLite token (above).
     ...NL1_ITEMS,
+    // gallery-1: the gallery-block tenant (above).
+    ...GL1_ITEMS_ALL,
     // sched-1g2: the booking-page tenants (above).
     ...SCHED1G_ITEMS,
     // sched-labels-1: the tenant with its own booking texts (above).

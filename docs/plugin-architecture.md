@@ -42,6 +42,7 @@ editor.storage.postGrid.fetchTagsFn = fetchTags;
 editor.storage.categoryShowcase.fetchCategoriesFn = fetchCategories;
 editor.storage.categoryGrid.fetchCategoriesFn = fetchCategories;   // SHOP-LOOK-1C
 editor.storage.form.fetchFormsFn = fetchForms;                    // SHOP-LOOK-1E (GET /forms)
+editor.storage.gallery.pickManyFn = openManyPicker;               // GALLERY-1: several images in one pick
 ```
 
 The plugin reads from `this.editor.storage.<key>` at runtime.
@@ -72,7 +73,8 @@ plain fields to that block's `attrs` only: `postGrid` (`prefetchedPosts`), `cate
 picked active categories, each `{ id, name, description?, imageLink?, path }`, SHOP-LOOK-1C), `form` (`_form`: the active
 form of `formSlug` as `{ slug, name, fields, submitButtonText, successMessage, strings }` — display data and the four
 form texts of the tenant's locale table, never the notify address; SHOP-LOOK-1E), `newsletter` (`_newsletter`: the newsletter
-texts of the page's language, `newsletterTexts` of @amodx/shared — never the MailerLite settings; NEWSLETTER-1). The attrs of a block travel
+texts of the page's language, `newsletterTexts` of @amodx/shared — never the MailerLite settings; NEWSLETTER-1), `gallery`
+(`_gallery`: the viewer and tile texts of the page's language, `galleryTexts` of @amodx/shared; GALLERY-1). The attrs of a block travel
 in the page's RSC payload, so the pass builds these values field by field. A new block that needs server data adds one
 branch there; see `docs/block-types.md` per block.
 
@@ -90,3 +92,8 @@ which the renderer's popup uses — NEWSLETTER-1).
 ## Render Component Contract
 
 All render components receive `{ attrs: <ZodSchemaType>, tenantId?: string }` as props. They must be SSR-safe (no `window`, `localStorage`, or `useEffect` for critical rendering).
+
+A module the render entry can load imports only TYPES from `@amodx/shared` (`import type`), by the barrel or any path.
+Observed in GALLERY-1: one lazy render chunk that imported a runtime value — from the `@amodx/shared` barrel, and also from
+an import-free module `@amodx/shared/dist/template.js` — moved the stylesheet link and a script of every page into the root
+segment of the RSC payload. `packages/plugins/test/renderLoaders.test.ts` enforces the rule.

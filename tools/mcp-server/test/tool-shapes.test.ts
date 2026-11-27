@@ -4,7 +4,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "../src/tool-shapes.ts";
+import { readFileSync } from "node:fs";
+import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE } from "../src/tool-shapes.ts";
+// packages/plugins has no "type": "module", so its source loads as CommonJS here: the module object, then its exports.
+import galleryPluginSchema from "../../../packages/plugins/src/gallery/schema.ts";
+const { GalleryBlockSchema, GalleryItemSchema } = galleryPluginSchema;
 
 test("create_tenant with catalog_mode: true → { name, domain, catalogMode: true }", () => {
     assert.deepEqual(createTenantBody({ name: "Glam", domain: "glam.test", catalog_mode: true }), { name: "Glam", domain: "glam.test", catalogMode: true });
@@ -188,4 +192,22 @@ test("create_category passes `blocks` through as sent (parsed array); no blocks 
     assert.deepEqual(createCategoryBody({ title: "Boen" }, blocks).blocks, blocks);
     assert.deepEqual(createCategoryBody({ title: "Boen" }, []).blocks, []);
     assert.ok(!("blocks" in createCategoryBody({ title: "Boen" })));
+});
+
+// GALLERY-1 (docs/slices/gallery-1.md, scope item 6; ruling 6): the block shape get_block_schemas describes, bound to the
+// plugin's schema (packages/plugins/src/gallery/schema.ts, imported as source: test-only), so the description cannot drift.
+test("gallery block shape: the described attrs and photo fields are exactly the plugin schema's keys; the example (with thumb and sizes) parses", () => {
+    assert.deepEqual(Object.keys(GALLERY_BLOCK_SHAPE.attrs).sort(), Object.keys(GalleryBlockSchema.shape).sort());
+    assert.deepEqual(Object.keys(GALLERY_BLOCK_SHAPE.itemStructure).sort(), Object.keys(GalleryItemSchema.shape).sort());
+    assert.equal(GALLERY_BLOCK_SHAPE.example.type, "gallery");
+    const parsed = GalleryBlockSchema.parse(GALLERY_BLOCK_SHAPE.example.attrs);
+    assert.equal(parsed.items[0].thumb, "https://cdn.example.com/rooms/garden-480.jpg");
+    assert.equal(parsed.items[1].thumb, undefined);
+});
+
+test("gallery is registered in index.ts: BLOCK_SCHEMAS holds the shape and add_block accepts the type (source check: index.ts starts the server on import)", () => {
+    const src = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+    assert.match(src, /\n    gallery: GALLERY_BLOCK_SHAPE,\n/);
+    const addBlock = src.slice(src.indexOf('"add_block"'), src.indexOf("async ({ tenant_id, page_id, type, attrs, content_text })"));
+    assert.match(addBlock, /type: z\.enum\(\[[^\]]*"gallery"[^\]]*\]\)/);
 });

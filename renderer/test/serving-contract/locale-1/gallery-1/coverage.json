@@ -1,0 +1,38 @@
+{
+  "slice": "gallery-1",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for GALLERY-1 (docs/slices/gallery-1.md, ruling 2): the six site keys of the gallery block's viewer and tiles (`galleryTexts`, packages/shared/src/locale-strings.ts). They reach a page only in the `_gallery` of a gallery block (renderer prepareBlocks, the page's language); the readers are `GalleryRender` (the tile name) and `GalleryViewer` (the dialog name, the three buttons, the counter) in packages/plugins/src/gallery. Their checks render the real block (server HTML in English and Romanian, the browser states in English and Romanian) and the serving row asserts the en-US texts on the running build. `galleryCounter` and `galleryPhoto` are templates filled by `fillTemplate`; none is a count key. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": ["galleryViewer", "galleryClose", "galleryPrevious", "galleryNext", "galleryCounter", "galleryPhoto"],
+    "catalog": [],
+    "commerce": []
+  },
+  "checks": {
+    "site.galleryViewer": [
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "Romanian page: the dialog's name, the three buttons and a tile's position name in Romanian" },
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "ruling 2: a Romanian page" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(gallery-1-page)" }
+    ],
+    "site.galleryClose": [
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "the closed viewer: a native <dialog> named by the locale text" },
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "ruling 2: a Romanian page" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(gallery-1-page)" }
+    ],
+    "site.galleryPrevious": [
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "the closed viewer: a native <dialog> named by the locale text" },
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "Next / Previous buttons and the arrow keys step" }
+    ],
+    "site.galleryNext": [
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "the closed viewer: a native <dialog> named by the locale text" },
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "Next / Previous buttons and the arrow keys step" }
+    ],
+    "site.galleryCounter": [
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "a tap on tile 3 opens the viewer there" },
+      { "test": "renderer/test/unit/gallery-1-client.test.ts", "case": "ruling 2: a Romanian page" }
+    ],
+    "site.galleryPhoto": [
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "row 6 — alt absent" },
+      { "test": "packages/plugins/test/galleryBlock.test.ts", "case": "Romanian page: the dialog's name, the three buttons and a tile's position name in Romanian" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(gallery-1-page)" }
+    ]
+  }
+}

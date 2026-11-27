@@ -40,7 +40,7 @@ import {
 // LANDING-1: derive only EXPECTED root-class additions after HYDRATION-1; stored captures and candidates stay intact.
 import { readLanding1ExpectedCaptures } from "./landing-1-expected.mjs";
 import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
-import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, newsletterTexts, urlPrefixesOf } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, newsletterTexts, galleryTexts, fillTemplate, urlPrefixesOf } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
@@ -48,6 +48,7 @@ import {
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
     NL1, NL1_PATH, NL1_TOKEN, NL1_GROUP, NL1_BLOCK,
+    GL1, GL1_PATH, GL1_ITEMS, GL1_DROPPED_SRC,
     SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS, SCHEDLABELS1, SCHEDLABELS1_TEXTS,
     LANG1B, LANG1B_OVERRIDES, LANG1B_PAGES, LANG1C, LANG1C_MENUS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
@@ -3550,6 +3551,90 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 lines.push(`${p} ${page.body.length} B`);
             }
             console.log(`  (newsletter-1-page) form drawn with the en-US consent line; _newsletter once; no token, group id or mailerlite key in ${lines.join(", ")}`);
+        });
+
+        // ── ROW (gallery-1-page) — GALLERY-1 (docs/slices/gallery-1.md, rulings 2, 4, 8, 9). Server HTML, payload, stylesheets
+        // and script chunks of the running build for the GL1 tenant (fixtures.mjs `GL1`: a CM1 content copy; page
+        // `/gl1-gallery` = a paragraph and one `gallery` block of 30 photos plus one item with a `javascript:` address).
+        // Proves, in the built site: 30 tiles, each a plain link to its large photo holding a lazy tile photo (`thumb` where
+        // stored, else `src`), named by its description or by the locale text with its position; the dropped address in no
+        // attribute; the viewer a closed native <dialog> named by the locale text, holding no image (ruling 9 (a)); the tile
+        // <img> of a photo WITH `thumb` holds the small file and no large file (9 (c)); the tile <img> of a photo WITHOUT
+        // `thumb` IS the large file, lazy — the page-load guarantee is NOT claimed for those (9 (d), GALLERY1-TILE-FILES = A;
+        // 15 of the fixture's 30 tiles); `_gallery` in the payload = `galleryTexts` of the tenant, once; every class the block draws has a
+        // compiled rule; the block's code is in a client chunk that no page names (this one or one without the block) and
+        // that only the lazy loader map names (ruling 4). "No block → today's bytes" (ruling 4) is every other row, unchanged.
+        test("(gallery-1-page) a page with a 30-photo gallery: lazy tiles linking to the large photos, the dropped address in no attribute, a closed named <dialog> holding no image, thumb tiles small, no-thumb tiles the large file (lazy, no page-load guarantee) (HTML); `_gallery` = the en-US gallery texts (payload); the block's classes compiled; its code in a lazily loaded chunk that no page names, reached through the loader map", async () => {
+            const texts = galleryTexts(resolveLocaleStrings({ locale: "en-US" }));
+            const res = await request({ port: server.port, path: GL1_PATH, host: GL1.site.host });
+            assert.equal(res.status, 200);
+            const { html, flight } = splitFlight(res.body);
+            const start = html.indexOf('<div class="my-8"><ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">');
+            assert.ok(start >= 0, "the block and its 4-column grid are drawn");
+            const block = html.slice(start, html.indexOf("</dialog>", start) + "</dialog>".length);
+            const tiles = [...block.matchAll(/<li><a href="([^"]+)" data-gallery-index="(\d+)"(?: aria-label="([^"]+)")? class="block aspect-\[4\/3\] overflow-hidden rounded-md bg-muted"><img src="([^"]+)" alt="([^"]*)" loading="lazy" decoding="async"(?: width="(\d+)" height="(\d+)")? class="h-full w-full object-cover"\/><\/a><\/li>/g)];
+            assert.equal(tiles.length, 30, "30 tiles (the item with a javascript: address dropped)");
+            for (const [i, m] of tiles.entries()) {
+                const item = GL1_ITEMS[i];
+                assert.deepEqual(m.slice(1, 8), [item.src, String(i), item.alt === "" ? fillTemplate(texts.photo, { n: i + 1 }) : undefined, item.thumb ?? item.src, item.alt,
+                    item.width !== undefined ? String(item.width) : undefined, item.height !== undefined ? String(item.height) : undefined], `tile ${i + 1}`);
+            }
+            assert.ok(!/(href|src)="javascript:/i.test(html) && !html.includes(`="${GL1_DROPPED_SRC}"`), "the dropped address is in no attribute");
+            const dialog = block.slice(block.indexOf("<dialog"));
+            assert.ok(dialog.startsWith(`<dialog aria-label="${texts.viewer}" class="`), "the viewer: a native dialog named by the locale text");
+            assert.ok(!/<dialog[^>]* open/.test(dialog) && !dialog.includes("<img"), "9 (a): the viewer is closed and holds no image");
+            for (const name of [texts.close, texts.previous, texts.next]) assert.ok(dialog.includes(`aria-label="${name}" title="${name}"`), `the ${name} button`);
+            assert.ok(!GL1_ITEMS.some((item) => item.thumb && html.includes(`<img src="${item.src}"`)), "9 (c): no <img> holds the large file of a photo that has a thumb");
+            // 9 (d): a photo without `thumb` — its tile <img> is the large file, deferred only by `loading="lazy"`.
+            const largeTiles = tiles.filter((m, i) => GL1_ITEMS[i].thumb === undefined && m[4] === GL1_ITEMS[i].src);
+            assert.equal(largeTiles.length, GL1_ITEMS.filter((item) => item.thumb === undefined).length, "9 (d): every tile without a thumb shows the large file");
+            assert.equal(largeTiles.length, 15, "precondition: the fixture has 15 tiles without a thumb");
+            assert.equal(flight.split(`"_gallery":${JSON.stringify(texts)}`).length - 1, 1, "payload: `_gallery` = the tenant's gallery texts, once");
+            // The block's classes have compiled rules (the stylesheets this page links).
+            const sheets = [...html.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: GL1.site.host })))).map((r) => r.body).join("\n");
+            const GL1_CLASSES = [
+                "my-8", "grid-cols-2", "sm\\:grid-cols-3", "lg\\:grid-cols-4", "gap-2", "sm\\:gap-4", "aspect-\\[4\\/3\\]", "rounded-md", "bg-muted", "object-cover",
+                "max-h-none", "max-w-none", "border-0", "bg-background", "text-foreground", "backdrop\\:bg-foreground\\/80", "min-h-0", "flex-1", "sm\\:px-16",
+                "h-11", "w-11", "rounded-full", "border-border", "hover\\:bg-muted", "top-1\\/2", "-translate-y-1\\/2", "left-2", "right-2", "object-contain",
+                "min-h-6", "text-muted-foreground",
+            ];
+            const missing = GL1_CLASSES.filter((cls) => ![`.${cls}{`, `.${cls} {`, `.${cls}:`, `.${cls},`, `.${cls}>`].some((form) => css.includes(form)));
+            assert.deepEqual(missing, [], `compiled: every class of the block has a rule (${sheets.length} stylesheet(s))`);
+            // Ruling 4: the block's code (the string `data-gallery-index`, in GalleryRender and GalleryViewer) is in its own
+            // client chunk(s), which NO page names — not this page, not a page without the block (this tenant's home, the NL1
+            // page); the chunks the pages name hold none of it. It is reached only by name, from a chunk the pages name that
+            // holds the lazy loaders (`RENDER_LOADERS`, code-split by RenderBlocks): the browser fetches it when a gallery
+            // block renders. (That the browser does fetch it is the operator's staging check in a real browser.)
+            const STATIC = path.join(RENDERER_DIR, ".next", "static", "chunks");
+            const built = (await readdir(STATIC)).filter((f) => f.endsWith(".js"));
+            const holding = [];
+            for (const f of built) if ((await readFile(path.join(STATIC, f), "utf8")).includes("data-gallery-index")) holding.push(f);
+            assert.ok(holding.length >= 1, `precondition: a built client chunk holds the gallery code (${built.length} chunks)`);
+            const namedBy = (body) => [...new Set([...body.matchAll(/static\/chunks\/([A-Za-z0-9_.-]+\.js)/g)].map((m) => m[1]))];
+            const pages = [["gallery page", res.body, GL1.site.host]];
+            for (const [p, host] of [["/", GL1.site.host], [NL1_PATH, NL1.site.host]]) {
+                const page = await request({ port: server.port, path: p, host });
+                assert.equal(page.status, 200, `${p}: 200`);
+                assert.ok(!page.body.includes("data-gallery-index"), `${p}: no gallery markup`);
+                pages.push([p, page.body, host]);
+            }
+            const loaders = [];
+            for (const [name, body, host] of pages) {
+                const named = namedBy(body);
+                assert.deepEqual(named.filter((c) => holding.includes(c)), [], `${name}: names no chunk of the gallery code`);
+                for (const c of named) {
+                    const r = await request({ port: server.port, path: `/_next/static/chunks/${c}`, host });
+                    assert.equal(r.status, 200, `${name} ${c}: 200`);
+                    assert.ok(!r.body.includes("data-gallery-index"), `${name}: ${c} holds no gallery code`);
+                    if (name === "gallery page" && holding.some((g) => r.body.includes(g))) loaders.push(c);
+                }
+            }
+            assert.ok(loaders.length >= 1, "the gallery chunk is named by a chunk the gallery page names (the lazy loader map)");
+            const own = holding;
+            const others = pages.slice(1).map(([p, body]) => `${p} ${namedBy(body).length} chunks`);
+            console.log(`  (gallery-1-page) 30 lazy tiles (15 thumb = small file, 15 no thumb = the large file), dropped address absent, closed named dialog holding no image; _gallery once; ${GL1_CLASSES.length} classes compiled; gallery code in ${own.join(", ")}, named only by the loader chunk ${loaders.join(", ")}; no page names it (gallery page, ${others.join(", ")})`);
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

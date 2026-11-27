@@ -1598,3 +1598,27 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   (`leads/create.ts:84`), the contact form (`contact/send.ts:39,99`, trim only) and comments (`comments/create.ts:68`)
   write the address as typed. A person reaching both in another spelling has two lead rows (the subscription on the
   normalized one) until those writers normalize and F-FND2-1 merges stored items. Decision NL1-LEAD-WRITERS (build-2).
+
+## gallery-1 residuals (2026-11-27)
+
+`docs/slices/gallery-1.md` § *Build record* → *Findings and deferred debt*. Deliberately deferred:
+- **Tiles without `thumb` load the large files (GALLERY1-TILE-FILES = A; follow-up `gallery-thumbs-1`).** A tile without
+  `thumb` shows `src`, the large file, deferred only by native lazy loading. Measured on serving fixture GL1 (30 tiles,
+  headless Chromium on the real build): 30 of 30 tile files requested on load at the default connection, 28 of 30 under
+  4G emulation (grid 342-2333 px, viewport 390 × 844). The editor writes no `thumb` (ruling 6) and media assets have no
+  smaller file, so a gallery built in the editor loads ~28 large photos on a phone; no page-load guarantee is claimed for
+  it. Follow-up: small files made at upload and written as `thumb` (`gallery-thumbs-1`, ROADMAP).
+- **The viewer's template rule is a test-bound copy (GALLERY1-TEMPLATE-IMPORT = C, stop condition met).**
+  `fillLocaleTemplate` (`packages/plugins/src/gallery/GalleryViewer.tsx`) copies `fillTemplate` of `@amodx/shared`. A
+  runtime import of it from the lazy render chunk moved the stylesheet link and a script of every page — the same 11
+  serving rows — both from the barrel (iteration 0) and from an import-free module `@amodx/shared/dist/template.js`
+  (iteration 1, with the shared extraction kept the copy passes 176/176: the import is the cause). Why ANY runtime
+  `@amodx/shared` module in a lazy render chunk moves the shell is not understood (Turbopack chunk placement, INFERRED).
+  `test/galleryBlock.test.ts` binds the copy to the original; `test/renderLoaders.test.ts` keeps render modules on
+  `import type`, barrel and deep paths.
+- **A gallery nested inside another block gets no texts** (`prepareBlocks` reads top-level blocks only, as for
+  `newsletter`) and therefore draws nothing.
+- **The page behind the open viewer can still scroll** (wheel, keyboard outside the dialog is inert); no scroll lock.
+- **Romanian, German and French viewer texts are proposed by the builder**, not yet approved by a reader of each language.
+- **No measured photo size from the editor:** media assets hold no width/height, so a photo added in the editor has no
+  sizes (the 4:3 tile keeps its space; the viewer's photo gets its shape when it loads). Tools may write the sizes.
