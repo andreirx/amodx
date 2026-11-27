@@ -39,7 +39,8 @@ import { errorName } from "../lib/value-free.js";
  *    cancellation answers 503 ("try again") — never success with nothing stored.
  *  - NL1-R8: one lead identity, the normalized address. The subscription `NEWSLETTER#<n>` exists only together with the
  *    lead `LEAD#<n>` (created here when absent, in the same transaction). A lead item under another spelling of the
- *    address (written by a writer that does not normalize) is a separate item: it is not read, merged or written here.
+ *    address (stored before LEAD-NORMALIZE-1 by a writer that did not normalize) is a separate item: it is not read,
+ *    merged or written here.
  *  - ruling 7: no log line holds the address or the token (lib/value-free.ts).
  */
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 /**
  * DIGITAL-FILE-GUARD-1 (docs/slices/digital-file-guard-1.md) — a paid digital product's private file cannot be
@@ -71,7 +71,8 @@ function mockDb() {
 const commands = () => ddbSend.mock.calls.map((c) => c[0]);
 const productQueries = () =>
     commands().filter((c) => c instanceof QueryCommand && (c.input.ExpressionAttributeValues as any)[":sk"] === "PRODUCT#");
-const leadPuts = () => commands().filter((c) => c instanceof PutCommand && String(c.input.Item!.SK).startsWith("LEAD#"));
+// The lead write (LEAD-NORMALIZE-1: one Update on LEAD#<normalized>, `lib/lead-write.ts`).
+const leadWrites = () => commands().filter((c) => c instanceof UpdateCommand && String(c.input.Key!.SK).startsWith("LEAD#"));
 
 function leadEvent(body: Record<string, unknown>) {
     return {
@@ -102,7 +103,7 @@ describe("G1 — POST /leads never signs a link for a product's file", () => {
         const res = await postLead({});
         expect(res.statusCode).toBe(201);
         expect(JSON.parse(res.body).downloadUrl).toBeUndefined();
-        expect(leadPuts()).toHaveLength(1);
+        expect(leadWrites()).toHaveLength(1);
         expect(productQueries()).toHaveLength(0);
         expect(signUrl).not.toHaveBeenCalled();
     });
@@ -130,7 +131,7 @@ describe("G1 — POST /leads never signs a link for a product's file", () => {
             const res = await postLead({ resourceId: "r-paid" });
             expect(res.statusCode).toBe(201);
             expect(JSON.parse(res.body)).toEqual({ message: "Subscribed" });
-            expect(leadPuts()).toHaveLength(1);
+            expect(leadWrites()).toHaveLength(1);
             expect(signUrl).not.toHaveBeenCalled();
             expect(warn).toHaveBeenCalledTimes(1);
             const line = String(warn.mock.calls[0][0]);
@@ -197,7 +198,7 @@ describe("G1 — POST /leads never signs a link for a product's file", () => {
         expect(res.statusCode).toBe(500);
         expect(JSON.parse(res.body)).toEqual({ error: "Internal error" });
         expect(res.body).not.toContain("fake-signed-link");
-        expect(leadPuts()).toHaveLength(1);
+        expect(leadWrites()).toHaveLength(1);
         expect(signUrl).not.toHaveBeenCalled();
     });
 });

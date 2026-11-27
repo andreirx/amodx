@@ -28,7 +28,7 @@ const _handler: Handler = async (event) => {
 
         // NEWSLETTER-1 (condition 2; NL1-R8): one lead identity, the normalized address. The lead `LEAD#<normalized>` and
         // its newsletter subscription (`NEWSLETTER#<normalized>`) go in ONE transaction: both, or neither. A lead item whose
-        // stored key is another spelling of the address (written by a writer that does not normalize) is a separate item:
+        // stored key is another spelling of the address (stored before LEAD-NORMALIZE-1 by a writer that did not normalize) is a separate item:
         // only it is deleted; the subscription and the normalized lead stay. The subscriber in MailerLite is not removed.
         const leadKey = { PK: `TENANT#${tenantId}`, SK: `LEAD#${email}` };
         if (email === normalizeEmail(email)) {

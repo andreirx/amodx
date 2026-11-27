@@ -15,7 +15,7 @@ All entities share one table with composite keys:
 | Translation membership (LANG-1A) | `TENANT#<id>` | `TRANSLATION#<translationKey>#<nodeId>` |
 | Product | `TENANT#<id>` | `PRODUCT#<productId>` |
 | Comment | `TENANT#<id>` | `COMMENT#<pageId>#<timestamp>` |
-| Lead | `TENANT#<id>` | `LEAD#<email>` |
+| Lead | `TENANT#<id>` | `LEAD#<normalizeEmail(email)>` (LEAD-NORMALIZE-1; rows stored before it may hold the typed spelling, F-FND2-1) |
 | Newsletter subscription (NEWSLETTER-1: consent evidence + MailerLite push state; written with its lead in one transaction, deleted with it in one transaction; the renderer never reads it) | `TENANT#<id>` | `NEWSLETTER#<normalizeEmail(email)>` |
 | Context | `TENANT#<id>` | `CONTEXT#<id>` |
 | Asset | `TENANT#<id>` | `ASSET#<assetId>` |

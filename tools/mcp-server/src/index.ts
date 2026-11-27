@@ -2285,7 +2285,7 @@ server.tool("list_leads",
 );
 
 server.tool("create_lead",
-    "Add a lead. The lead is stored under its email: an existing lead with the same email is REPLACED and its status reset to 'New'. " +
+    "Add a lead. The lead is stored under its normalized email (Unicode NFKC, trimmed, lowercased): an existing lead with the same address keeps every stored value (status, source, date, name, data); only fields it lacks are added. " +
     "This is the public capture route: when reCAPTCHA is configured (deployment or tenant keys) the backend requires a reCAPTCHA token, " +
     "which this server cannot produce, so the call fails with HTTP 400 'CAPTCHA verification required'.",
     {

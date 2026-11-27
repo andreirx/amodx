@@ -11,7 +11,7 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 21 files in total)
+├── lib/                   # (selected modules; 24 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── scheduling-db.ts   # SCHED-1C (docs/slices/sched-1.md § 6-§ 8.4, § 13, § 14, § 23; PROTOTYPE): the ONLY code
 │   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
@@ -108,6 +108,10 @@ src/
 │   │                      #   authorizes a lead link, so it must see completed writes). Throws on a failed read.
 │   │                      #   Users: resources/presign.ts (download) and leads/create.ts (DIGITAL-FILE-GUARD-1)
 │   ├── events.ts          # EventBridge publishAudit() helper
+│   ├── lead-write.ts      # LEAD-NORMALIZE-1: createOrFillLead(tenant, email, fields) → the input of ONE UpdateItem on
+│   │                      #   LEAD#<normalizeEmail(email)> (stored `email` = the key suffix) whose every assignment is
+│   │                      #   if_not_exists: creates the lead when absent, never changes a stored value. Users:
+│   │                      #   leads/create.ts (lead magnet), contact/send.ts, comments/create.ts (in its transaction)
 │   ├── mailerlite.ts      # NEWSLETTER-1: the one MailerLite call (upsert subscriber + group), ≤ 3 s and stopped by the
 │   │                      #   caller's deadline; contract from the published docs in its header; never logs; no SDK,
 │   │                      #   no provider interface
@@ -264,7 +268,8 @@ src/
 │                          #   public payload. A public site-review render surface is rev-4 gallery,
 │                          #   not built here.
 ├── comments/
-│   ├── create.ts          # POST /comments (public or authed)
+│   ├── create.ts          # POST /comments (public or authed); one transaction: the comment Put + the lead
+│   │                      #   (lib/lead-write.ts; authorEmail validated on its normalized form, the comment keeps it as sent)
 │   ├── list.ts            # GET /comments
 │   └── moderate.ts        # POST /comments/moderate
 ├── signals/
@@ -274,7 +279,8 @@ src/
 ├── leads/
 │   ├── create.ts          # POST /leads: the authorizer admits it anonymously (auth/authorizer.ts:236; the handler
 │   │                      #   then checks Origin) or as RENDERER (the site proxy /api/leads sends the renderer key).
-│   │                      #   Stores the lead; signs a 15-min link for body.resourceId only when no product
+│   │                      #   Stores the lead (lib/lead-write.ts; the address validated on its normalized form,
+│   │                      #   LEAD-NORMALIZE-1); signs a 15-min link for body.resourceId only when no product
 │   │                      #   references that resource (DIGITAL-FILE-GUARD-1; product file → 201, no link, warn).
 │   │                      #   `source: "newsletter"` → newsletter.ts (NEWSLETTER-1), before the lead write: no link
 │   ├── newsletter.ts      # NEWSLETTER-1: (consentLocale, consentText) must be a line the site shows → else 400/409;
@@ -546,7 +552,8 @@ src/
 │   ├── list.ts            # GET /audit
 │   └── graph.ts           # GET /audit/graph (content link graph)
 ├── contact/
-│   └── send.ts            # POST /contact (public, sends SES email)
+│   └── send.ts            # POST /contact (public, sends SES email, then the lead via lib/lead-write.ts; no address
+│                          #   check of its own — the Reply-To goes to SES as sent)
 ├── consent/
 │   └── create.ts          # POST /consent (public, GDPR tracking)
 ├── themes/
@@ -813,7 +820,7 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 | Translation membership (LANG-1A; `docs/database-patterns.md` § Translation Sets) | `TENANT#<id>` | `TRANSLATION#<translationKey>#<nodeId>` |
 | Product | `TENANT#<id>` | `PRODUCT#<productId>` |
 | Comment | `TENANT#<id>` | `COMMENT#<pageId>#<timestamp>` |
-| Lead | `TENANT#<id>` | `LEAD#<email>` |
+| Lead | `TENANT#<id>` | `LEAD#<normalizeEmail(email)>` (every writer since LEAD-NORMALIZE-1; older rows may hold the typed spelling, F-FND2-1) |
 | Context | `TENANT#<id>` | `CONTEXT#<id>` |
 | Asset | `TENANT#<id>` | `ASSET#<assetId>` |
 | Resource | `TENANT#<id>` | `RESOURCE#<resourceId>` |
@@ -833,7 +840,10 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 - **Conditional writes:** `ConditionExpression="attribute_not_exists(SK)"` prevents duplicate slugs/IDs
 - **Audit trail:** Handlers call `publishAudit()` → EventBridge → `audit/worker.ts` → DynamoDB. Non-blocking.
 - **Presigned S3 URLs:** Assets get 5-min upload URLs. Resources get 15-min download URLs. (Paddle no longer signs URLs — PADDLE-HOOK-1.)
-- **Lead upsert:** Leads keyed by email — PUT overwrites, so re-submissions update rather than duplicate
+- **Lead write (LEAD-NORMALIZE-1):** one lead per normalized address. The lead magnet, the contact form and comments
+  write through `createOrFillLead` (`lib/lead-write.ts`): created when absent, an existing lead keeps every stored value
+  (first `createdAt` and `source`, the owner's `status`); the newsletter never writes an existing lead. These three
+  capture writers never modify `NEWSLETTER#` items
 - **Pagination:** Manual loop with `LastEvaluatedKey`, safety cap at 20 iterations
 - **Tenant mode (CATALOG-MODE-1):** `catalogMode` is fixed at `POST /tenants` (CM-D11) and read through
   `isCatalogMode()` (`@amodx/shared`). A catalog tenant stores no monetary field on any product (refused, 400, at

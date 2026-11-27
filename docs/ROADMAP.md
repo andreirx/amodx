@@ -369,7 +369,9 @@ Hygiene work, not a feature track.
   lead magnet (`leads/create.ts`), the contact form (`contact/send.ts`, trim only) and comments (`comments/create.ts`)
   still write `LEAD#<email as typed>` — they were not among the 14 `fnd-2` sites. A person whose address reached those
   writers in another spelling has two lead rows (the subscription shows on the normalized one) until those writers are
-  migrated and F-FND2-1 merges the stored items.
+  migrated and F-FND2-1 merges the stored items. **`lead-normalize-1` (2026-11-27) migrates the three writers:** every
+  new lead write uses `LEAD#<normalizeEmail(email)>`. F-FND2-1 stays open for the lead items stored BEFORE it under a
+  typed spelling: they stay separate rows (listed, deletable) until a data slice merges them.
 - `cmrc-*` proves the private-table + cross-table-transaction pattern that `appt-*`
   reuses.
 - Track C's renderer-proxy customer sessions precede `appt-4` customer endpoints.
@@ -407,7 +409,7 @@ satulbanului gaps (`gallery-1`, `redirect-1`, `stay-1` part A) → five pure-mov
 
 | Slice | Scope | Status |
 |---|---|---|
-| `lead-normalize-1` | The three lead writers that store the address as typed (`leads/create.ts`, `contact/send.ts`, `comments/create.ts`) store the normalized key (NL1-LEAD-WRITERS, `docs/slices/newsletter-1.md` closeout). The merge of stored items stays F-FND2-1 | PLANNED |
+| `lead-normalize-1` | The three lead writers that store the address as typed (`leads/create.ts`, `contact/send.ts`, `comments/create.ts`) store the normalized key (NL1-LEAD-WRITERS, `docs/slices/newsletter-1.md` closeout); a later write never changes a stored lead value (`lib/lead-write.ts`). The merge of stored items stays F-FND2-1. Spec: `docs/slices/lead-normalize-1.md` | ON STAGING 2026-11-27 (operator gates green, staging check passed; `docs/slices/lead-normalize-1.md` § "Closeout"); waits for the human's production deploy |
 | `newsletter-2` | The unticked "send me news" box at checkout, on the path of `newsletter-1` | PLANNED — when a shop asks |
 | `refactor-shared-1` | `packages/shared/src/index.ts` (2,938 lines) into one file per domain; `index.ts` re-exports only. Proof: identical exported names and types; every package builds unchanged | PLANNED |
 | `refactor-settings-1` | `admin/src/pages/Settings.tsx` (2,595 lines) into one component per section. Proof: identical markup captures | PLANNED |

@@ -1,7 +1,8 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { createOrFillLead } from "../lib/lead-write.js";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
@@ -90,24 +91,12 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         console.log("✅ Email dispatched to SES");
 
-        // Create Lead record for CRM
-        const leadId = crypto.randomUUID();
-        await db.send(new PutCommand({
-            TableName: TABLE_NAME,
-            Item: {
-                PK: `TENANT#${tenantId}`,
-                SK: `LEAD#${email}`,
-                id: leadId,
-                tenantId,
-                email,
-                name,
-                source: tags || "contact-form",
-                status: "New",
-                data: { message },
-                createdAt: new Date().toISOString(),
-                Type: "Lead"
-            }
-        }));
+        // Create Lead record for CRM. LEAD-NORMALIZE-1 (docs/slices/lead-normalize-1.md): stored under the normalized
+        // address; an existing lead keeps every stored value (`createOrFillLead`). The email above (Reply-To, audit)
+        // stays as sent.
+        await db.send(new UpdateCommand(createOrFillLead(tenantId, email, {
+            name, source: tags || "contact-form", data: { message }, createdAt: new Date().toISOString(),
+        })));
         console.log("✅ Lead record created");
 
         await publishAudit({

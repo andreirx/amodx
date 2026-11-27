@@ -582,12 +582,19 @@ describe("Finding NL1-R5 — a cancelled signup is re-read, retried once, then r
 });
 
 describe("Finding NL1-R8 — one lead identity: the normalized address", () => {
-    const LEGACY = "Reader.Sentinel@Example.test";   // another spelling of EMAIL, as a writer that does not normalize stores it
+    const LEGACY = "Reader.Sentinel@Example.test";   // another spelling of EMAIL, as a writer that did not normalize stored it
     const legacy = () => item(`TENANT#${T}`, `LEAD#${LEGACY}`);
+    // LEAD-NORMALIZE-1: each of the four LEAD# writers now normalizes (enumeration: docs/slices/lead-normalize-1.md § "The
+    // email rule"), so a legacy item exists only as a row stored BEFORE that slice (its key
+    // and `email` the typed spelling, as the old lead magnet wrote them). It is seeded here in that stored shape.
+    const putLegacy = (over: Record<string, unknown> = {}) => table.set(k(`TENANT#${T}`, `LEAD#${LEGACY}`), {
+        PK: `TENANT#${T}`, SK: `LEAD#${LEGACY}`, id: "legacy-id", tenantId: T, email: LEGACY, source: "Website", status: "New",
+        createdAt: "2026-01-01T00:00:00.000Z", Type: "Lead", ...over,
+    });
 
     it("a legacy spelling present BEFORE the signup: the signup creates LEAD#<normalized> with the subscription; the legacy item is untouched; the list shows the subscription on the normalized row only", async () => {
         putTenant({ integrations: {} });
-        await signup({ email: LEGACY, source: "Website", data: { referral: "p1" } });     // the lead magnet stores the raw spelling
+        putLegacy({ data: { referral: "p1" } });
         const before = structuredClone(legacy());
         expect(before).toBeDefined();
         await signup(newsletterBody({ email: LEGACY }));
@@ -600,12 +607,15 @@ describe("Finding NL1-R8 — one lead identity: the normalized address", () => {
         expect(listed.find((r: any) => r.email === LEGACY).newsletter).toBeUndefined();
     });
 
-    it("a legacy spelling written AFTER the signup: a separate item; the subscription stays on the normalized lead", async () => {
+    it("a legacy item, then a lead-magnet submission in the legacy spelling after the signup: the submission goes to the normalized lead (LEAD-NORMALIZE-1) and changes nothing there; the legacy item stays separate; the subscription stays on the normalized lead", async () => {
         putTenant({ integrations: {} });
         await signup(newsletterBody());
+        putLegacy();
+        const legacyBefore = structuredClone(legacy());
         await signup({ email: LEGACY, source: "Website" });
-        expect(legacy()).toMatchObject({ source: "Website" });
+        expect(legacy()).toEqual(legacyBefore);
         expect(lead()).toMatchObject({ source: "newsletter" });
+        expect(rowsOf("LEAD#")).toHaveLength(2);
         const listed = JSON.parse((await admin(listLeads)).body).items;
         expect(listed.find((r: any) => r.email === LEGACY).newsletter).toBeUndefined();
         expect(listed.find((r: any) => r.email === EMAIL).newsletter.consent.text).toBe(EN_CONSENT);
@@ -613,8 +623,9 @@ describe("Finding NL1-R8 — one lead identity: the normalized address", () => {
 
     it("deleting the LEGACY item deletes that item only (one Delete, no transaction); the subscription and the normalized lead stay", async () => {
         putTenant({ integrations: {} });
-        await signup({ email: LEGACY, source: "Website" });
+        putLegacy();
         await signup(newsletterBody());
+        expect(legacy()).toBeDefined();
         ddbSend.mockClear();
         expect((await admin(deleteLead, { pathParameters: { email: encodeURIComponent(LEGACY) } })).statusCode).toBe(200);
         const sent = ddbSend.mock.calls.map(([c]) => c);
@@ -627,7 +638,7 @@ describe("Finding NL1-R8 — one lead identity: the normalized address", () => {
 
     it("deleting the NORMALIZED lead deletes it and the subscription in one transaction; the legacy item stays", async () => {
         putTenant({ integrations: {} });
-        await signup({ email: LEGACY, source: "Website" });
+        putLegacy();
         await signup(newsletterBody());
         expect((await admin(deleteLead, { pathParameters: { email: encodeURIComponent(EMAIL) } })).statusCode).toBe(200);
         expect(lead()).toBeUndefined();
@@ -733,10 +744,12 @@ describe("Ruling 12 / finding NL1-R2 — newness and push results are fenced by 
         expect(listed[0]).toMatchObject({ id: before!.id, source: "Website", data: { referral: "partner-1" }, newsletter: { consent: { text: EN_CONSENT }, push: { state: "Sent" } } });
     });
 
-    it("order C: a lead-magnet download after the signup replaces the lead item, and the subscription stays", async () => {
+    it("order C: a lead-magnet download after the signup changes no stored lead value (LEAD-NORMALIZE-1), and the subscription stays", async () => {
         await signup(newsletterBody());
+        const before = structuredClone(lead());
         await signup({ email: EMAIL, source: "Website" });
-        expect(lead()!.source).toBe("Website");
+        expect(lead()).toEqual(before);
+        expect(lead()!.source).toBe("newsletter");
         const listed = JSON.parse((await admin(listLeads)).body).items;
         expect(listed[0].newsletter.consent.text).toBe(EN_CONSENT);
     });
@@ -825,7 +838,7 @@ describe("Ruling 8 — a stored legacy boolean is no connection", () => {
     }
 });
 
-describe("Ruling 9 — the newsletter path never yields a download link; the lead-magnet path is unchanged", () => {
+describe("Ruling 9 — the newsletter path never yields a download link; a request without source \"newsletter\" takes the lead-magnet path", () => {
     it("a newsletter request naming a stored free resource → 201 without a link; no resource read, no product read", async () => {
         table.set(k(`TENANT#${T}`, "RESOURCE#r-free"), { PK: `TENANT#${T}`, SK: "RESOURCE#r-free", id: "r-free", s3Key: "t1/r-free.pdf" });
         process.env.PRIVATE_BUCKET = "test-private-bucket";
@@ -838,7 +851,7 @@ describe("Ruling 9 — the newsletter path never yields a download link; the lea
         expect(reads.some((c) => c instanceof QueryCommand && c.input.ExpressionAttributeValues?.[":sk"] === "PRODUCT#")).toBe(false);
     });
 
-    it("a request without source \"newsletter\" takes the lead-magnet path: one Put of the whole lead, no subscription, no push", async () => {
+    it("a request without source \"newsletter\" takes the lead-magnet path: the lead is stored, no subscription, no push", async () => {
         const res = await signup({ email: EMAIL, source: "Website", consentText: EN_CONSENT });
         expect(res.statusCode).toBe(201);
         expect(rowsOf("NEWSLETTER#")).toHaveLength(0);

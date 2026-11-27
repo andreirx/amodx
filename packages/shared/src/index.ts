@@ -1522,9 +1522,10 @@ export type Lead = z.infer<typeof LeadSchema>;
 
 // --- NEWSLETTER SUBSCRIPTION (NEWSLETTER-1, docs/slices/newsletter-1.md) ---
 // Stored as the item `NEWSLETTER#<normalized email>` (`normalizeEmail`) in the tenant partition, beside the lead (ruling
-// NL1-CONSENT-STORAGE = A). A separate item because three writers replace the whole lead item (`leads/create.ts` lead
+// NL1-CONSENT-STORAGE = A). A separate item because three writers replaced the whole lead item (`leads/create.ts` lead
 // magnet, `contact/send.ts`, `comments/create.ts`): consent stored on the lead would be erased by the next download,
-// message or comment. A signup writes it in one transaction with the lead (the lead only when absent); a lead deletion
+// message or comment (since LEAD-NORMALIZE-1 they never change a stored lead value; the separate item stays). A signup
+// writes it in one transaction with the lead (the lead only when absent); a lead deletion
 // removes both in one transaction. GET /leads gives each lead its subscription as `newsletter`. The renderer never reads it.
 
 /**

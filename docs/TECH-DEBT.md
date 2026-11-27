@@ -1623,6 +1623,12 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   (`leads/create.ts:84`), the contact form (`contact/send.ts:39,99`, trim only) and comments (`comments/create.ts:68`)
   write the address as typed. A person reaching both in another spelling has two lead rows (the subscription on the
   normalized one) until those writers normalize and F-FND2-1 merges stored items. Decision NL1-LEAD-WRITERS (build-2).
+  - *2026-11-27, `lead-normalize-1` (built, operator gates pending):* the three writers now write
+    `LEAD#<normalizeEmail(email)>` through `createOrFillLead` (`backend/src/lib/lead-write.ts`), which never changes a
+    stored lead value. New submissions no longer split. Still open (F-FND2-1): rows stored before it under a typed
+    spelling stay separate rows until a data slice merges them. New residuals LN1-F1 (a later contact message is not
+    kept on an existing lead's `data`; it reaches the owner by email) and LN1-F2 (the contact form has no address check
+    of its own; SES decides) — `docs/slices/lead-normalize-1.md` § "Build record".
 
 ## gallery-1 residuals (2026-11-27)
 

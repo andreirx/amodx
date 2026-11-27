@@ -1,7 +1,8 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { CommentSchema } from "@amodx/shared";
+import { CommentSchema, normalizeEmail } from "@amodx/shared";
+import { createOrFillLead } from "../lib/lead-write.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 
@@ -37,12 +38,15 @@ const _handler: Handler = async (event) => {
         const id = crypto.randomUUID();
         const now = new Date().toISOString();
 
-        // 1. Validate Comment
+        // 1. Validate Comment. LEAD-NORMALIZE-1 (docs/slices/lead-normalize-1.md): the address is validated on its
+        // normalized form (PD-001); an invalid one throws here → 500, nothing written (unchanged answer). The comment item
+        // below keeps `authorEmail` as sent; only the lead uses the normalized address.
+        const authorEmail = typeof body.authorEmail === "string" ? normalizeEmail(body.authorEmail) : body.authorEmail;
         const input = CommentSchema.omit({
             id: true,
             tenantId: true,
             createdAt: true
-        }).parse(body);
+        }).parse({ ...body, authorEmail });
 
         // 2. Prepare Items
         const commentItem = {
@@ -61,23 +65,9 @@ const _handler: Handler = async (event) => {
             Type: "Comment"
         };
 
-        // 3. Prepare Lead (Upsert strategy)
-        // We use the email as part of the SK so we don't duplicate leads
-        const leadItem = {
-            PK: `TENANT#${tenantId}`,
-            SK: `LEAD#${body.authorEmail}`,
-            id: crypto.randomUUID(), // This might change on update, but acceptable for V1
-            tenantId,
-            email: body.authorEmail,
-            name: body.authorName,
-            source: "Comment",
-            status: "New", // Sets them back to New if they comment again? Or keep existing?
-                           // Ideally we'd use a ConditionExpression to not overwrite status if exists,
-                           // but TransactWrite makes conditional updates complex if the item might not exist.
-                           // For V1, overwriting "source" to "Comment" is fine.
-            createdAt: now, // Update interaction time
-            Type: "Lead"
-        };
+        // 3. The lead: created when absent; an existing lead (any writer's) keeps every stored value — its first `createdAt`
+        // and `source`, the owner's `status` (LEAD-NORMALIZE-1, `createOrFillLead`).
+        const leadUpdate = createOrFillLead(tenantId, input.authorEmail, { name: body.authorName, source: "Comment", createdAt: now });
 
         // 4. Atomic Write
         await db.send(new TransactWriteCommand({
@@ -88,14 +78,7 @@ const _handler: Handler = async (event) => {
                         Item: commentItem
                     }
                 },
-                {
-                    Put: {
-                        TableName: TABLE_NAME,
-                        Item: leadItem,
-                        // OPTIONAL: prevent overwriting an existing lead's status?
-                        // For now, simple Upsert is robust.
-                    }
-                }
+                { Update: leadUpdate }
             ]
         }));
 

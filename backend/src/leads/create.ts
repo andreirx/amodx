@@ -1,7 +1,8 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { LeadSchema } from "@amodx/shared";
+import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { LeadSchema, normalizeEmail } from "@amodx/shared";
+import { createOrFillLead } from "../lib/lead-write.js";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
@@ -73,23 +74,14 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }
 
-        // 1. Save Lead
-        const input = LeadSchema.omit({ id: true, tenantId: true, createdAt: true, status: true }).parse(body);
-        const id = crypto.randomUUID();
-
-        await db.send(new PutCommand({
-            TableName: TABLE_NAME,
-            Item: {
-                PK: `TENANT#${tenantId}`,
-                SK: `LEAD#${input.email}`,
-                id,
-                tenantId,
-                ...input,
-                status: "New",
-                createdAt: new Date().toISOString(),
-                Type: "Lead"
-            }
-        }));
+        // 1. Save Lead. LEAD-NORMALIZE-1 (docs/slices/lead-normalize-1.md): the address is normalized first and validated
+        // after (PD-001); an invalid one throws here → 500, nothing written (unchanged answer). The write creates the lead
+        // when absent and never changes a stored value (`createOrFillLead`).
+        const email = typeof body.email === "string" ? normalizeEmail(body.email) : body.email;
+        const input = LeadSchema.omit({ id: true, tenantId: true, createdAt: true, status: true }).parse({ ...body, email });
+        await db.send(new UpdateCommand(createOrFillLead(tenantId, input.email, {
+            name: input.name, source: input.source, data: input.data, createdAt: new Date().toISOString(),
+        })));
 
         // 2. Handle Gated Resource (The "Exchange")
         let downloadUrl = undefined;
