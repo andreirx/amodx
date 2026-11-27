@@ -27,8 +27,9 @@ export const handler: Handler = async (event) => {
                 ":pk": `TENANT#${tenantId}`,
                 ":sk": "ORDER#"
             },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, #s, total, currency, paymentMethod, paymentStatus, items, createdAt, couponCode, couponDiscount"
+            // `status`, `total` and `items` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
+            ExpressionAttributeNames: { "#s": "status", "#total": "total", "#items": "items" },
+            ProjectionExpression: "id, #s, #total, currency, paymentMethod, paymentStatus, #items, createdAt, couponCode, couponDiscount"
         }));
 
         const orders = result.Items || [];

@@ -7,7 +7,9 @@ import * as path from 'path';
  * Separate from `vitest.config.ts` because that config loads `test/setup.ts`, which
  * requires `.env.test` + a live staging `TABLE_NAME` and whose suites mutate real staging
  * data. Tests under `test/unit/` must be runnable by anyone, in CI, on a laptop, with no
- * AWS account — so they get a config with **no `setupFiles`**.
+ * AWS account — so they get a config without `test/setup.ts`. Their one setup file,
+ * `test/unit/dynamo-reserved-setup.ts` (PROJECTION-RESERVED-1), needs no AWS: it makes every
+ * DynamoDB command refuse a bare reserved word in an expression, as DynamoDB does.
  *
  * Run: `npm run test:unit` (from `backend/`).
  */
@@ -17,6 +19,7 @@ export default defineConfig({
         environment: 'node',
         include: ['test/unit/**/*.test.ts'],
         exclude: ['**/node_modules/**', '**/dist/**'],
+        setupFiles: ['test/unit/dynamo-reserved-setup.ts'],
         alias: {
             '@amodx/shared': path.resolve(__dirname, '../packages/shared/src/index.ts')
         }

@@ -11,8 +11,12 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 24 files in total)
+├── lib/                   # (selected modules; 25 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
+│   ├── dynamo-reserved-words.ts # PROJECTION-RESERVED-1: DYNAMO_RESERVED_WORDS, the 573 official reserved words
+│   │                      #   (source URL + copy date in the header). Imported by the unit-test guard only — in no
+│   │                      #   Lambda bundle. Rule: a reserved word used as an attribute name in an expression needs an
+│   │                      #   ExpressionAttributeNames alias (`#total`); bare, DynamoDB refuses the request (500).
 │   ├── scheduling-db.ts   # SCHED-1C (docs/slices/sched-1.md § 6-§ 8.4, § 13, § 14, § 23; PROTOTYPE): the ONLY code
 │   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
 │   │                      #   (client, table, sleep); handlers use schedulingStoreFromEnv() (SCHEDULING_TABLE_NAME,
@@ -950,7 +954,7 @@ Run: `cd backend && npm test` or `npx vitest run <path>` for a single file.
 
 ### Pure unit — `test/unit/**/*.test.ts`, config `vitest.unit.config.ts`
 
-No `setupFiles`, so no `.env.test`, no credentials, no real AWS calls of any kind. Two shapes of
+No `test/setup.ts`, so no `.env.test`, no credentials, no real AWS calls of any kind. Two shapes of
 test live here, both credential-free:
 
 1. **Pure modules — imported and called directly, no mocks.** A module qualifies when it imports
@@ -1019,5 +1023,38 @@ that was also run against the handler before the slice.
 `test/unit/price-locale-1.test.ts` (PRICE-LOCALE-1) is the same shape for `orders/create.ts` and
 `products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
 price text is read.
+
+**The reserved-word guard (PROJECTION-RESERVED-1, `docs/slices/projection-reserved-1.md`).** The test doubles do not
+evaluate expressions, so a bare DynamoDB reserved word (`total`, `source`, `items`, `status`, `name`, `data`, …) in an
+expression passed every unit test and failed only on a real table. Two layers guard against it (plus the operator's
+staging smoke of the list routes):
+
+- `test/unit/dynamo-reserved-setup.ts` is the config's one `setupFiles` entry (AWS-free). It `vi.mock`s
+  `@aws-sdk/lib-dynamodb` with the real module passed through `guardCommandClasses`
+  (`test/unit/dynamo-expression-guard.ts`): the Get / Put / Update / Delete / Query / Scan / BatchGet / TransactGet /
+  TransactWrite command classes become same-named subclasses whose constructor calls
+  `assertNoBareReservedWord(input)` and throws DynamoDB's `ValidationException` text (`Invalid <Kind>: Attribute name
+  is a reserved keyword; reserved keyword: <name>`). Every double of the backend unit tests — `MemoryTable`,
+  `LangTable`, `vi.fn` mocks, aws-sdk-client-mock — therefore sees the handler answer 500 as on staging, for every
+  expression a test reaches. This is the primary protection.
+- **Rule:** a test file that replaces `@aws-sdk/lib-dynamodb` with its own `vi.mock` factory must return its module
+  through `guardCommandClasses(…)` (today: `debounce-flush`, `debounce-maxwait`, `invalidate-cdn`,
+  `lang-1b-deferred-flush`, each with a rejection-control row). A row of `projection-reserved-1.test.ts` fails on a
+  replacement that does not.
+- `test/unit/projection-reserved-1.test.ts` runs a **lint, not a proof** (operator ruling PR1-STATIC-SCOPE) over the
+  expression sites written in `backend/src`, `renderer/src`, `scripts`, `tools/mcp-server` and the test suites that
+  reach DynamoDB (`scanExpressionSites`, TypeScript compiler API, syntax only). It fails on a bare reserved word in
+  any text it resolves. It covers code no test reaches and the renderer (which has no run-time guard). It models the
+  construction forms the repository uses today: literals, templates, `+`, `?:`, constants, `let` slots with `=` and
+  separator-led `+=`, `const` arrays changed only by dot `push` / `unshift`, read-only dot calls with an arrow
+  callback of at most two parameters, object-literal properties, same-file returns and same-file call arguments. A
+  use it recognizes as outside that allow-list (`splice`, `p["push"](…)`, a call argument, an alias, an export, an
+  object with a method or accessor, …) makes the read unresolved where it can tell; code that changes a value through
+  a form it does not model **can pass as clean** (known forms: `docs/TECH-DEBT.md` § F-RESERVED-SCAN-LIMITS). A site
+  with a run-time part where a bare name can stand must be in `AUDITED_RUNTIME_SITES` (hand-audited, 12 today), so a
+  new one of those fails until audited.
+
+Rule for new code: write every attribute name of an expression that is a reserved word as an alias, or alias every
+name. The list is `src/lib/dynamo-reserved-words.ts`.
 
 Run: `cd backend && npm run test:unit`.

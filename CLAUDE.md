@@ -67,7 +67,7 @@ Update the documentation.
 These invariants, if broken, cause crashes or data corruption:
 
 1. **Plugin split entry.** `admin.ts` (browser) vs `render.ts` (server). No cross-imports between plugins and admin/renderer. See `docs/plugin-architecture.md`.
-2. **No DynamoDB scans.** Always `QueryCommand` with `PK`+`SK`. List handlers must use `ProjectionExpression`.
+2. **No DynamoDB scans.** Always `QueryCommand` with `PK`+`SK`. List handlers must use `ProjectionExpression`. Attribute names in expressions that are reserved words need an alias (`#total`); the unit-test doubles refuse them (`backend/src/lib/dynamo-reserved-words.ts`, PROJECTION-RESERVED-1).
 3. **Tenant isolation.** Every DB operation validates `x-tenant-id`. Never query across tenants.
 4. **Shared-first types.** Schema changes go to `packages/shared/src/` first — the schema's domain file (map in `packages/shared/ARCHITECTURE.md`; `index.ts` only re-exports) — then rebuild dependents.
 5. **Backend ESM imports.** Always use `.js` extension for local imports (e.g., `from "../lib/db.js"`).

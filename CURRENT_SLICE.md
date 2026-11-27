@@ -4,10 +4,14 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. `refactor-shared-1` is on staging since 2026-11-27 (`docs/slices/refactor-shared-1.md` § "Closeout"): the
-schemas of `packages/shared/src/index.ts` live in 24 domain files; `index.ts` re-exports only. Next: `projection-reserved-1` (hotfix), then `refactor-settings-1`.
-`packages/shared/src/index.ts` moved into 24 domain files; `index.ts` re-exports only. Next in the order of work:
-`refactor-settings-1`.
+Nothing. Next in the order of work: `refactor-settings-1`.
+
+`projection-reserved-1` (hotfix) is on staging since 2026-11-27 (`docs/slices/projection-reserved-1.md` §
+"Closeout") and waits for the human's production deploy: five DynamoDB projections that named a reserved word
+bare are aliased (admin Orders list, review moderation list, Reports page, the download check, the account order
+history); the unit-test doubles refuse a bare reserved word; a static lint (not a proof) checks the expression sites.
+`refactor-shared-1` is on staging since 2026-11-27 (`docs/slices/refactor-shared-1.md` § "Closeout"): the
+schemas of `packages/shared/src/index.ts` live in 24 domain files; `index.ts` re-exports only.
 `lead-normalize-1` is on staging since 2026-11-27 (`docs/slices/lead-normalize-1.md` § "Closeout") and
 waits for the human's production deploy.
 `stay-1` part A is on staging since 2026-11-27 (`docs/slices/stay-1.md` § "Closeout (STAY-1A)") and waits

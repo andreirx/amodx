@@ -40,7 +40,8 @@ vi.mock("@aws-sdk/client-lambda", () => ({
 
 // Stub the command classes to capture their input for assertions (same style as
 // debounce-flush.test.ts). `edge-invalidation.js` (pure) is intentionally NOT mocked.
-vi.mock("@aws-sdk/lib-dynamodb", () => ({
+// PROJECTION-RESERVED-1: the replacement goes through guardCommandClasses (bare reserved words refused).
+vi.mock("@aws-sdk/lib-dynamodb", async () => (await import("./dynamo-expression-guard.js")).guardCommandClasses({
     PutCommand: class {
         readonly __kind = "Put";
         input: any;
@@ -214,5 +215,18 @@ describe("enqueueEdgeInvalidation — CACHE-9 event-driven drain trigger", () =>
 
         expect(updateCalls()).toHaveLength(0);
         expect(invokeCalls()).toHaveLength(0);
+    });
+});
+
+// PROJECTION-RESERVED-1 — rejection control for THIS file's own `@aws-sdk/lib-dynamodb` replacement: it goes through
+// `guardCommandClasses`, so a bare reserved word is refused here as on DynamoDB, and a clean command still builds.
+describe("PROJECTION-RESERVED-1 guard on this file's lib-dynamodb replacement", () => {
+    it("refuses a bare reserved word with DynamoDB's text; builds a clean command", async () => {
+        const { UpdateCommand } = await import("@aws-sdk/lib-dynamodb");
+        expect(() => new UpdateCommand({ TableName: "t", Key: { PK: "p", SK: "s" }, UpdateExpression: "SET data = :d" } as any))
+            .toThrow("Invalid UpdateExpression: Attribute name is a reserved keyword; reserved keyword: data");
+        const clean = new UpdateCommand({ TableName: "t", Key: { PK: "p", SK: "s" }, UpdateExpression: "SET #d = :d" } as any);
+        expect(clean.constructor.name).toBe("UpdateCommand");
+        expect((clean as any).input.UpdateExpression).toBe("SET #d = :d");
     });
 });

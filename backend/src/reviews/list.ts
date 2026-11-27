@@ -29,8 +29,9 @@ type ReviewListItem = Pick<
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-const PROJECTION = "id, productId, #sc, authorName, rating, content, source, #s, createdAt, images, importBatchId";
-const NAMES = { "#s": "status", "#sc": "scope" } as const;
+// `source` and `status` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
+const PROJECTION = "id, productId, #sc, authorName, rating, content, #source, #s, createdAt, images, importBatchId";
+const NAMES = { "#s": "status", "#sc": "scope", "#source": "source" } as const;
 
 async function queryPrefix(tenantId: string, prefix: string): Promise<ReviewListItem[]> {
     const result = await db.send(new QueryCommand({

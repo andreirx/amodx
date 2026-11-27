@@ -248,6 +248,9 @@ the human; ROADMAP slice `presign-entitlement-1`.
 - `hasUserPurchasedProduct` (`backend/src/resources/presign.ts:21-58`) reads `CUSTORDER#<email>#` with projection
   `items`; those items hold only `orderNumber, total, status, createdAt, Type` (`backend/src/orders/create.ts:439-448`).
   So every non-admin caller of `GET /resources/{id}/download` is refused ("Purchase required").
+  *Correction 2026-11-27 (PROJECTION-RESERVED-1):* until that slice the read itself was refused by DynamoDB (`items` is
+  a reserved word, the projection named it bare), so the route answered 500, not 403. With the `#items` alias it
+  answers the 403 described here (unit row in `backend/test/unit/projection-reserved-1.test.ts`).
 - No site screen calls that route; only the MCP tool does (`tools/mcp-server/src/index.ts:1857`).
 - The Paddle webhook fulfils nothing (`paddle-hook-1`, unverified route).
 - Since `digital-file-guard-1`, the lead form also signs no link for a product's file (that was the leak, not a
@@ -453,6 +456,65 @@ The exception path — ratifying cross-tenant reads for a global key — is a hu
 **Fix:** Dedicated PR to upgrade `packages/plugins` from Tiptap 2.x to 3.x. Key changes per the official migration guide: import reshuffling (`@tiptap/extensions`), `shouldRerenderOnTransaction` default change, `getPos()` can return undefined. Current plugin surface (Node.create, ReactNodeViewRenderer, NodeViewWrapper, storage injection) is low-risk but requires regression testing all 19 plugin NodeViews inside the admin editor.
 
 ## Medium Priority (Code Quality)
+
+### PROJECTION-RESERVED-1 residuals (2026-11-27)
+**Found:** `projection-reserved-1` (`docs/slices/projection-reserved-1.md`). The guard against a bare DynamoDB reserved
+word has these known limits:
+
+- **Twelve run-time sites are proven by hand, not by the scan** (content `plan.selfCondition` ×3, `glam-images` `set`
+  ×1, `scheduling-db` `Expr` ×8; audit in the slice doc). `AUDITED_RUNTIME_SITES` pins them by `file kind` count, so a
+  NEW site fails the test, but a change inside an existing one does not. All twelve are in modules that guarded unit
+  tests import (`lang-1a-content`, `glam-images-handler`, `scheduling-db`, `scheduling-visitor-d8`,
+  `scheduling-reminders`, `scheduling-feed`) — INFERRED, not traced per site.
+- **Not under the run-time guard:** the renderer unit tests and the renderer serving stubs (renderer expressions are
+  covered by the static scan only; no renderer test reaches `getCustomerOrders`), and the staging integration suites
+  (`backend/test/*.ts`, real DynamoDB). Every backend unit test is under it: the four files that replace
+  `@aws-sdk/lib-dynamodb` themselves return it through `guardCommandClasses`, a rule a test row enforces (review
+  finding PR1-GUARD-BYPASS). A replacement that bypasses `vi.mock` (a deep import of the SDK's `dist-*` files) is not
+  caught by that row.
+- **Reserved words only.** The guard does not check the other DynamoDB expression rules: an unused alias or value
+  (refused), a syntax error, or a name with characters that need an alias (`-`, a literal `.`).
+- **The scan is a lint, not a proof** (operator ruling PR1-STATIC-SCOPE). It is syntactic and per file and models the
+  construction forms the repository uses today: literals, templates, `+`, `?:`, constants, `let` slots (`=` and a
+  separator-led `+=`), `const` arrays changed only by dot `push` / `unshift`, read-only dot calls with an arrow
+  callback of at most two parameters, object-literal properties, same-file returns and same-file call arguments. A use
+  it recognizes as outside that list makes the read unresolved, where it can tell; **a change through a form it does
+  not model can pass as clean** — see F-RESERVED-SCAN-LIMITS below. Also not seen: a site whose key comes from a
+  value the scan cannot resolve (`{ [k]: … }` with `k` from data), and, for an object the scan reaches as the argument
+  of a same-file call (a parameter), a write made to it under yet another name. The "at least 290 sites" row catches a
+  scan that breaks, not one that misses a new pattern.
+- **The word list is a copy** (2026-11-27). Refresh: the `curl` of the header URL; the test pins 573.
+
+### F-RESERVED-SCAN-LIMITS: known false-clean forms of the reserved-word lint (2026-11-27)
+**Found:** `projection-reserved-1` review 2; scope frozen by the operator ruling PR1-STATIC-SCOPE
+(`docs/slices/projection-reserved-1.md`). The static lint (`scanExpressionSites`,
+`backend/test/unit/dynamo-expression-guard.ts`) is a lint for the forms the repository uses today, not a proof. The
+reviewer executed each construction below and the lint resolved it as clean (zero reserved words, zero unresolved
+parts) although the executed expression holds `total`:
+
+| Construction (verbatim from review 2) | Executed projection | Lint's text |
+|---|---|---|
+| Rest-parameter callback: `p.forEach((...a)=>{a[2][0]="total"})`, starting with `p=["id"]` | `total` | `id` |
+| Parenthesised call: `(p.push)("total")`, starting with `p=["id"]` | `id, total` | `id` |
+| Parenthesised bracket call: `(p["splice"])(0,1,"total")`, starting with `p=["id"]` | `total` | `id` |
+| Cast-wrapped call: `(p.push as any)("total")` | (passed silently) | — |
+| Inline `.filter` callback that writes: `["id","x"].filter((v,i,a)=>{a[1]="total";return true}).join(", ")` | `id, total` | `id, x` |
+| Function-valued property supplied through an identifier: `function change(){this.expression="total"}; const p={expression:"id",join:change}; p.join();` | `total` | `id` |
+| `unshift` then `join("")` joining name fragments: `p.unshift("tot"); p.join("")`, starting with `p=["al"]` | `total` | `altot` |
+| An object imported from a module that exports it with `export { p }` | (resolved clean) | — |
+
+The protection against a bare reserved word is, in order: (a) the run-time guard in the command constructors, for
+every backend unit test that reaches an expression; (b) this lint, for code no test reaches and for the renderer;
+(c) the operator's staging smoke of the list routes. The lint's audit of today's repository reports 301 sites, 0 bare
+reserved words and 12 hand-audited run-time sites; a site built through one of the forms above would look clean in
+that audit, so the audit does not prove that none of them occurs (not searched separately).
+
+Also open here: two `describe` names in `backend/test/unit/projection-reserved-1.test.ts` read stronger than the
+contract (`"the scan fails closed (sources scanned from text)"`, `"the static scan of every DynamoDB expression in the
+repository"`); the tests were frozen in that cycle. Rename them with the proper solution.
+
+**Proper solution:** give the renderer the run-time guard too, then delete the resolver beyond literals.
+**When:** if a reserved-word defect reaches staging again.
 
 ### Review `source` enum defects — write path bypasses Zod, forcing a compat widening (F-REV1-x / D1); the two review systems' enums diverge (D2)
 Surfaced by the `plan-reviews-import.md` audit (§ 2.5); recorded here with the `rev-1` slice,

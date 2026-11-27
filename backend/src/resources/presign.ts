@@ -44,7 +44,9 @@ async function hasUserPurchasedProduct(
             ":pk": `TENANT#${tenantId}`,
             ":sk": `CUSTORDER#${normalizedEmail}#`,
         },
-        ProjectionExpression: "items",
+        // `items` is a DynamoDB reserved word: it needs an alias (PROJECTION-RESERVED-1).
+        ProjectionExpression: "#items",
+        ExpressionAttributeNames: { "#items": "items" },
     }));
 
     // Check if any order contains this product

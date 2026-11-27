@@ -669,8 +669,9 @@ export async function getCustomerOrders(tenantId: string, email: string) {
                 ":pk": `TENANT#${tenantId}`,
                 ":sk": `CUSTORDER#${normalizeEmail(email)}#`,
             },
-            ProjectionExpression: "orderNumber, total, #s, createdAt, SK",
-            ExpressionAttributeNames: { "#s": "status" },
+            // `total` and `status` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
+            ProjectionExpression: "orderNumber, #total, #s, createdAt, SK",
+            ExpressionAttributeNames: { "#s": "status", "#total": "total" },
             ExclusiveStartKey: lastKey,
         }));
         allItems.push(...(result.Items || []));

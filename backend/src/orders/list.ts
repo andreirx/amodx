@@ -29,7 +29,8 @@ export const handler: Handler = async (event) => {
             ":pk": `TENANT#${tenantId}`,
             ":sk": "ORDER#"
         };
-        const exprNames: Record<string, string> = { "#s": "status" };
+        // `status` and `total` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
+        const exprNames: Record<string, string> = { "#s": "status", "#total": "total" };
 
         if (statusFilter) {
             filterParts.push("#s = :statusVal");
@@ -52,7 +53,7 @@ export const handler: Handler = async (event) => {
             ...(filterParts.length > 0 ? { FilterExpression: filterParts.join(" AND ") } : {}),
             ExpressionAttributeValues: exprValues,
             ExpressionAttributeNames: exprNames,
-            ProjectionExpression: "id, orderNumber, customerEmail, customerName, #s, paymentMethod, paymentStatus, total, currency, createdAt"
+            ProjectionExpression: "id, orderNumber, customerEmail, customerName, #s, paymentMethod, paymentStatus, #total, currency, createdAt"
         }));
 
         let items = result.Items || [];
