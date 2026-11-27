@@ -207,8 +207,8 @@ test("gallery block shape: the described attrs and photo fields are exactly the 
     assert.equal(parsed.items[1].thumb, undefined);
 });
 
-test("gallery is registered in index.ts: BLOCK_SCHEMAS holds the shape and add_block accepts the type (source check: index.ts starts the server on import)", () => {
-    const src = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+test("gallery is registered: BLOCK_SCHEMAS holds the shape (block-schemas.ts) and add_block accepts the type (tools/content.ts) (source check)", () => {
+    const src = ["../src/block-schemas.ts", "../src/tools/content.ts"].map((p) => readFileSync(new URL(p, import.meta.url), "utf8")).join("\n");
     assert.match(src, /\n    gallery: GALLERY_BLOCK_SHAPE,\n/);
     const addBlock = src.slice(src.indexOf('"add_block"'), src.indexOf("async ({ tenant_id, page_id, type, attrs, content_text })"));
     assert.match(addBlock, /type: z\.enum\(\[[^\]]*"gallery"[^\]]*\]\)/);
@@ -241,8 +241,8 @@ test("form tools: dateOrder null is sent (removes the rule); absent → no key; 
     assert.deepEqual(formBody({ status: "active" }), { status: "active" });
 });
 
-test("create_form and update_form take date_order and build their body with formBody (source check: index.ts starts the server on import)", () => {
-    const src = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+test("create_form and update_form take date_order and build their body with formBody (source check of tools/forms-popups.ts)", () => {
+    const src = readFileSync(new URL("../src/tools/forms-popups.ts", import.meta.url), "utf8");
     const input = src.slice(src.indexOf("const FormInput = z.object({"), src.indexOf('server.tool("create_form",'));
     assert.match(input, /fields: z\.string\(\)\.optional\(\)\.describe\(FORM_FIELDS_DESCRIPTION\)/);
     assert.match(input, /date_order: z\.string\(\)\.optional\(\)\.describe\(FORM_DATE_ORDER_DESCRIPTION\)/);

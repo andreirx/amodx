@@ -847,7 +847,7 @@ NESTED STACK RATIONALE:
 ```
 Claude Desktop ◄──► MCP Server (stdio transport)
                     │
-                    │ tools/mcp-server/src/index.ts (1,881 lines)
+                    │ tools/mcp-server/src/index.ts (the start) + src/tools/*.ts (one file per tool group)
                     │
                     │ Auth: Master API key (x-api-key header)
                     │       → GLOBAL_ADMIN role, tenantId: "ALL"

@@ -225,5 +225,6 @@ Both blocks' editors warn on a non-empty unrecognized URL and neither blocks sav
 ## Rules
 
 - Array items (plans, items, columns, rows, cells) require UUID `id` fields.
-- MCP server `BLOCK_SCHEMAS` constant in `tools/mcp-server/src/index.ts` must stay in sync with this table.
+- MCP server `BLOCK_SCHEMAS` constant in `tools/mcp-server/src/block-schemas.ts` (and the `add_block` type list in
+  `tools/mcp-server/src/tools/content.ts`) must stay in sync with this table.
 - Schemas are defined in `packages/plugins/src/blocks/<name>/schema.ts` using Zod.

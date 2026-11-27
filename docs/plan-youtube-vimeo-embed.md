@@ -431,7 +431,8 @@ All five must succeed before PR. (Backend is included per repo rules even though
 13. `packages/plugins/ARCHITECTURE.md` updated with new common module
 14. `docs/block-types.md` updated with embed support details
 15. `docs/TECH-DEBT.md` updated with future considerations
-16. `tools/mcp-server/src/index.ts` synced if it exposes video block schemas
+16. `tools/mcp-server/src/block-schemas.ts` (block shapes) and `tools/mcp-server/src/tools/content.ts` (the `add_block`
+    type list) synced if they expose video block schemas
 
 ### Verification
 17. Full rebuild passes: shared → plugins → backend → admin → renderer (all five)

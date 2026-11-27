@@ -4,8 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `refactor-mcp-1`.
+Nothing. Next in the order of work: `refactor-renderer-reads-1`, then `settings-findings-1` and `ci-lockfile-1`
+(the human, 2026-11-27), then `cmrc-1`.
 
+`refactor-mcp-1` is done since 2026-11-27 (`docs/slices/refactor-mcp-1.md` § "Closeout"; a local tool, nothing to
+deploy): `tools/mcp-server/src/index.ts` keeps the server start (130 lines); the 80 tools live in 21 group files
+under `tools/mcp-server/src/tools/`, moves only; an MCP client receives a byte-identical tool list.
 `refactor-sitepage-1` is on staging since 2026-11-27 (`docs/slices/refactor-sitepage-1.md` § "Closeout") and waits
 for the human's production deploy: `renderer/src/components/SitePage.tsx` keeps the page entry (479 lines); the
 selectors, metadata, block preparation and views live in nine files under `renderer/src/components/site-page/`,

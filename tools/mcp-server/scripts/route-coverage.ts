@@ -1,8 +1,9 @@
 /**
  * Route-coverage drift oracle for the MCP server (slice mcp-sync-1).
  *
- * Reads src/index.ts as TEXT (no import, so no .env, no network) and checks it against
- * routes.json, the live API Gateway route table that the operator refreshes.
+ * Reads every .ts file under src/ as TEXT (no import, so no .env, no network) and checks it against
+ * routes.json, the live API Gateway route table that the operator refreshes. Since REFACTOR-MCP-1
+ * the tools live in src/tools/*.ts; the files are read sorted by path and joined with "\n".
  *
  * FAILS (exit 1) when:
  *   1. a call targets a method+path that is not in routes.json and not in `knownBroken`;
@@ -11,12 +12,16 @@
  *   4. ARCHITECTURE.md's "## Tools (N total)" differs from the count of `server.tool(` calls.
  * PRINTS, never fails on: admin routes that no tool calls (coverage is a product choice).
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(join(ROOT, "src/index.ts"), "utf8");
+const files = readdirSync(join(ROOT, "src"), { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .sort();
+const parts = files.map((f) => ({ file: `src/${f}`, text: readFileSync(join(ROOT, "src", f), "utf8") }));
+const source = parts.map((p) => p.text).join("\n");
 const routeTable: { generatedAt: string; stage: string; routes: string[] } =
     JSON.parse(readFileSync(join(ROOT, "routes.json"), "utf8"));
 const architecture = readFileSync(join(ROOT, "ARCHITECTURE.md"), "utf8");
@@ -31,7 +36,15 @@ const knownBroken = new Map<string, string>([
 const API_MARK = "${API_URL}";
 const HOLE = "\u0000"; // stands for one `${...}` interpolation inside a URL
 
-const lineOf = (pos: number) => source.slice(0, pos).split("\n").length;
+/** "src/<file>:<line>" of a position in the joined source. */
+function lineOf(pos: number): string {
+    let start = 0;
+    for (const p of parts) {
+        if (pos <= start + p.text.length) return `${p.file}:${source.slice(start, pos).split("\n").length}`;
+        start += p.text.length + 1;
+    }
+    throw new Error(`position ${pos} is outside the joined source`);
+}
 
 /** Body of the template literal whose opening backtick is at `start`; `${...}` → HOLE. */
 function readTemplate(start: number): { text: string; end: number } {
@@ -68,7 +81,7 @@ function apiTemplatesIn(from: number, to: number): { text: string; pos: number }
     return found;
 }
 
-interface Call { method: string; segments: string[]; line: number }
+interface Call { method: string; segments: string[]; line: string }
 
 // --- Extract calls -----------------------------------------------------------------------
 // An axios call's first argument is either the template literal itself, or an identifier
@@ -135,7 +148,7 @@ const toolCount = source.split("server.tool(").length - 1;
 const documented = /^## Tools \((\d+) total\)/m.exec(architecture);
 if (!documented) failures.push(`ARCHITECTURE.md has no "## Tools (N total)" heading`);
 else if (Number(documented[1]) !== toolCount) {
-    failures.push(`ARCHITECTURE.md says ${documented[1]} tools; src/index.ts registers ${toolCount}`);
+    failures.push(`ARCHITECTURE.md says ${documented[1]} tools; src/ registers ${toolCount}`);
 }
 
 // --- Report ---------------------------------------------------------------------------------

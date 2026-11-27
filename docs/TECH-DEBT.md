@@ -251,7 +251,7 @@ the human; ROADMAP slice `presign-entitlement-1`.
   *Correction 2026-11-27 (PROJECTION-RESERVED-1):* until that slice the read itself was refused by DynamoDB (`items` is
   a reserved word, the projection named it bare), so the route answered 500, not 403. With the `#items` alias it
   answers the 403 described here (unit row in `backend/test/unit/projection-reserved-1.test.ts`).
-- No site screen calls that route; only the MCP tool does (`tools/mcp-server/src/index.ts:1857`).
+- No site screen calls that route; only the MCP tool `resource_download_url` does (`tools/mcp-server/src/tools/assets-resources.ts`).
 - The Paddle webhook fulfils nothing (`paddle-hook-1`, unverified route).
 - Since `digital-file-guard-1`, the lead form also signs no link for a product's file (that was the leak, not a
   delivery path).

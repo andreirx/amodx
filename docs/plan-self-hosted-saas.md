@@ -578,7 +578,7 @@ export const handler = awslambda.streamifyResponse(
 
 ### 9.4 Tool Definitions
 
-Reuse the existing MCP server tool schemas (`tools/mcp-server/src/index.ts`). Extract them into a shared module:
+Reuse the existing MCP server tool schemas (`tools/mcp-server/src/tools/*.ts`, one file per tool group). Extract them into a shared module:
 
 | Tool | Description | Maps to MCP tool |
 |---|---|---|

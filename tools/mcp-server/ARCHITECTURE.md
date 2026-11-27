@@ -10,7 +10,34 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 
 ```
 src/
-├── index.ts          # MCP server: all 80 tools, block schemas, API helpers
+├── index.ts          # The start only: dotenv, AMODX_API_URL / AMODX_API_KEY check, apiKeyValid,
+│                     #   validateApiKey(), getHeaders(), the McpServer, the register…Tools() calls IN
+│                     #   REGISTRATION ORDER (= the tools/list order a client sees), main()
+├── tool-helpers.ts   # PURE: apiError(), PENDING_MARKER_ATTEMPT, PAGE_REVALIDATION_ATTEMPT, JsonInput,
+│                     #   parseJsonInput()
+├── block-schemas.ts  # BLOCK_SCHEMAS — the block definitions get_block_schemas returns (one constant)
+├── tools/            # One file per tool group; each exports ONE register<Group>Tools(server, deps)
+│   ├── tenants.ts            # list_tenants, create_tenant
+│   ├── strategy-context.ts   # list/create/read/update/delete_context
+│   ├── content.ts            # pages, blocks, page history, redirects (11 tools)
+│   ├── products.ts           # products, tags, import_glam_pricelist
+│   ├── categories.ts         # list_categories, create_category
+│   ├── orders-customers.ts   # list/get_order, update_order_status, list/get_customer
+│   ├── coupons.ts            # list_coupons, create_coupon
+│   ├── reviews.ts            # list_reviews, moderate_review
+│   ├── delivery.ts           # get/update_delivery_config
+│   ├── reports.ts            # get_reports
+│   ├── bulk-price.ts         # bulk_price_adjust
+│   ├── forms-popups.ts       # forms and popups (one file: list_popups is registered before the forms)
+│   ├── assets-resources.ts   # list_assets, private resources
+│   ├── comments.ts           # list_comments, moderate_comment
+│   ├── themes.ts             # list/create/apply/delete_theme
+│   ├── signals.ts            # search_web, scrape_url, signals
+│   ├── leads.ts              # list/create/delete_lead
+│   ├── service-keys.ts       # service_key_list/create/revoke
+│   ├── system-audit-email.ts # invalidation, audit, email_dns_check
+│   ├── social.ts             # social_login, post_social (Playwright)
+│   └── schema-reference.ts   # get_schema
 └── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products,
                       #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1;
                       #   CAT-IMPORT-PROFILE-1A: the summary adds "Profile: <source>, revision <n>", the sheets
@@ -20,7 +47,8 @@ src/
                       #   used with its four labels and the other lists that hold other labels); STAY-1A:
                       #   create_form / update_form body (`formBody`) and their field / pair-rule descriptions
                       #   (the test binds the listed field types to the shared FormFieldSchema)
-                      #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
+                      #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested;
+                      #   since REFACTOR-MCP-1 a group file starts nothing on import — no test uses that yet)
 
 scripts/
 └── route-coverage.ts # Drift oracle (npm test) — see "Drift oracle"
@@ -35,6 +63,24 @@ package.json
 tsconfig.json
 ```
 
+**Rule: a new tool goes in its group file (or a new `src/tools/<group>.ts` with its register call in
+`index.ts`, at the place that gives the wanted `tools/list` order); `index.ts` holds the start only.**
+
+How the groups get the shared state (REFACTOR-MCP-1, `docs/slices/refactor-mcp-1.md` § *Shared state*):
+
+- `index.ts` calls `register<Group>Tools(server, { … })` with only the names that group uses, from
+  `API_URL`, `getHeaders`, `STORAGE_DIR` (`social.ts` gets `STORAGE_DIR`; `schema-reference.ts` takes `server` only).
+  The wrapper writes the parameter type inline; there is no shared deps type.
+- `getHeaders` is passed as a function, so it reads `apiKeyValid` at call time — the value `main()` writes after the
+  registrations. Do not copy `apiKeyValid` into a group.
+- Only `index.ts` reads `process.env`, after `dotenv.config()`. A group file's top level holds imports and its one
+  function, nothing else: ES modules run every imported module before the importer's body.
+- `STORAGE_DIR` is computed in `index.ts` from `import.meta.dirname` (`dist/` → `../.storage`); the same expression in
+  `dist/tools/` would point elsewhere.
+- Pure helpers and `BLOCK_SCHEMAS` are ordinary imports (`../tool-helpers.js`, `../block-schemas.js`).
+- The moved code is not re-indented inside the wrapper function: `get_schema`'s text is a template literal whose
+  leading spaces are content.
+
 ## Server Configuration
 
 - **Transport:** Stdio (communicates via stdin/stdout pipes with Claude Desktop)
@@ -47,7 +93,7 @@ tsconfig.json
 
 ## Tools (80 total)
 
-Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/index.ts`, in source order.
+Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/tools/*.ts`, in registration order (the order of the register calls in `src/index.ts`).
 
 ### Site Management
 | Tool | Method | Purpose |
@@ -205,10 +251,10 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 
 `npm test` runs `scripts/route-coverage.ts` (tsx), then `test/tool-shapes.test.ts` (`node --import tsx --test`;
 the catalog-mode payload and output rows: `create_tenant` `catalogMode`, no `imageLink`/`price` key when absent,
-no `undefined` in a priceless `list_products` line). The drift oracle reads `src/index.ts` as text — no import, no `.env`, no network — and checks it against `routes.json`.
+no `undefined` in a priceless `list_products` line). The drift oracle reads every `.ts` file under `src/` as text (sorted by path, joined) — no import, no `.env`, no network — and checks it against `routes.json`. Failure messages name `src/<file>:<line>`.
 
 - **routes.json** — the live route table: output of `aws apigatewayv2 get-routes --api-id <prod api id> --query "Items[].RouteKey"`, with `generatedAt`, `stage`, `apiId` and the command. **Refresh duty:** after every backend route change the operator re-runs the command, replaces `routes`, and runs `npm test`.
-- **Extraction:** every `axios.<method>(` call whose first argument is a `${API_URL}/…` template literal, or an identifier bound by a `const <id> = …;` holding such literals (the `const url = cond ? … : …` pattern). `${…}` segments become wildcards that match a `{param}` route segment by position; the query string is dropped.
+- **Extraction:** every `axios.<method>(` call whose first argument is a `${API_URL}/…` template literal, or an identifier bound by a `const <id> = …;` holding such literals (the `const url = cond ? … : …` pattern). `${…}` segments become wildcards that match a `{param}` route segment by position; the query string is dropped. Known limit: the identifier is bound to the nearest earlier `const <id> =` in the joined text, even in another tool — `scrape_url`'s `axios.get(url` (its input, an external page) is counted as two calls of `list_reviews`' URLs (before REFACTOR-MCP-1: of `list_comments`'). The phantom changes no PASS/FAIL today (`docs/slices/refactor-mcp-1.md`, F-RMCP1-1).
 - **Fails (exit 1)** when: a call's method+path is not in `routes.json` and not in the `knownBroken` allowlist; a `knownBroken` entry is no longer called (stale entries would hide a regression); a `${API_URL}` occurrence is not attributable to a parsed call (the oracle would be blind to it — this includes comments); the `## Tools (N total)` heading above differs from the number of `server.tool(` registrations.
 - **Prints, never fails:** admin routes (not `/public/*`, not `/webhooks/*`) that no tool calls, grouped by first path segment. Coverage is a product choice.
 - **`knownBroken`** today: `GET /delivery`, `PUT /delivery` (commerce track). The commerce slice fixes the two tools and deletes both entries.
