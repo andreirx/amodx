@@ -46,6 +46,16 @@ src/
 │       └── revalidate/route.ts                # ISR cache purge (called by admin after edits)
 ├── components/
 │   ├── SitePage.tsx                           # THE page render body — both catch-all routes call it
+│   ├── site-page/                             # SitePage.tsx's views and helpers, one file per responsibility (refactor-sitepage-1)
+│   │   ├── input.ts                           #   SitePageInput, SiteQuery (the per-request DTO; re-exported by SitePage.tsx)
+│   │   ├── addresses.ts                       #   matchCommercePrefix, interestPrefix, normalizePageAddressOrKeepRaw
+│   │   ├── metadata.ts                        #   buildSitePageMetadata (re-exported by SitePage.tsx)
+│   │   ├── locale-strings.ts                  #   the per-view text selectors (cartPageStrings … interestListStrings), interpolateNodes
+│   │   ├── prepare-blocks.ts                  #   prepareBlocks and its helpers (showcase card data, form, price range)
+│   │   ├── commerce-parts.tsx                 #   isEditorial, cardCategoriesOf, cardThemeProps, ProductCard, Pagination
+│   │   ├── product-page.tsx                   #   ProductPageView + the catalog presenter, attributes, gallery and toggle props
+│   │   ├── listing-views.tsx                  #   CategoryPageView, ShopPageView, SearchPageView + the facet panel
+│   │   └── order-views.tsx                    #   ConfirmationPageView, OrderTrackingView
 │   ├── ProductByIdPage.tsx                    # THE by-ID product render body — both product routes call it
 │   ├── RenderBlocks.tsx                       # Block rendering engine: maps Tiptap JSON → React
 │   ├── ThemeInjector.tsx                      # CSS variable injection + Google Fonts loading
@@ -207,7 +217,20 @@ catch-all routes are thin shells that call it with plain props
 (`{ preview, basePath, sessionToken, query, cacheable }`); the cacheable route passes the
 inert values (`false`, `""`, `null`, `{}`) plus `cacheable: true`, the twin passes the real
 ones plus `cacheable: false`. `components/ProductByIdPage.tsx` plays the same role for the
-legacy `/products/<id>` route. Steps:
+legacy `/products/<id>` route.
+
+**Files (refactor-sitepage-1, moves only).** `SitePage.tsx` holds the entry only: `SitePage` (the routing of one
+request to a view, the content page, the access gate, the JSON-LD) and `toSiteQuery`; it re-exports `SitePageInput`,
+`SiteQuery` and `buildSitePageMetadata`, so every importer keeps `@/components/SitePage`. Everything else is in
+`components/site-page/` (map in the tree above). **Rule: a new view or helper goes in its file under `site-page/`;
+`SitePage.tsx` holds the entry only.** Import direction (a DAG; no file under `site-page/` imports `SitePage.tsx`):
+`SitePage.tsx` → every `site-page/` file; `metadata.ts` → `input.ts`, `addresses.ts`; `product-page.tsx`,
+`listing-views.tsx` → `locale-strings.ts`, `commerce-parts.tsx`; `commerce-parts.tsx`, `order-views.tsx` →
+`locale-strings.ts`. No file has a `"use client"` / `"use server"` directive: all are server modules, imported only by
+`SitePage.tsx` and each other; the client components they mount stay in `components/`. The HARD CONSTRAINT of the
+`SitePage.tsx` header (no Next.js dynamic API) covers every `site-page/` file: they are reachable from it.
+
+Steps:
 
 0. **Not-found policy:** every "missing" outcome in the render goes through
    `notFoundOrHandoff(cacheable, publicPath)` (`lib/not-found-handoff.ts`), never a bare
@@ -240,7 +263,7 @@ legacy `/products/<id>` route. Steps:
    closed in `cache-3` revision 3. Never state this gate as working from the middleware rule
    alone.
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
-5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
+5. **Block preparation (`prepareBlocks`, `site-page/prepare-blocks.ts`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
    products (+ the catalog-mode reduction, the URL prefixes; the card options' data, SHOP-LOOK-1D), `reviewsCarousel`
    reviews, `categoryGrid` categories (SHOP-LOOK-1C), the `form` block's custom form (SHOP-LOOK-1E) (avoids client fetches),
    the `newsletter` block's `_newsletter` (NEWSLETTER-1: `newsletterTexts` of the page's resolved texts, which SitePage passes
@@ -528,7 +551,7 @@ metadata (no title). Non-catalog renders are unchanged (`cm1-*`). Tests: `test/u
 serving rows `cig1-catalog-hidden`, `cig1-commerce-hidden`. Not covered: `/products/<id>` (`ProductByIdPage.tsx`) keeps
 the `?preview=` exception on catalog sites too (finding in `docs/slices/cat-image-gate-1.md` § 7).
 
-**Rendering (`SitePage.tsx`).** `FacetedListing` + `FacetPanel` are server components with no JavaScript: every value
+**Rendering (`site-page/listing-views.tsx`).** `FacetedListing` + `FacetPanel` are server components with no JavaScript: every value
 is a plain `<a rel="nofollow">` (never prefetched — `cf1-prefetch`), every facet a native `<details>`; on small screens
 the panel is one collapsed block (CSS-only checkbox toggle), on `lg` a left column. The grid slot and `Pagination`'s
 base URL are the only existing slots the catalog branch fills, so a non-catalog render is unchanged. `Pagination` takes
@@ -560,14 +583,14 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
 - Server components resolve once per request (`resolveLocaleStrings(config)`) and pass each client component only
   its keys as a plain `strings` prop (`Navbar`, `CommentsSection`, `SocialShare`, `QuickContact`; `CookieConsent`
   keeps its `config` object shape). `layout.tsx`: cookie texts, footer lines/headings, legal labels, copyright, meta
-  description fallback. `SitePage.tsx`: restricted page, pagination, breadcrumb Home, comments, sharing.
+  description fallback. `SitePage.tsx`: restricted page, pagination (`site-page/commerce-parts.tsx` since refactor-sitepage-1), breadcrumb Home, comments, sharing.
 - **en-US tenants do not change** (§ 16.2 item 4), with ONE ruled exception since `locale-reviews-date-1`: the
   reviews-carousel date (ledger row L-ALL-2, below). Every EN value is today's literal; `CommentsSection` gets
   `dateLocale` only for a non-en-US tenant (a spread — an `undefined` prop would be serialised into the RSC payload);
   the footer copyright is split by a local `interpolate` into the same children as before, so its HTML/RSC bytes and
   the CM1-A1 footer-year canonicalisation are unchanged.
-- `locale-1b` — shared product surfaces and the catalog: `SitePage.tsx` product, category, shop and search views and
-  their metadata read `strings.commerce` (the product page caller and the search page no longer call
+- `locale-1b` — shared product surfaces and the catalog: the product, category, shop and search views (`site-page/product-page.tsx`,
+  `site-page/listing-views.tsx`) and their metadata (`site-page/metadata.ts`) read `strings.commerce` (the product page caller and the search page no longer call
   `getCommerceStrings`; `getSearchLabels` is gone); the facet panel and `buildFacetListing` read `strings.catalog`;
   `ProductByIdPage.tsx` reads `buyNow` / `preOrder` / `outOfStock`. `SearchBar` gets `labels` resolved on the server
   under the § 5.2 F rule (`override || language default`) and a required `placeholder` (`searchBar.placeholder ||
@@ -576,7 +599,7 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   `InterestWidget` gets its four texts (`InterestWidgetStrings`, incl. the count key `interestWidgetLabel`) from
   `app/[siteId]/layout.tsx` through `Navbar.tsx`'s `interest` prop, catalog tenants only (ruling LOCALE1B-WIDGET = A).
 - `locale-1d` — commerce-only pages (§ 6.2): `SitePage.tsx` passes the cart, checkout and account views and the
-  add-to-cart control only their keys (`cartPageStrings`, `checkoutPageStrings`, `accountPageStrings`,
+  add-to-cart control only their keys (selectors in `site-page/locale-strings.ts`: `cartPageStrings`, `checkoutPageStrings`, `accountPageStrings`,
   `addToCartStrings`; the Pick types `CartPageStrings`, `CheckoutPageStrings`, `AccountPageStrings`, `AddToCartStrings`
   live in the component files), with the § 5.2 F rule applied there (`withFallback`; pattern D = `pick`); the views have
   no English fallback any more (their `strings` prop is required). The four commerce titles, the order confirmation and
@@ -720,8 +743,8 @@ and the CM1-A1-exact comparison of those URLs continues in `cm1-identity-*`).
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 
 Approved review photos reach visitor markup in two render surfaces: the **product page** review
-section (`SitePage.tsx` `ProductPageView`) and the **reviews-carousel block** in a DB scope
-(`SitePage.tsx` prefetch branches → `@amodx/plugins` `reviewsCarousel`). `lib/review-images.ts` is
+section (`site-page/product-page.tsx` `ProductPageView`) and the **reviews-carousel block** in a DB scope
+(`site-page/prepare-blocks.ts` `prepareBlocks` branches → `@amodx/plugins` `reviewsCarousel`). `lib/review-images.ts` is
 the single support module both share, so they cannot drift on the security-critical rules:
 
 - **`toPublicReviewPhotos(images, cdnBase)`** — the public-boundary filter + key→URL resolver. A
@@ -813,7 +836,7 @@ not empty (and, for the head, when the page holds a set key), so a one-language 
   pages are listed, and a page alone in its set still pays 1 Query + 1 GetItem though it gets no alternates (row
   `lang1c-hreflang-member-invalid`: 2 listed, 6 GetItem in the unit test). A page in no set: 0. The sitemap: 1 Query per
   1 MB page of the tenant's items (stale items add to its volume), no GetItem.
-- **Head** (`components/SitePage.tsx` `buildSitePageMetadata`, content pages only): `alternates.languages` = one
+- **Head** (`components/site-page/metadata.ts` `buildSitePageMetadata`, content pages only): `alternates.languages` = one
   `https://<domain><path>` per listed member + `x-default`. Next writes them as `<link rel="alternate" hrefLang>`, and
   writes the URL of `/` as its origin (`https://<domain>`, as today's canonical of `/`). Below two listed members the
   object is exactly today's `{ canonical }`. A page that holds the key without being listed (a same-language pair, a
@@ -978,7 +1001,7 @@ byte-identical output (every new output is a conditional segment that is `""` / 
 - `layout.tsx`: `editorial` → header wrapper `border-t-[3px] border-primary`, footer `bg-muted` (surface) instead of
   `bg-muted/30`; footer width = `footer.contentMaxWidth || header.contentMaxWidth || "max-w-7xl"`; Navbar gets `navFont` /
   `linkArrows`, CommerceBar `ctaArrow` — only when set (conditional spread). `mapTenant` copies `footer`.
-- `SitePage.tsx`: `editorial` → the content-page and listing `<main>`s use `py-[var(--section-gap)]`, the spec table is
+- `SitePage.tsx` and `site-page/` (`isEditorial` in `commerce-parts.tsx`): `editorial` → the content-page and listing `<main>`s use `py-[var(--section-gap)]`, the spec table is
   `grid-cols-2` with 1 px row hairlines; `cardImage: "landscape"` → card image `h-[245px]`; `cardCategoryLine` → the first
   category's name under the card title (sharing the title's child slot — a new child slot would change the payload of
   every card), the category and search routes read the categories only when the line is on.
@@ -1086,10 +1109,10 @@ Design `docs/slices/catalog-data-labels-1.md` § 7, § 14; record `docs/slices/c
   (F-CDL-PARTIAL-PREFIXES; row `cdl2-partial-prefixes`). Every reader of `config.urlPrefixes` gets a complete object.
 - The interest list's default address is `/my-list` (`URL_PREFIX_DEFAULTS.interest`). Only the header `InterestWidget`
   (desktop and mobile copies, `Navbar` prop `interest.listPrefix`) links to it.
-- `SitePage.tsx` `matchCommercePrefix`: the order confirmation is `checkout + checkoutConfirmation` (default
+- `site-page/addresses.ts` `matchCommercePrefix`: the order confirmation is `checkout + checkoutConfirmation` (default
   `/checkout/confirmation`; was the fixed `/confirmare`); every other segment under `checkout` is a tracking address,
   so `/checkout/confirmare` now answers as tracking for the order id "confirmare". `CheckoutPageView` gets
-  `confirmPrefix` from the same two keys. Every view in `SitePage.tsx` that reads a prefix falls back to
+  `confirmPrefix` from the same two keys. Every view in `SitePage.tsx` and `site-page/` that reads a prefix falls back to
   `URL_PREFIX_DEFAULTS` of the same key; the Romanian literals (`/magazin`, `/produs`, `/comanda`, `/cos`) are gone.
   Their input is `mapTenant`'s complete object, so no fallback is reached and the served bytes did not change
   (serving contract: no listed difference on any commerce or content page from these lines).
@@ -1120,7 +1143,7 @@ Tiptap marks (bold, italic, link) and auto-rewrites internal links for preview m
 
 ## Hydration contract (hydration-1)
 
-`SitePage` uses its local `normalizePageAddressOrKeepRaw` function for metadata and JSON-LD/share data.
+`SitePage` and `buildSitePageMetadata` use `normalizePageAddressOrKeepRaw` (`site-page/addresses.ts`) for metadata and JSON-LD/share data.
 For parseable inputs it matches Next's WHATWG normalization and root-origin rule, including JSON-LD.
 If parsing fails, it preserves the pre-existing raw value without throwing in SitePage; it does not validate malformed tenant configuration.
 `SocialShare` receives that address string; all links and copy use it, including on preview URLs.

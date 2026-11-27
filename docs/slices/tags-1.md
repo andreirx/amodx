@@ -12,7 +12,7 @@ A site that buys Google Ads must report purchases to Google. Today:
   `renderer/src` for `gtag|GTM-|AW-|conversion|purchase`, 2026-11-20). `IntegrationsSchema` (`:555-605`) has no
   field for them.
 - Facebook reports the purchase (`FBPurchaseEvent.tsx:17-24`, mounted in the confirmation view
-  `SitePage.tsx:1825-1830`).
+  `ConfirmationPageView`, `renderer/src/components/site-page/order-views.tsx`).
 - **Defect:** the Facebook pixel is mounted whenever its id is set (`app/[siteId]/layout.tsx:289-291`), without
   the consent check that `Analytics.tsx` applies; `renderer/src/lib/fbpixel.ts:3` says it is consent-gated.
 

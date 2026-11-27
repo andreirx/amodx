@@ -67,7 +67,7 @@ All `*Editor.tsx` components must use this card layout for visual consistency:
 ## Server-prepared block data
 
 A render component never reads the database. When a block needs tenant data on the public site, the renderer's server
-pass (`prepareBlocks` in `renderer/src/components/SitePage.tsx`) reads it before `RenderBlocks` draws the page and adds
+pass (`prepareBlocks` in `renderer/src/components/site-page/prepare-blocks.ts`) reads it before `RenderBlocks` draws the page and adds
 plain fields to that block's `attrs` only: `postGrid` (`prefetchedPosts`), `categoryShowcase` (`prefetchedProducts`,
 `_productPrefix`, `_categoryPrefix`, `_catalogMode`), `reviewsCarousel` (`items`), `categoryGrid` (`_categories`: the
 picked active categories, each `{ id, name, description?, imageLink?, path }`, SHOP-LOOK-1C), `form` (`_form`: the active

@@ -357,7 +357,7 @@ which amends the slice's scope 3).
   booking `:313`, `/tenant/`/`/_site/` `:362`/`:384`), its route handlers (`/robots.txt`, `/sitemap.xml`, `/llms.txt`,
   `/openai-feed`), the product page by id (`/products/<id>`), the home page `/`, and the site's built-in pages (the
   tenant's product, category, cart, checkout, shop, account and search prefixes; the interest list on a catalog —
-  `SitePage.tsx` `matchCommercePrefix`). A WordPress address there (typically `/product/<x>` of a WooCommerce site
+  `renderer/src/components/site-page/addresses.ts` `matchCommercePrefix`). A WordPress address there (typically `/product/<x>` of a WooCommerce site
   whose product slug changed, or `/category/<x>`) cannot be kept and a redirect there is never read. The importer
   writes none; the dry run lists each one as "cannot be kept or redirected" with the reason and the page's new
   address, and the admin shows the count before the import (`backend/src/import/wp-addresses.ts` `servedBefore`).

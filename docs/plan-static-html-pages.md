@@ -100,7 +100,7 @@ is restricted to EDITOR/ADMIN roles who are trusted" (`HtmlRender.tsx:3-6`). So 
 
 **A repo sanitiser exists but is deliberately not wired to this block.** `sanitizeHtml()`
 (`renderer/src/lib/sanitize.ts:8-43`, backed by the `sanitize-html` library) is used only by
-product descriptions (`SitePage.tsx:779,841`), popups (`PopupManager.tsx:162`) and the top bar
+product descriptions (`ProductPageView`, `renderer/src/components/site-page/product-page.tsx`: the short and the long description), popups (`PopupManager.tsx:162`) and the top bar
 (`TopBar.tsx:16`). Its `allowedTags` omits `script`, `style` and `iframe`; its
 `allowedAttributes` omits `on*` handlers. It would strip exactly the parts a Lovable export needs.
 
@@ -192,7 +192,7 @@ API:
 | `POST /api/comments` (`comments/route.ts:72-75`) | post as the logged-in user (impersonation) |
 | `POST /api/ref?v=` (`ref/route.ts:69-93`) | overwrite the attribution cookie → steal lead/campaign credit |
 | `GET /api/posts` (`posts/route.ts:16,26-28`) | **cross-tenant** read — tenant id is the client-supplied `x-tenant-id` header, host is ignored |
-| `checkout-confirm ?id&email`, `checkout-track ?email` (`SitePage.tsx:350-366`, `CheckoutPageView.tsx:343`) | order id + customer email, plaintext in the URL of a same-origin navigation |
+| `checkout-confirm ?id&email`, `checkout-track ?email` (`SitePage.tsx`, the `checkout-confirm` / `checkout-track` branches of `SitePage`; `CheckoutPageView.tsx:343`) | order id + customer email, plaintext in the URL of a same-origin navigation |
 
 Plus the ambient powers of any script running in the page: rewrite the DOM (inject a fake
 checkout/payment form to exfiltrate card data or PII typed by the visitor), read anything the

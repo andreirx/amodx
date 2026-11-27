@@ -67,7 +67,7 @@ with online payment (Paddle) never delivered a purchase (§ 2.3).
 - **C10** — The confirmation and tracking pages read the order straight from DynamoDB on the server side
   (`getOrderForCustomer`: key `ORDER#<id>`, then the stored email must equal the normalized query email); they are
   served by the dynamic twin (`no-store`). `GET /public/orders/{id}?email=` applies the same rule.
-  `renderer/src/components/SitePage.tsx:526-542`; `renderer/src/lib/dynamo.ts:536-549`;
+  `renderer/src/components/SitePage.tsx` (`SitePage`, the `checkout-confirm` and `checkout-track` branches); `renderer/src/lib/dynamo.ts:536-549`;
   `backend/src/orders/public-get.ts:16-28`; `docs/caching-architecture.md:97-109`.
 - **C11** — The renderer's server function can read the whole main table (`grantReadData`).
   `infra/lib/renderer-hosting.ts:272`.
@@ -84,7 +84,7 @@ with online payment (Paddle) never delivered a purchase (§ 2.3).
 - **C15** — Digital products: `productType: "physical" | "digital"`, `paymentLinkId` (Paddle), `resourceId` (a
   file in the private bucket, item `TENANT#<t> / RESOURCE#<id>` with `s3Key`). The admin digital editor saves
   `productType: "digital"`. `index.ts:1628-1632`; `admin/src/pages/DigitalProductEditor.tsx:102`.
-- **C16** — Two product surfaces. (a) The slug page (`SitePage.tsx:1362-1399`) shows the Paddle button when
+- **C16** — Two product surfaces. (a) The slug page (`ProductPageView`, `renderer/src/components/site-page/product-page.tsx`) shows the Paddle button when
   `paymentLinkId` is set, and "Add to cart" only when `commerceEnabled` is true **and** `paymentLinkId` is not set;
   so a digital product without `paymentLinkId` goes to the cart there. (b) The by-id page
   (`renderer/src/components/ProductByIdPage.tsx:136-145`, routes `renderer/src/app/[siteId]/products/[productId]/
@@ -98,7 +98,7 @@ with online payment (Paddle) never delivered a purchase (§ 2.3).
   the precedent for a non-person actor. `backend/src/lib/events.ts:6-18`; `backend/src/auth/authorizer.ts:195-200`.
 - **C20** — `bookingItemsForOrderLine` (`sched-1.md` § 17.2) is not built (`grep -rn bookingItemsForOrderLine
   backend/src packages/shared/src`: no hit).
-- **C21** — `mapTenant` is a whitelist and does **not** copy `enabledPaymentMethods`; `SitePage.tsx:512` passes
+- **C21** — `mapTenant` is a whitelist and does **not** copy `enabledPaymentMethods`; `SitePage` (`SitePage.tsx`, the `checkout` branch) passes
   `config.enabledPaymentMethods` (always absent) to the checkout, whose default is `["cash_on_delivery"]`
   (`CheckoutPageView.tsx:179`). So today the checkout never offers bank transfer, whatever the stored setting.
   `renderer/src/lib/dynamo.ts:127-209`.
@@ -121,7 +121,7 @@ with online payment (Paddle) never delivered a purchase (§ 2.3).
 - **P3** — The header comment of the handler says "public route". That is not true (P1). Name/comment mismatch,
   recorded in § 16. OBSERVED, `paddle.ts:4`.
 - **P4** — The buy buttons send no tenant or product with the checkout (no `passthrough`, no `data-custom-data`).
-  A completed Paddle checkout could not be tied to a tenant or a product. OBSERVED, `SitePage.tsx:1363-1370`,
+  A completed Paddle checkout could not be tied to a tenant or a product. OBSERVED, `ProductPageView` (`site-page/product-page.tsx`, the Paddle button),
   `ProductByIdPage.tsx:137-145`.
 - **P5** — The buttons use `data-product`. Paddle's current HTML checkout page for `paddle.js` v2 documents
   `data-items` (`[{"priceId":"pri_…","quantity":1}]`) and does not mention `data-product`. The loader calls
@@ -837,7 +837,7 @@ orderId, email }` → the attempt route; (B only) `POST /api/order-download` `{ 
 download route. The email is the one in the order page's address — the access rule of C10, unchanged.
 
 Settings to checkout (`pay-2e`): `mapTenant` (`renderer/src/lib/dynamo.ts`) copies `enabledPaymentMethods` when it
-is an array of known methods, else leaves it absent (the checkout then keeps its default); `SitePage.tsx:512`
+is an array of known methods, else leaves it absent (the checkout then keeps its default); `SitePage` (`SitePage.tsx`, the `checkout` branch)
 already passes it. Effect on existing tenants: a stored `bank_transfer` becomes visible at checkout (C21; finding
 PF6) — checked before deploy (§ 12.2, `pay-2e`).
 

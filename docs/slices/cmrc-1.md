@@ -95,7 +95,7 @@ comment) and a search for quoted `CUST…`/`…ORDER"` strings (only the unrelat
 | S13 | `backend/src/customers/update.ts:36` | `CUSTOMER#` | UpdateItem | main | `PUT /customers/{email}` (admin) |
 | S14 | `backend/src/customers/public-update.ts:73-77`, `:107-113` | `CUSTOMER#` | GetItem, UpdateItem | main | `POST /public/customers/profile` (renderer key) |
 | S15 | `backend/src/resources/presign.ts:38-47` | `CUSTORDER#<email>#` | Query, projection `items` | main | `GET /resources/{id}/download` (`infra/lib/api.ts:490-497`, `:517`) |
-| S16 | `renderer/src/lib/dynamo.ts:540-553` `getOrderForCustomer` | `ORDER#` | GetItem; returns the item without `internalNotes` when `stored customerEmail === normalizeEmail(given)`; the order id and the email come from the page address, with **no session check** (`SitePage.tsx:542-558`) | main | `renderer/src/components/SitePage.tsx:547`, `:556` |
+| S16 | `renderer/src/lib/dynamo.ts:540-553` `getOrderForCustomer` | `ORDER#` | GetItem; returns the item without `internalNotes` when `stored customerEmail === normalizeEmail(given)`; the order id and the email come from the page address, with **no session check** (the `checkout-confirm` / `checkout-track` branches of `SitePage` in `SitePage.tsx`) | main | `renderer/src/components/SitePage.tsx` (the two `getOrderForCustomer` calls of `SitePage`) |
 | S17 | `renderer/src/lib/dynamo.ts:636-668` `getCustomerOrders` | `CUSTORDER#<email>#` | Query, paginated, projection | main | `renderer/src/app/api/account/orders/route.ts:57` |
 | S18 | `renderer/src/lib/dynamo.ts:671-681` `getCustomerProfile` | `CUSTOMER#<email>` | GetItem, projection | main | `renderer/src/app/api/profile/route.ts:151` |
 | S19 | `scripts/migrate-commerce-private-table.ts:8` | all four | Query + BatchWrite (operational tool) | both | `npm run migrate-commerce-private-table` (`package.json:22`) |
@@ -153,7 +153,7 @@ orders.
 | P4 | "The current checkout only lowercases"; keys must move to `normalizeEmail()` | Changed: done by `fnd-2`. Every key site above derives the email with `normalizeEmail()` (`create.ts:73`, `customers/get.ts:24-30`, `customers/update.ts:30-36`, `public-update.ts:56`, `presign.ts:38`, `dynamo.ts:549`, `:649`, `:676`). PD-001's "Conformance status — nothing conforms yet" paragraph (`docs/platform-decisions.md`, PD-001 Invariants) is stale (finding F-CMRC1-PD001-STALE). The historical backfill F-FND2-1 stays open. |
 | P5 | API: `GET /customer/orders`, `GET /customer/profile`, `POST /customer/profile`; no email in URL; prefer a JSON body | Changed by this spec: three **POST** reads with the email in the body (§ 5.6). A GET cannot carry a body, and a header carrier needs log exclusion; the scheduling feed already uses a POST to keep a secret out of API logs (`renderer/src/lib/booking-proxy.ts:294-295`). The profile update stays on the existing `POST /public/customers/profile` (`infra/lib/api-commerce.ts:324`), which is already renderer-key only (`public-update.ts:37-41`). |
 | P6 | `commerce-db.ts`, typed functions, table from `COMMERCE_TABLE_NAME` **falling back** to `TABLE_NAME` | Changed by this spec: no fallback. A fallback makes a missing variable silently read the main table after the cutover, and the security property becomes false with no error. `cmrc-1` binds the module to `TABLE_NAME`; `cmrc-4` changes that one binding to a required `COMMERCE_TABLE_NAME` (§ 5.5). |
-| P7 | Phase 1: remove `getOrderForCustomer` from `renderer/src/app/[siteId]/[[...slug]]/page.tsx` | Changed: the page body moved to `renderer/src/components/SitePage.tsx` (calls at `:547`, `:556`); it runs only on the dynamic twin (§ 2.2). The two order pages are server-rendered functions in the same file (`SitePage.tsx:1820`, `:1940`) that read 17 named fields (§ 5.6 D3). |
+| P7 | Phase 1: remove `getOrderForCustomer` from `renderer/src/app/[siteId]/[[...slug]]/page.tsx` | Changed: the page body moved to `renderer/src/components/SitePage.tsx` (the two `getOrderForCustomer` calls of `SitePage`); it runs only on the dynamic twin (§ 2.2). The two order pages are server-rendered functions in `renderer/src/components/site-page/order-views.tsx` (`ConfirmationPageView`, `OrderTrackingView`; refactor-sitepage-1) that read 17 named fields (§ 5.6 D3). |
 | P8 | Phase 2: backend renderer-only read endpoints | No longer exists as a gap to "add later" — nothing exists yet: `routes.json` has no `/customer/` route (EXECUTED: python read of `tools/mcp-server/routes.json`, 148 routes). Specified in § 5. |
 | P9 | Phase 3: rewrite `api/account/orders/route.ts` and `api/profile/route.ts` | Still true: `account/orders/route.ts:3`, `:57`; `profile/route.ts:3`, `:151`. The profile POST already proxies (`profile/route.ts:84-103`). |
 | P10 | Phase 4: table in CDK, `PAY_PER_REQUEST`, PITR | Still true; the scheduling table is the exact precedent (`infra/lib/database.ts:60-72`). |
@@ -165,7 +165,7 @@ orders.
 | P16 | CI guard as a lint rule, not a grep | Still true as a requirement; nothing exists. `cmrc-1` adds an AST-based key-ownership test (§ 5.9 T3) that covers most of it. |
 | P17 | Remove the three renderer helpers after Phases 1+3 | Still true (S16-S18). Sixteen renderer unit test files name `getOrderForCustomer` — fifteen in their `@/lib/dynamo` mock, one (`order-email-1.test.ts`) through the real function — plus one serving fixture comment (EXECUTED: `git grep -l getOrderForCustomer -- 'renderer/test/unit/*.ts'` → 16; `-- renderer/test` → 17); § 5.9 says which change. |
 | P18 | Rejected: dedicated customer-read Lambda behind CloudFront | Still valid; nothing in the code contradicts it. |
-| P19 | PD-002 renderer-proxy, session variant | Changed for one read. Account order history (S17) and profile (S18) take the email from a validated NextAuth session (`account/orders/route.ts:49-57`, `profile/route.ts:141-151`): PD-002's session variant. The order confirmation and tracking read (S16) does not: a guest opens it with the order id and the email from the page address (`SitePage.tsx:542-558`, `CheckoutPageView.tsx:401`); PD-002 (`docs/platform-decisions.md`, PD-002 § Invariants) requires a session-derived email, and its 2026-11-21 booking-token variant covers scheduling only. Today's code does not conform; moving the read behind the backend makes the gap visible. This document claims no PD-002 conformance for that read: decision CMRC-ORDER-LOOKUP-AUTHORITY (§ 8). |
+| P19 | PD-002 renderer-proxy, session variant | Changed for one read. Account order history (S17) and profile (S18) take the email from a validated NextAuth session (`account/orders/route.ts:49-57`, `profile/route.ts:141-151`): PD-002's session variant. The order confirmation and tracking read (S16) does not: a guest opens it with the order id and the email from the page address (the `checkout-confirm` / `checkout-track` branches of `SitePage` in `SitePage.tsx`, `CheckoutPageView.tsx:401`); PD-002 (`docs/platform-decisions.md`, PD-002 § Invariants) requires a session-derived email, and its 2026-11-21 booking-token variant covers scheduling only. Today's code does not conform; moving the read behind the backend makes the gap visible. This document claims no PD-002 conformance for that read: decision CMRC-ORDER-LOOKUP-AUTHORITY (§ 8). |
 | P20 | PD-001 tenant-local identity `tenantId + normalizedEmail` | Still true; the key is unchanged. |
 | P21 | "Commerce is test-only" (plan Status; `docs/ROADMAP.md:18`, `:106`) | Not established on HEAD; § 8 CMRC-TEST-ONLY. |
 | P22 | Deploy 1 registers routes in the commerce nested stack | Still feasible: the last staging synthesis has 258 resources in that template (EXECUTED: `node -e` count on `infra/cdk.out/AmodxStackstagingCommerceApi1DB8077F.nested.template.json`, artefact 2026-11-22 20:28); `cmrc-1` adds about 15 (INFERRED: 3 × function, role, policy, integration, route, permission). Limit 500. |
@@ -307,7 +307,7 @@ All routes: method POST, headers exactly `x-api-key` (renderer key), `x-tenant-i
 renderer found for the host), `content-type: application/json`. Answer header `Cache-Control: no-store`. Source of
 the body: D1 and D2 — the email of the validated NextAuth session, never a value of the browser request. D3 **[L]** —
 the order id and the email from the page address (`query.id` + `query.email`, or the tracking path segment +
-`query.email`), exactly the values `SitePage.tsx:542-558` uses today; under CMRC-ORDER-LOOKUP-AUTHORITY = B the
+`query.email`), exactly the values the `checkout-confirm` / `checkout-track` branches of `SitePage` in `SitePage.tsx` use today; under CMRC-ORDER-LOOKUP-AUTHORITY = B the
 email comes from the session instead.
 
 **Input rule (closes review-0 correction 3 as a class).** Every input gets today's answer. A value that cannot match
@@ -322,7 +322,7 @@ Consequences:
   renderer's read today; a backend 500 that the renderer turns into the same failure after).
 - Structure check only (`.strict()` zod schemas, shared): a JSON object with exactly the named fields, each a
   non-empty string. The renderer always sends that shape (it calls only when the values are present, as
-  `SitePage.tsx:546`, `:555` do today), so a failure here is a renderer defect.
+  the two `getOrderForCustomer` calls of `SitePage` in `SitePage.tsx` do today), so a failure here is a renderer defect.
 
 Shared schemas and types (`packages/shared/src/index.ts`):
 
@@ -388,7 +388,7 @@ items, paymentMethod, shippingAddress, shippingCost, status, statusHistory, subt
 (EXECUTED: `sed -n 1820,2060p renderer/src/components/SitePage.tsx | grep -o -E "order\??\.[a-zA-Z]+" | sort -u`; a
 lower bound — a field read through destructuring would be missed; the T11 order-page comparison is the proof). Before,
 the renderer received the whole item minus `internalNotes`; the views are server-only functions that pass no order
-object to a client component (OBSERVED: no `order=` prop in `SitePage.tsx:1820-2060`), so the narrower answer changes
+object to a client component (OBSERVED: no `order=` prop in `site-page/order-views.tsx`), so the narrower answer changes
 no page (INFERRED; T11 proves it).
 
 D3 carries the email in a POST body on the renderer → backend hop. On the browser → renderer hop the email stays in the
@@ -529,7 +529,7 @@ CloudFormation's behaviour for a retained resource with a fixed name). After a r
 
 The same pages, bytes and headers. Reason: the three changed renderer paths are reached only by a session on
 `/api/account/orders`, `/api/profile`, and the order confirmation / tracking prefixes of `SitePage`
-(`commerce.type === 'checkout-confirm' | 'checkout-track'`, `SitePage.tsx:542-559`; **[L]**), which are matched only
+(`commerce.type === 'checkout-confirm' | 'checkout-track'`, `SitePage` in `SitePage.tsx`; **[L]**), which are matched only
 on a tenant with commerce prefixes. Proof: G6 (the non-commerce rows of the serving suite unchanged) and the staging step 1
 below. Production condition (NOT RUN): the 51 reference URLs of `next-patch-1` equal before and after.
 
@@ -747,7 +747,7 @@ records are readable by the renderer until `cmrc-6`. Decision CMRC-WOO-SEQUENCE.
 DECISION_REQUIRED:
 - ID: CMRC-ORDER-LOOKUP-AUTHORITY
   QUESTION: What authority lets a guest read the order confirmation and tracking pages, now that the read moves behind a backend route?
-  PROBLEM: Today a buyer needs no account. After checkout the browser opens the confirmation page with the order id and the email in the page address (`CheckoutPageView.tsx:401`); the tracking page works the same way (`AccountPageView.tsx:330`). The renderer reads the order and shows it when the stored email equals the one in the address (`dynamo.ts:540-553`, `SitePage.tsx:542-558`). There is no session check. PD-002 says the backend receives an email that the renderer took from a validated session, and that the browser never supplies the email as an authority; its token variant covers scheduling only. So today's read does not conform to PD-002. While the renderer reads DynamoDB itself the gap is hidden; a backend route that accepts a browser-supplied email makes it visible. The anonymous backend route `GET /public/orders/{id}?email=` (S7) uses the same proof. Facts: the order id is a random UUID (`create.ts:78`); the email travels in page addresses, browser history and (for the confirmation) the checkout redirect.
+  PROBLEM: Today a buyer needs no account. After checkout the browser opens the confirmation page with the order id and the email in the page address (`CheckoutPageView.tsx:401`); the tracking page works the same way (`AccountPageView.tsx:330`). The renderer reads the order and shows it when the stored email equals the one in the address (`dynamo.ts:540-553`, the `checkout-confirm` / `checkout-track` branches of `SitePage` in `SitePage.tsx`). There is no session check. PD-002 says the backend receives an email that the renderer took from a validated session, and that the browser never supplies the email as an authority; its token variant covers scheduling only. So today's read does not conform to PD-002. While the renderer reads DynamoDB itself the gap is hidden; a backend route that accepts a browser-supplied email makes it visible. The anonymous backend route `GET /public/orders/{id}?email=` (S7) uses the same proof. Facts: the order id is a random UUID (`create.ts:78`); the email travels in page addresses, browser history and (for the confirmation) the checkout redirect.
   OPTIONS:
   - A. Ratify a narrow commerce exception in PD-002: a read-only order view may be authorized by possession of the order id and an email equal to the stored normalized email, through the renderer with the renderer key, answering only the 17 `OrderView` fields. Reward: guest links and pages stay as they are; C5 holds; part L is built as written; no new mechanism. Risk: the proof stays as weak as today — whoever holds the link sees name, phone and address; this is recorded, not repaired. Consequence: the human amends PD-002 (as the 2026-11-21 booking-token amendment) before part L is built; the anonymous S7 route is then judged against the same text in `cmrc-5`.
   - B. Session-derived email only (PD-002 as written). Reward: no exception; the strongest rule without new mechanism. Risk: every guest buyer (checkout needs no account) loses the order details on the confirmation page and the tracking page; a tenant without Google sign-in configured loses them for everyone. Consequence: C5 is rewritten for the order pages and part L gets a guest design (what the page shows without a session) before it is built.
@@ -864,7 +864,7 @@ main-table grant (it still needs content, products, settings).
   `update.ts:81`, `:120`). A customer's account page therefore shows "placed" for every order whatever its real state
   (INFERRED from the writers). `cmrc-1` preserves this (value rule, § 5.6).
 - **F-CMRC1-CONFIRM-DISCOUNT** — the confirmation view shows a discount only from `order.discount`
-  (`SitePage.tsx:1902-1903`); checkout stores `couponDiscount` and never `discount` (`create.ts:401-435`). A real
+  (`ConfirmationPageView`, `site-page/order-views.tsx`); checkout stores `couponDiscount` and never `discount` (`create.ts:401-435`). A real
   order's coupon discount is therefore not shown on its confirmation (INFERRED). `cmrc-1` preserves this.
 - **F-CMRC1-EMAIL-IN-PAGE-URL** — the confirmation and tracking page URLs carry `?email=`
   (`CheckoutPageView.tsx:401`, `AccountPageView.tsx:330`); `email` is in the CloudFront cache-key query allowlist

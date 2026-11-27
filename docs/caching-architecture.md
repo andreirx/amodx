@@ -2110,7 +2110,7 @@ whole-tenant, through the same `revalidatePath()` transport (`revalidate.ts#purg
 | `categories/delete.ts` | `category` | Category page |
 
 Commerce paths are built from the tenant's own `urlPrefixes.product` / `urlPrefixes.category`
-(the same values `SitePage.tsx#matchCommercePrefix` routes on), falling back to
+(the same values `site-page/addresses.ts#matchCommercePrefix` routes on), falling back to
 `URL_PREFIX_DEFAULTS`. The tenant config is already in hand from the domain lookup, so this
 costs nothing and closes Known Gap 2 for these two entity kinds.
 

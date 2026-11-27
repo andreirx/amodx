@@ -4,8 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `refactor-sitepage-1`.
+Nothing. Next in the order of work: `refactor-mcp-1`.
 
+`refactor-sitepage-1` is on staging since 2026-11-27 (`docs/slices/refactor-sitepage-1.md` § "Closeout") and waits
+for the human's production deploy: `renderer/src/components/SitePage.tsx` keeps the page entry (479 lines); the
+selectors, metadata, block preparation and views live in nine files under `renderer/src/components/site-page/`,
+moves only; the serving captures did not move.
 `refactor-settings-1` is on staging since 2026-11-27 (`docs/slices/refactor-settings-1.md` § "Closeout") and waits
 for the human's production deploy: `admin/src/pages/Settings.tsx` is split into one file per section under
 `admin/src/pages/settings/`, moves only; the markup and Save-body captures taken before the move are byte-identical

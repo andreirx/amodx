@@ -183,7 +183,7 @@ wrapper). A route group adds no address segment, so it cannot be chosen by tenan
 8 fail: `cm1-identity-commerce`, `cm1-identity-content`, `cq1-bars-own`, `cq1-quote-channels`, `ct1-footer-width`,
 `loc1-diff-cdl-2`, `loc1-flight-controls`, `loc1e-category-controls` (also in Appendix A). Cannot work.
 
-**W3 — tenant language on `<html>`, page language on `<main>`.** Spike: `SitePage.tsx:690` `<main>` gets `lang` from
+**W3 — tenant language on `<html>`, page language on `<main>`.** Spike: the content page's `<main>` (`SitePage` in `SitePage.tsx`) gets `lang` from
 the page item by a conditional spread. OBSERVED: `<html lang="en">` + `<main lang="ro">`; keys and purge unchanged.
 EXECUTED suite: 126 pass. It caches, but `<html lang>` stays wrong — the defect this slice exists to remove — and
 the layout's menu, footer and cookie texts cannot follow the page. Fails the slice goal.
@@ -345,7 +345,7 @@ Callers: the middleware (§ 7.1) and `mapTenant` (§ 7.2).
   `LinkSchema` accepts.
 - **V6** (homepage rule, LANG1-LANG-SOURCE = A) When `languages` is not empty and `homePageSlug` is a non-empty
   string, `pageLanguageOf(homePageSlug, languages)` is `{ kind: "default" }`; else `400` naming `homePageSlug`.
-  Why: the page named by `homePageSlug` is served at `/` (`SitePage.tsx:303`, `:547`), and `/` is a
+  Why: the page named by `homePageSlug` is served at `/` (`buildSitePageMetadata` in `site-page/metadata.ts`, and `SitePage` in `SitePage.tsx`), and `/` is a
   default-language address; an extra-language page there would get default-language chrome and be advertised as
   that language's alternate. Because the check runs on the merged settings, it refuses both a new `homePageSlug`
   under a listed prefix and a new language whose prefix holds the stored `homePageSlug`. A tenant without
@@ -599,7 +599,7 @@ segment rule (`languages.includes(first)`) is `pageLanguageOf` on the same parse
   language.
 - `app/[siteId]/[[...slug]]/page.tsx:35`, `:40` and `app/[siteId]/%5Fdyn/[[...slug]]/page.tsx:41`, `:46` pass
   `host` to `buildSitePageMetadata` / `SitePage` (each uses `siteId` only for `getTenantConfig`,
-  `SitePage.tsx:242`, `:336`). The product pages and the four route handlers never receive a suffix (their first
+  `buildSitePageMetadata` in `site-page/metadata.ts`, `SitePage` in `SitePage.tsx`). The product pages and the four route handlers never receive a suffix (their first
   segment is `products` or a handler name): unchanged.
 - **No page-level language guard** (human ruling LANG1-STALENESS-BOUND = A, 2026-11-22). The layout takes the
   page language from the segment (and keeps it only when its own tenant read lists it); the page does not compare
@@ -675,7 +675,7 @@ language; LANG1-OVERRIDES = A, ratified 2026-11-22). A language without a pack (
 English pack (today's rule, `locale-strings.ts:92-96`). After `lang-1d` the `de` and `fr` packs are in the global
 registry `LANGUAGE_PACKS` (LANG1-PACK-NOOP = B), so the same call selects them: no other selection path, no
 parameter. galeriilevoicu (ro, en) needs no new pack. Call sites: `layout.tsx:124` (meta description), `:196` (chrome),
-`SitePage.tsx:636` (block chrome of content pages). One language: `localeInputFor(config, undefined) === config` →
+`SitePage.tsx` (the `RenderBlocks` call of `SitePage`: block chrome of content pages). One language: `localeInputFor(config, undefined) === config` →
 same texts. Proof: `loc1-text-*`, `loc1-ro-*` unchanged + `lang1b-texts`.
 
 ### 8.3 Menu and footer per language (`lang-1c`)
@@ -692,7 +692,7 @@ props. Proof: identity rows + `lang1c-menu`, `lang1c-menu-fallback`, `lang1c-men
 
 ### 8.4 `hreflang` and `x-default` (`lang-1c`)
 
-Rule, in `buildSitePageMetadata` (`SitePage.tsx:241-326`), content pages only. Take the counting members of the
+Rule, in `buildSitePageMetadata` (`renderer/src/components/site-page/metadata.ts`), content pages only. Take the counting members of the
 page's set (§ 6.2); leave out every `hreflang` value held by two or more of them (§ 5.3); the rest are the **listed**
 members. When at least two members are listed, `alternates` becomes `{ canonical, languages }` with one entry per
 listed member — `hreflang` = its derived language (`extra` → its subtag; `default` →

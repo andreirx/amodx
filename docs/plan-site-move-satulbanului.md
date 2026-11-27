@@ -23,14 +23,14 @@ to every tenant and carry no ruling. `lang-1` decides if this site can move at a
 
 - **Trailing slash.** Next answers `/x/` with a 308 to `/x` before the middleware runs
   (`renderer/test/serving-bundle/bundle.test.mjs:492-493`). The canonical address on AMODX has no end slash
-  (`SitePage.tsx:245-246`). One permanent redirect per old address is normal for search engines.
+  (`normalizePageAddressOrKeepRaw`, `renderer/src/components/site-page/addresses.ts`). One permanent redirect per old address is normal for search engines.
   `trailingSlash: true` would change every address of every live tenant. Not proposed.
 - **Photo sizes.** The image optimiser is parked (OPENNEXT1-IMAGE = A). The site's photos are already converted
   to two widths; `gallery-1` stores both addresses per photo. No platform image pipeline is needed for this site.
 - **Import.** The site's pages exist as blocks in `satulbanului/content/site.json`. The move is a script in that
   repository that writes pages through the AMODX API or the MCP server. The WordPress importer does not fit
   (flattens addresses `backend/src/import/wordpress.ts:194-195`, posts and pages only, no language).
-- **Structured data.** `SitePage.tsx:589-630` writes one JSON-LD object per page from `schemaType`.
+- **Structured data.** `SitePage` (`SitePage.tsx`, the schema generator) writes one JSON-LD object per page from `schemaType`.
   `LodgingBusiness`, `HotelRoom`, `TouristAttraction`, `FAQPage` and breadcrumbs are not there. No slice yet.
 - **Static HTML track.** `docs/plan-static-html-pages.md` serves uploaded HTML in a sandboxed frame. A framed
   page is not indexed as the tenant's own page, so that track does not fit a site that lives from search.

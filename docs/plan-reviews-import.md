@@ -99,10 +99,10 @@ says "reviews" without saying *which* system will scope the wrong work.
   - `public-list.ts` — `GET /public/reviews/{productId}` (`noAuth`), filters
     `status = approved`, returns `{items, averageRating, totalReviews}`.
 - **Render surface (SSR):** `renderer/src/lib/dynamo.ts:441-470` `getProductReviews()` paginates
-  approved reviews; `renderer/src/components/SitePage.tsx:216-217` fetches them; the
-  `ProductPageView` reviews block (`SitePage.tsx:875-900`) renders author + date + star rating +
+  approved reviews; `SitePage` (`renderer/src/components/SitePage.tsx`, the product branch) fetches them; the
+  `ProductPageView` reviews block (`renderer/src/components/site-page/product-page.tsx`) renders author + date + star rating +
   `content` + a "Google" text badge, and emits `aggregateRating` JSON-LD
-  (`SitePage.tsx:661-665`). **The render maps `authorName`, `rating`, `content`, `source`,
+  (the same `ProductPageView`). **The render maps `authorName`, `rating`, `content`, `source`,
   `createdAt` only — it has no slot for a photo.** `ProjectionExpression`s that would have to
   grow for images: `public-list.ts:23`, `list.ts:32`, `dynamo.ts:460`.
 - **Admin moderation surface (input to `rev-3`):** `admin/src/pages/Reviews.tsx` is the existing
@@ -306,7 +306,7 @@ any importer exists, and every later phase lands onto a live surface.
   store any image field (`backend/src/reviews/create.ts:27,44-51`), so `create.ts` must be
   extended to accept and persist `images` (and `update.ts`'s mutable allow-list,
   `update.ts:37-42`, to permit editing it). Extend the System-A **render** path to display it —
-  the `ProductPageView` reviews block (`SitePage.tsx:875-900`). Grow the `ProjectionExpression`s
+  the `ProductPageView` reviews block (`site-page/product-page.tsx`). Grow the `ProjectionExpression`s
   that must carry the new field (`public-list.ts:23`, `dynamo.ts:460`, `list.ts:32`). Define the
   **import DTO** (the CSV/JSON row + media-manifest shape `rev-2` will parse) as a shared type,
   so `rev-2` has a contract to build against. Reconcile the § 2.5 source-enum defects in the
