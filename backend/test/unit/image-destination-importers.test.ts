@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const { s3Send, ddbSend, parsedPosts } = vi.hoisted(() => {
     process.env.UPLOADS_BUCKET = "uploads-test"; // read at module import by both handlers
+    process.env.PRIVATE_BUCKET = "private-test"; // MIGRATION-UPLOAD-1: the export is read from the private bucket
     process.env.UPLOADS_CDN_URL = "https://cdn.test";
     return { s3Send: vi.fn(), ddbSend: vi.fn(), parsedPosts: { value: [] as any[] } };
 });
@@ -20,6 +21,7 @@ vi.mock("@aws-sdk/client-s3", () => ({
     S3Client: class { send = s3Send; },
     GetObjectCommand: class { constructor(public input: any) {} },
     PutObjectCommand: class { constructor(public input: any) {} },
+    DeleteObjectCommand: class { constructor(public input: any) {} },
 }));
 vi.mock("../../src/lib/db.js", () => ({ db: { send: ddbSend }, TABLE_NAME: "test-table" }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: vi.fn() }));
@@ -50,7 +52,7 @@ describe("media importer inherits the destination policy", () => {
         const wxr = `<rss><channel><item><title>secret</title><wp:post_type>attachment</wp:post_type>` +
             `<wp:attachment_url>${PRIVATE_SOURCE}</wp:attachment_url></item></channel></rss>`;
         s3Send.mockResolvedValue({ Body: { transformToString: async () => wxr } });
-        const res = (await mediaHandler(event({ s3Key: "t1/media.xml" }), {} as any, () => {})) as any;
+        const res = (await mediaHandler(event({ s3Key: "migration/t1/0f8fad5b-d9cb-469f-a165-70867728950e-media.xml" }), {} as any, () => {})) as any;
         expect(res.statusCode).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.batchFailed).toBe(1);

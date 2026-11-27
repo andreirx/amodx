@@ -27,7 +27,8 @@ interface CatalogApiProps extends NestedStackProps {
     // WordPress + media importers stage assets into the public uploads bucket
     uploadsBucket: s3.IBucket;
     uploadsCdnUrl: string;
-    // Review bulk-import stages raw originals into the PRIVATE quarantine bucket
+    // Review bulk-import stages raw originals into the PRIVATE quarantine bucket; MIGRATION-UPLOAD-1: the
+    // WordPress + media importers read their uploaded export from it (`migration/*`)
     privateBucket: s3.IBucket;
     // CACHE-9: physical name of the DebounceFlush function (a plain string, NOT a construct ref —
     // that is what keeps the grant/env wiring below free of a nested→parent stack cycle). The
@@ -37,8 +38,8 @@ interface CatalogApiProps extends NestedStackProps {
 
 /**
  * CatalogApi — a CloudFormation NestedStack holding ONLY the catalog group's Lambda Functions
- * (+ their CDK-generated Role/Policy), for the content (6), products (5) and import (4:
- * wordpress/media/reviews/glam-pricelist) handlers = 15 functions.
+ * (+ their CDK-generated Role/Policy), for the content (6), products (5) and import (5:
+ * wordpress/media/reviews/glam-pricelist, and the migration upload link of MIGRATION-UPLOAD-1) handlers = 16 functions.
  *
  * WHY THIS EXISTS (the single earned axis of variation): AmodxStack reached CloudFormation's hard
  * 500-resource-per-template ceiling (email-2 synth = 501), which BLOCKS every backend deploy that
@@ -76,11 +77,12 @@ export class CatalogApi extends NestedStack {
     public readonly getProductFunc: nodejs.NodejsFunction;
     public readonly updateProductFunc: nodejs.NodejsFunction;
     public readonly deleteProductFunc: nodejs.NodejsFunction;
-    // --- IMPORT (4) ---
+    // --- IMPORT (5) ---
     public readonly importFunc: nodejs.NodejsFunction;
     public readonly mediaImportFunc: nodejs.NodejsFunction;
     public readonly reviewImportFunc: nodejs.NodejsFunction;
     public readonly glamPricelistImportFunc: nodejs.NodejsFunction;
+    public readonly migrationUploadUrlFunc: nodejs.NodejsFunction;
 
     constructor(scope: Construct, id: string, props: CatalogApiProps) {
         super(scope, id, {
@@ -216,6 +218,21 @@ export class CatalogApi extends NestedStack {
         wireFastLaneTrigger(this.deleteProductFunc);                 // CACHE-9: async-invoke the flusher
 
         // --- IMPORT ---
+        // MIGRATION-UPLOAD-1 (docs/slices/migration-upload-1.md): an uploaded export lives in the PRIVATE bucket under
+        // `migration/<tenantId>/…` (backend/src/import/migration-upload.ts). The two importers that read it get EXACTLY
+        // `s3:GetObject` (the read) and `s3:DeleteObject` (the delete after the last batch), ONLY on `migration/*` — the
+        // reasoning of the review-staging grant below: `grantRead`/`grantDelete` would scope to the whole bucket (every
+        // tenant's product PDFs and zips) and add the wider get/delete families. No `s3:ListBucket`: S3 then answers a
+        // missing key 403, which the importer reads as "upload the file again". The tenant is not in the grant (IAM
+        // cannot know it): the key rule in the handler binds it. Pinned by infra/test/amodx-stack.test.ts (mu1-iam).
+        const migrationObjects = `${props.privateBucket.bucketArn}/migration/*`;
+        const grantMigrationReadDelete = (fn: nodejs.NodejsFunction) => {
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['s3:GetObject', 's3:DeleteObject'],
+                resources: [migrationObjects],
+            }));
+        };
+
         this.importFunc = new nodejs.NodejsFunction(this, 'ImportFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/import/wordpress.ts'),
@@ -226,11 +243,13 @@ export class CatalogApi extends NestedStack {
                 ...nodeProps.environment,
                 UPLOADS_BUCKET: props.uploadsBucket.bucketName,
                 UPLOADS_CDN_URL: props.uploadsCdnUrl,
+                PRIVATE_BUCKET: props.privateBucket.bucketName,  // MIGRATION-UPLOAD-1: the uploaded export
             }
         });
         table.grantReadWriteData(this.importFunc);
         props.revalidationSecret.grantRead(this.importFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
-        props.uploadsBucket.grantReadWrite(this.importFunc);
+        props.uploadsBucket.grantReadWrite(this.importFunc);  // featured images (lib/image-upload.ts PutObject)
+        grantMigrationReadDelete(this.importFunc);
 
         // --- MEDIA IMPORT ---
         this.mediaImportFunc = new nodejs.NodejsFunction(this, 'MediaImportFunc', {
@@ -243,11 +262,13 @@ export class CatalogApi extends NestedStack {
                 ...nodeProps.environment,
                 UPLOADS_BUCKET: props.uploadsBucket.bucketName,
                 UPLOADS_CDN_URL: props.uploadsCdnUrl,
+                PRIVATE_BUCKET: props.privateBucket.bucketName,  // MIGRATION-UPLOAD-1: the uploaded export
             }
         });
         table.grantReadWriteData(this.mediaImportFunc);
         props.revalidationSecret.grantRead(this.mediaImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
-        props.uploadsBucket.grantReadWrite(this.mediaImportFunc);
+        props.uploadsBucket.grantReadWrite(this.mediaImportFunc);  // re-hosted images (lib/image-upload.ts PutObject)
+        grantMigrationReadDelete(this.mediaImportFunc);
 
         // --- REVIEW IMPORT (rev-2b) ---
         // Instance #3 of the import-family pattern — siblings ImportFunc + MediaImportFunc above (and
@@ -298,6 +319,25 @@ export class CatalogApi extends NestedStack {
         table.grantReadWriteData(this.glamPricelistImportFunc);
         props.revalidationSecret.grantRead(this.glamPricelistImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts); supersedes "No revalidation secret" above
         props.uploadsBucket.grantReadWrite(this.glamPricelistImportFunc);
+
+        // --- MIGRATION UPLOAD LINK (MIGRATION-UPLOAD-1) ---
+        // POST /import/upload-url (route + integration in the parent, like its siblings): signs a PUT link for one
+        // export at `migration/<tenantId>/<uuid>-<name>`. A presigned PUT carries the signer's rights, so the role holds
+        // EXACTLY `s3:PutObject` on `migration/*` — nothing else of the private bucket, no DynamoDB (the handler writes
+        // no record). Default memory and timeout (nodeProps): it signs a URL and reads nothing.
+        this.migrationUploadUrlFunc = new nodejs.NodejsFunction(this, 'MigrationUploadUrlFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/upload-url.ts'),
+            handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                PRIVATE_BUCKET: props.privateBucket.bucketName,
+            },
+        });
+        this.migrationUploadUrlFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [migrationObjects],
+        }));
 
         // Grant EventBus PutEvents to every Lambda in THIS stack (publishAudit). The parent's
         // identical loop over its own children (api.ts) no longer reaches these functions once they

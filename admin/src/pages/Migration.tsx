@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { useTenant } from "@/context/TenantContext";
 import { isCatalogMode } from "@amodx/shared";
 import { addressRowView, summarizeReport, type AddressRow } from "@/lib/wpAddressReport";
 import { PagesImportFlow, checkAuthorisesImport } from "@/lib/wpImportRun";
+import { uploadMigrationFile, putWithFetch } from "@/lib/migrationUpload";
 
 interface StepResult {
     success: boolean;
@@ -41,7 +42,8 @@ export default function MigrationPage() {
     const [pagesFile, setPagesFile] = useState<File | null>(null);
     const [pagesLoading, setPagesLoading] = useState(false);
     const [pagesResult, setPagesResult] = useState<StepResult | null>(null);
-    // IMPORT-PATHS-1: the uploaded export (one upload for the check and the import), the option as the check answered
+    // IMPORT-PATHS-1: the uploaded export (one upload for the check and the import; MIGRATION-UPLOAD-1: the importer
+    // deletes it after the last batch of the import, so the key is dropped then), the option as the check answered
     // it or the operator set it (null = not checked yet), and the address report of the last check or import.
     const [pagesS3Key, setPagesS3Key] = useState<string | null>(null);
     const [keepOldAddresses, setKeepOldAddresses] = useState<boolean | null>(null);
@@ -61,32 +63,9 @@ export default function MigrationPage() {
     // Unlock steps 2/3 if media import succeeded OR if media already exists
     const mediaComplete = mediaResult?.success === true || (existingMediaCount !== null && existingMediaCount > 0);
 
-    async function uploadToS3(file: File): Promise<string> {
-        // 1. Get presigned URL
-        const res = await apiRequest("/assets", {
-            method: "POST",
-            body: JSON.stringify({
-                filename: `migration/${file.name}`,
-                contentType: file.type || "application/xml",
-                size: file.size,
-            }),
-        });
-
-        // 2. Upload file to S3 via presigned URL
-        const uploadRes = await fetch(res.uploadUrl, {
-            method: "PUT",
-            body: file,
-            headers: { "Content-Type": file.type || "application/xml" },
-        });
-
-        if (!uploadRes.ok) throw new Error("Failed to upload file to S3");
-
-        // Return the S3 key (extract from publicUrl)
-        // publicUrl format: https://cdn.../tenantId/assetId-filename
-        // decodeURIComponent handles filenames with spaces/special chars
-        const url = new URL(res.publicUrl);
-        return decodeURIComponent(url.pathname.slice(1));
-    }
+    // MIGRATION-UPLOAD-1: an export is uploaded to the PRIVATE bucket (POST /import/upload-url), never to /assets: it
+    // holds commenters' names and mail addresses. The importer deletes it after the last batch of the import.
+    const uploadToS3 = (file: File): Promise<string> => uploadMigrationFile(apiRequest, putWithFetch, file);
 
     async function handleMediaImport() {
         if (!mediaFile) return;
@@ -101,6 +80,8 @@ export default function MigrationPage() {
             let totalDownloaded = 0;
             let totalFailed = 0;
             let totalInXml = 0;
+            // MIGRATION-UPLOAD-1: the API walks the export's own order; each answer counts its own batch (batch*), so the
+            // run's totals are their sums. (`alreadyImported` of an answer also counts what this run imported before it.)
             let alreadyImported = 0;
             const allErrors: string[] = [];
 
@@ -111,7 +92,7 @@ export default function MigrationPage() {
                 });
 
                 totalInXml = res.total;
-                alreadyImported = res.alreadyImported || 0;
+                alreadyImported += res.batchSkipped || 0;
                 totalDownloaded += res.batchDownloaded || 0;
                 totalFailed += res.batchFailed || 0;
                 if (res.errors) allErrors.push(...res.errors);
@@ -119,7 +100,7 @@ export default function MigrationPage() {
                 // Update progress message
                 setMediaResult({
                     success: true,
-                    message: `Progress: ${res.processedSoFar || 0}/${res.newTotal || 0} new images (${alreadyImported} already imported)...`,
+                    message: `Progress: ${res.processedSoFar || 0}/${res.total || 0} images checked (${alreadyImported} already imported)...`,
                     details: res,
                 });
 
@@ -188,6 +169,12 @@ export default function MigrationPage() {
         return key;
     }
 
+    // MIGRATION-UPLOAD-1: the stored upload is gone (404: deleted after an import, or expired after one day) — drop the
+    // key, so the next check uploads the selected file again.
+    function dropGoneUpload(e: unknown) {
+        if (e instanceof ApiError && e.status === 404) setPagesS3Key(null);
+    }
+
     async function handlePagesCheck() {
         if (!pagesFile) return;
         setPagesLoading(true);
@@ -202,6 +189,7 @@ export default function MigrationPage() {
                 setPagesResult({ success: false, message: "The check is incomplete: some items could not be checked (in red). The import stays off; fix the cause and check again.", details: { errors: run.errors } });
             }
         } catch (e: any) {
+            dropGoneUpload(e);
             setPagesResult({ success: false, message: e.message });
         } finally {
             setPagesLoading(false);
@@ -215,6 +203,8 @@ export default function MigrationPage() {
         try {
             // The flow consumes the check before the first call: after a failed or partial import, check again.
             const run = await pagesFlow.runImport(await uploadedPagesKey(), keepOldAddresses);
+            // The last batch deleted the upload (MIGRATION-UPLOAD-1): a later check uploads the file again.
+            if (run.last?.complete === true) setPagesS3Key(null);
             let created = 0, updated = 0;
             if (run.rows.length > 0) setAddressReport({ dryRun: false, rows: run.rows });
             // Each answer counts its own batch only. With the option on the rows of all batches are summed; with it off
@@ -233,6 +223,7 @@ export default function MigrationPage() {
                 details: { ...run.last, errors: run.errors },
             });
         } catch (e: any) {
+            dropGoneUpload(e);
             setPagesResult({ success: false, message: e.message });
         } finally {
             setPagesLoading(false);

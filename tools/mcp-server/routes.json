@@ -1,11 +1,11 @@
 {
   "generatedAt": "2026-10-15",
-  "stage": "prod snapshot of 2026-10-15 + 23 LOCAL ADDITIONS NOT YET DEPLOYED (see localAdditions)",
+  "stage": "prod snapshot of 2026-10-15 + 24 LOCAL ADDITIONS NOT YET DEPLOYED (see localAdditions)",
   "apiId": "vppjxqrc3c",
   "source": "aws apigatewayv2 get-routes --api-id vppjxqrc3c --query \"Items[].RouteKey\"",
   "refresh": "Operator re-runs the source command after every backend route change and replaces `routes` (sorted). Then run `npm test` in tools/mcp-server.",
   "localAdditions": {
-    "note": "Routes added to `routes` by slices SCHED-1D1 (10), SCHED-1E1 (12) and SCHED-1G1 (1: the calendar feed, a renderer-proxied visitor route; the visitor routes of SCHED-1D2 are not listed here; the 13 group routes of SCHED-1F1 were removed by SCHED-GROUPS-REMOVE-1) before any production deploy: they are NOT in the deployed API (not in the 2026-10-15 snapshot). The operator's refresh after the deploy replaces `routes` from the live table and deletes this key.",
+    "note": "Routes added to `routes` by slices SCHED-1D1 (10), SCHED-1E1 (12) SCHED-1G1 (1: the calendar feed, a renderer-proxied visitor route; the visitor routes of SCHED-1D2 are not listed here; the 13 group routes of SCHED-1F1 were removed by SCHED-GROUPS-REMOVE-1) and MIGRATION-UPLOAD-1 (1: POST /import/upload-url, the admin Migration page's upload link; no MCP tool calls it) before any production deploy: they are NOT in the deployed API (not in the 2026-10-15 snapshot). The operator's refresh after the deploy replaces `routes` from the live table and deletes this key.",
     "routes": [
       "DELETE /scheduling/admin/resources/{resourceId}",
       "DELETE /scheduling/admin/services/{serviceId}",
@@ -16,6 +16,7 @@
       "GET /scheduling/admin/resources/{resourceId}/availability",
       "GET /scheduling/admin/resources/{resourceId}/week",
       "GET /scheduling/admin/services",
+      "POST /import/upload-url",
       "POST /scheduling/admin/appointments",
       "POST /scheduling/admin/bookings/{bookingId}/cancel",
       "POST /scheduling/admin/bookings/{bookingId}/move-slot",
@@ -114,6 +115,7 @@
     "POST /import/glam-pricelist/images",
     "POST /import/media",
     "POST /import/reviews",
+    "POST /import/upload-url",
     "POST /import/woocommerce",
     "POST /import/wordpress",
     "POST /leads",

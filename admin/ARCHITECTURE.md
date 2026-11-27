@@ -39,6 +39,7 @@ src/
 ├── index.css                   # Tailwind v4 imports
 ├── lib/
 │   ├── api.ts                  # apiRequest() — fetch wrapper with auth, tenant header, error handling; a non-OK answer throws ApiError (message unchanged + status + parsed body)
+│   ├── migrationUpload.ts      # MIGRATION-UPLOAD-1: uploadMigrationFile() — POST /import/upload-url, then the PUT of the export to the PRIVATE bucket; answers the `migration/<tenant>/…` key the importers read; a refused link throws the server's message. PutFile = the test seam (migrationUpload.test.ts)
 │   ├── seoExtract.ts           # extractText()/findImage()/stripMarkdown() — SEO auto-extraction from a Tiptap block doc on save; walks rich-text AND markdown-atom blocks (attrs.content) in document order. Sole consumer: ContentEditor.tsx. Extracted from the page for a node-env test seam (see seoExtract.test.ts)
 │   └── utils.ts                # cn() (clsx + tailwind-merge)
 ├── components/
@@ -158,7 +159,7 @@ src/
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
-    ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6)
+    ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6); MIGRATION-UPLOAD-1: the media and pages steps upload through lib/migrationUpload.ts (never /assets); the pages step drops its key after a complete import and on a 404
     ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists" and (CDL-1) shows fixed English column headers by field id (`fieldHeader`)
     ├── OrderDetail.tsx         # One order: items, totals, customer, payment, status, tracking, history. PAY-1: the
     │                           #   Payment card offers "Mark as paid" (pending, or field absent) or "Mark as refunded"

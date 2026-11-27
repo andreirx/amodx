@@ -60,6 +60,17 @@ export class AmodxUploads extends Construct {
                     expiration: cdk.Duration.days(30),
                     enabled: true,
                 },
+                // MIGRATION-UPLOAD-1: an uploaded migration file (a WordPress export holds commenters' names and mail
+                // addresses) is deleted by the importer after the last batch of the import; this rule is the backstop
+                // for an abandoned import — S3 removes the object one day after it was written (expiry runs at the
+                // next UTC midnight after that day, then asynchronously). Prefix = MIGRATION_PREFIX of
+                // backend/src/import/migration-upload.ts; one contract.
+                {
+                    id: 'ExpireMigrationUploads',
+                    prefix: 'migration/',
+                    expiration: cdk.Duration.days(1),
+                    enabled: true,
+                },
             ],
         });
 

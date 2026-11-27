@@ -384,6 +384,13 @@ export class AmodxApi extends Construct {
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('GlamPricelistImagesInt', catalog.glamPricelistImportFunc),
         });
+        // MIGRATION-UPLOAD-1: the PUT link for a migration file in the PRIVATE bucket (function in CatalogApi, route +
+        // integration here like its siblings). The admin Migration page uploads the export there, not to /assets.
+        this.httpApi.addRoutes({
+            path: '/import/upload-url',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('MigrationUploadUrlInt', catalog.migrationUploadUrlFunc),
+        });
 
         // --- TENANTS ---
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {

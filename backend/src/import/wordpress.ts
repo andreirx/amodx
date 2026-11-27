@@ -1,7 +1,7 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, QueryCommand, DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { parseWXR, WordPressPost, WordPressProduct } from "./wxr-parser.js";
 import { planAddresses, oldAddressOf, decodeSegment, oldProductPrefixes, pageAddressOf, productPageProblem, type ItemPlan, type OldAddress, type Placement, type RedirectPlan } from "./wp-addresses.js";
 import { findProductBySlug, slugify } from "./product-slug.js";
@@ -16,6 +16,7 @@ import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { readMigrationUpload, deleteMigrationUpload } from "./migration-upload.js";
 
 /**
  * Find existing content by slug using ROUTE# lookup. LANG-1A: also the page's `translationKey` as read (raw; undefined
@@ -75,6 +76,9 @@ async function findContentByNode(tenantId: string, nodeId: string): Promise<Exis
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
+// MIGRATION-UPLOAD-1: an uploaded export is read from the PRIVATE bucket (`migration/<tenantId>/…`); featured images
+// still go to UPLOADS_BUCKET.
+const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET;
 const UPLOADS_CDN_URL = process.env.UPLOADS_CDN_URL;
 
 interface ImportRequest {
@@ -139,18 +143,14 @@ const _handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> 
 
         // Get content from either direct string or S3
         let content: string;
-        if (s3Key && UPLOADS_BUCKET) {
-            // BACKEND-CONTRACT-1 D4: uploads are keyed `${tenantId}/…` (assets/create.ts). Second half
-            // of key ownership, after the authorisation above: the key must be inside the tenant prefix.
-            if (!s3Key.startsWith(`${tenantId}/`)) {
-                return { statusCode: 403, body: JSON.stringify({ error: "s3Key is not owned by this tenant" }) };
-            }
+        if (s3Key) {
+            // BACKEND-CONTRACT-1 D4, MIGRATION-UPLOAD-1: second half of key ownership, after the authorisation above —
+            // the key must be this tenant's migration upload (`migration/<tenantId>/<uuid>-<name>`, POST
+            // /import/upload-url), checked before any S3 call.
             console.log(`Reading WXR from S3: ${s3Key}`);
-            const s3Obj = await s3.send(new GetObjectCommand({
-                Bucket: UPLOADS_BUCKET,
-                Key: s3Key,
-            }));
-            content = await s3Obj.Body!.transformToString("utf-8");
+            const read = await readMigrationUpload(s3, PRIVATE_BUCKET, tenantId, s3Key);
+            if (read.kind === "refused") return { statusCode: read.statusCode, body: JSON.stringify({ error: read.error }) };
+            content = read.content;
         } else if (wxrContent) {
             content = wxrContent;
         } else {
@@ -162,9 +162,17 @@ const _handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> 
 
         console.log(`Starting WordPress import for tenant ${tenantId}, batch ${batchStart}-${batchStart + batchSize}`);
 
+        // MIGRATION-UPLOAD-1: one upload serves the check (dry run, every batch) and then the import (every batch). The
+        // upload is deleted after the LAST batch of the import — never after a dry run, which the import still needs.
+        const deleteUploadIfImportComplete = async (complete: boolean): Promise<void> => {
+            if (s3Key && !dryRun && complete) await deleteMigrationUpload(s3, PRIVATE_BUCKET!, s3Key);
+        };
+
         const keep = keepSent ?? !(await siteHoldsImportedPage(tenantId));
         if (dryRun || keep) {
-            return await importWithAddressReport({ tenantId, userId: auth.sub, content, keep, dryRun, batchStart, batchSize });
+            const answer = await importWithAddressReport({ tenantId, userId: auth.sub, content, keep, dryRun, batchStart, batchSize });
+            await deleteUploadIfImportComplete(answer.complete);
+            return answer.response;
         }
 
         // Option off: today's import, unchanged (golden: backend/test/unit/import-paths-1.test.ts IP1-GOLDEN-OPTION-OFF).
@@ -219,6 +227,7 @@ const _handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> 
             ...(keepSent === undefined ? { keepOldAddresses: false } : {}),
         };
 
+        await deleteUploadIfImportComplete(complete);
         return {
             statusCode: 200,
             body: JSON.stringify(response)
@@ -891,7 +900,7 @@ async function importWithAddressReport(args: {
 
     const processedCount = batchStart + batchLength;   // as today's import
     const complete = processedCount >= totalCount;
-    return {
+    return { complete, response: {
         statusCode: 200,
         body: JSON.stringify({
             processedCount,
@@ -906,7 +915,7 @@ async function importWithAddressReport(args: {
             ...(dryRun && reserved ? { productAddresses: { site: reserved.prefixes.product, old: oldProductPrefixes(plans) } } : {}),
             rows,
         }),
-    };
+    } };
 }
 
 // Dry runs write nothing — not even the CDN marker that `withInvalidation` writes after a 2xx answer, nor the purge of

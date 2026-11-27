@@ -1,5 +1,5 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { XMLParser } from "fast-xml-parser";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -8,10 +8,13 @@ import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { writeMediaMapEntry, loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
+import { readMigrationUpload, deleteMigrationUpload } from "./migration-upload.js";
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET!;
 const UPLOADS_CDN_URL = process.env.UPLOADS_CDN_URL!;
+// MIGRATION-UPLOAD-1: the export is read from the PRIVATE bucket (`migration/<tenantId>/…`); images still go to UPLOADS_BUCKET.
+const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET;
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -107,62 +110,44 @@ const _handler: Handler = async (event) => {
         if (!s3Key) {
             return { statusCode: 400, body: JSON.stringify({ error: "s3Key is required" }) };
         }
-        // BACKEND-CONTRACT-1 D4: uploads are keyed `${tenantId}/…` (assets/create.ts). Without this
-        // check a tenant admin could make the importer read another tenant's upload by naming its key.
-        if (!s3Key.startsWith(`${tenantId}/`)) {
-            return { statusCode: 403, body: JSON.stringify({ error: "s3Key is not owned by this tenant" }) };
+        // The cursor must advance on every request, or a caller that follows `nextBatchStart` never ends.
+        if (!Number.isInteger(batchStart) || batchStart < 0 || !Number.isInteger(batchSize) || batchSize < 1) {
+            return { statusCode: 400, body: JSON.stringify({ error: "batchStart must be an integer >= 0 and batchSize an integer >= 1" }) };
         }
-
-        // Read XML from S3
+        // BACKEND-CONTRACT-1 D4, MIGRATION-UPLOAD-1: after the authorisation above, the key must be this tenant's
+        // migration upload (`migration/<tenantId>/<uuid>-<name>`, POST /import/upload-url) — checked before any S3 call.
         console.log(`Reading media XML from S3: ${s3Key}`);
-        const s3Obj = await s3.send(new GetObjectCommand({
-            Bucket: UPLOADS_BUCKET,
-            Key: s3Key,
-        }));
-        const xmlContent = await s3Obj.Body!.transformToString("utf-8");
+        const read = await readMigrationUpload(s3, PRIVATE_BUCKET, tenantId, s3Key);
+        if (read.kind === "refused") return { statusCode: read.statusCode, body: JSON.stringify({ error: read.error }) };
+        const xmlContent = read.content;
 
         // Parse attachments
         const allAttachments = parseMediaXml(xmlContent);
         const totalInXml = allAttachments.length;
         console.log(`Found ${totalInXml} media attachments in XML`);
 
-        // Load existing media map to skip duplicates
+        // MIGRATION-UPLOAD-1 review-0 F-MU1-EARLY-DELETE. The cursor walks the export's OWN attachment order, the same on
+        // every request. (Before, it indexed the attachments not yet in the media map — a list that shrinks as each batch
+        // writes its mappings — so a later offset skipped attachments and `complete` came early; the upload is now deleted
+        // on `complete`, so that would delete it before every attachment was tried.) Rule: `complete` = every position of
+        // the export was attempted in some batch. An attachment already in the media map is skipped inside its batch.
         const existingMap = await loadMediaMap(tenantId);
-        const newAttachments = allAttachments.filter(a => !existingMap.has(a.url));
-        const alreadyImported = totalInXml - newAttachments.length;
+        const notMapped = allAttachments.filter(a => !existingMap.has(a.url)).length;
+        const batch = allAttachments.slice(batchStart, batchStart + batchSize);
+        const toDownload = batch.filter(a => !existingMap.has(a.url));
+        const batchSkipped = batch.length - toDownload.length;
 
-        console.log(`${alreadyImported} already imported, ${newAttachments.length} new to download`);
-
-        // Get the batch to process (from the NEW attachments list)
-        const batchToProcess = newAttachments.slice(batchStart, batchStart + batchSize);
-
-        if (batchToProcess.length === 0) {
-            // Nothing left to do
-            return {
-                statusCode: 200,
-                body: JSON.stringify({
-                    total: totalInXml,
-                    newTotal: newAttachments.length,
-                    alreadyImported,
-                    downloaded: 0,
-                    failed: 0,
-                    complete: true,
-                    errors: [],
-                }),
-            };
-        }
-
-        // Process this batch
         const errors: string[] = [];
-        const downloaded = await processBatch(tenantId, batchToProcess, errors);
-        const processedSoFar = batchStart + batchToProcess.length;
-        const complete = processedSoFar >= newAttachments.length;
+        const downloaded = toDownload.length > 0 ? await processBatch(tenantId, toDownload, errors) : 0;
+        const processedSoFar = batchStart + batch.length;
+        const complete = processedSoFar >= totalInXml;
         const nextBatchStart = complete ? undefined : processedSoFar;
 
-        console.log(`Batch ${batchStart}-${processedSoFar}/${newAttachments.length}: ${downloaded} downloaded, ${errors.length} failed`);
+        console.log(`Positions ${batchStart}-${processedSoFar}/${totalInXml}: ${downloaded} downloaded, ${errors.length} failed, ${batchSkipped} already imported`);
 
-        // Only audit on completion
+        // Only audit on completion. MIGRATION-UPLOAD-1: every position was attempted, so the upload is no longer needed.
         if (complete) {
+            await deleteMigrationUpload(s3, PRIVATE_BUCKET!, s3Key);
             await publishAudit({
                 tenantId,
                 actor: { id: auth.sub, email: auth.email },
@@ -170,8 +155,8 @@ const _handler: Handler = async (event) => {
                 target: { title: "WordPress Media Import", id: "media-import" },
                 details: {
                     total: totalInXml,
-                    newTotal: newAttachments.length,
-                    alreadyImported,
+                    // As read at the start of the last request: the mappings written by earlier batches are included.
+                    notMappedAtLastBatch: notMapped,
                 },
                 ip: event.requestContext.http.sourceIp,
             });
@@ -181,10 +166,14 @@ const _handler: Handler = async (event) => {
             statusCode: 200,
             body: JSON.stringify({
                 total: totalInXml,
-                newTotal: newAttachments.length,
-                alreadyImported,
+                // A snapshot at the start of THIS request (mappings of earlier batches included); per-run totals are the
+                // sums of the batch* fields.
+                newTotal: notMapped,
+                alreadyImported: totalInXml - notMapped,
+                batchSkipped,
                 batchDownloaded: downloaded,
                 batchFailed: errors.length,
+                // Positions of the export attempted so far (out of `total`).
                 processedSoFar,
                 nextBatchStart,
                 complete,

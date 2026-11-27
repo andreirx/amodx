@@ -400,6 +400,10 @@ The asset upload flow (`backend/src/assets/create.ts`) uses presigned PUT URLs. 
 
 **Current risk level:** Low. The gap is only exploitable by deliberately forging the size field in the authenticated API call. All honest upload paths (admin UI, MCP server) use the real `File.size`. The MIME allowlist IS enforced because `ContentType` is signed into the presigned URL.
 
+**Same gap, second route (MIGRATION-UPLOAD-1, `docs/slices/migration-upload-1.md`):** `POST /import/upload-url` signs a presigned PUT for a migration file in the PRIVATE bucket (`migration/<tenantId>/…`, limit 40 MB). The importers that read it refuse an object over the limit before reading it (413, `backend/src/import/migration-upload.ts`), so the input size is bounded — not the parse cost, which depends on the XML structure (measured up to 49 × the file; record § Size limit); storing an oversized object until the importer deletes it or the one-day lifecycle rule `ExpireMigrationUploads` removes it is not prevented. The presigned-POST fix above would cover this route too.
+
+**Unused public-bucket rights of the two WordPress importers (F-MU1-PUBLIC-GRANT-WIDE, MIGRATION-UPLOAD-1):** `ImportFunc` and `MediaImportFunc` keep `uploadsBucket.grantReadWrite` (`infra/lib/api-catalog.ts`). Since that slice they read their export from the private bucket and only PUT images to the public one (`lib/image-upload.ts`), so the read, list and delete rights there are unused. Narrowing to the put actions is proposed, not applied (blast radius: the featured-image and media copies).
+
 ### BACKEND-TENANT-SCOPE-1 candidate: import handlers and user list read across tenants
 **Found:** `mcp-sync-1` review-0 (2026-10-15), verified on the code by the operator. **Scope:** backend only;
 the MCP tools `list_users`, `import_wordpress`, `import_media` are deferred until this is fixed

@@ -749,17 +749,28 @@ describe('PrivateAssetsBucket — review-staging quarantine lifecycle', () => {
         return (found[0][1] as any).Properties;
     }
 
-    test('(rev2a) EXACTLY one 30-day expiry rule on the review-staging/ prefix, enabled', () => {
-        // Bounded on purpose: exactly one rule, on exactly the quarantine prefix, so this cannot
-        // be read as blessing a blanket bucket expiry (product PDFs/zips must NOT expire).
+    test('(rev2a) EXACTLY one rule on the review-staging/ prefix: 30-day expiry, enabled; every rule of the bucket is prefix-scoped', () => {
+        // Bounded on purpose: exactly one rule on the quarantine prefix, and NO rule without a prefix,
+        // so this cannot be read as blessing a blanket bucket expiry (product PDFs/zips must NOT
+        // expire). MIGRATION-UPLOAD-1 added the second rule, on `migration/` ((mu1-lifecycle) below).
         const rules = privateBucketProps().LifecycleConfiguration?.Rules as any[] | undefined;
         expect(rules).toBeDefined();
-        expect(rules).toHaveLength(1);
+        expect(rules!.map((r) => r.Prefix).sort()).toEqual(['migration/', 'review-staging/']);
 
-        const rule = rules![0];
-        expect(rule.Status).toBe('Enabled');
-        expect(rule.Prefix).toBe('review-staging/');
-        expect(rule.ExpirationInDays).toBe(30);
+        const staging = rules!.filter((r) => r.Prefix === 'review-staging/');
+        expect(staging).toHaveLength(1);
+        expect(staging[0].Status).toBe('Enabled');
+        expect(staging[0].ExpirationInDays).toBe(30);
+    });
+
+    test('(mu1-lifecycle) EXACTLY one rule on the migration/ prefix: 1-day expiry, enabled (the backstop of an abandoned import)', () => {
+        // MIGRATION-UPLOAD-1: an uploaded export holds commenters' names and mail addresses. The importer
+        // deletes it after the last batch; this rule removes the file of an import that never finishes.
+        // Prefix = MIGRATION_PREFIX of backend/src/import/migration-upload.ts (one contract).
+        const rules = (privateBucketProps().LifecycleConfiguration?.Rules as any[]).filter((r) => r.Prefix === 'migration/');
+        expect(rules).toHaveLength(1);
+        expect(rules[0].Status).toBe('Enabled');
+        expect(rules[0].ExpirationInDays).toBe(1);
     });
 });
 
@@ -992,6 +1003,75 @@ describe('ReviewImportFunc — rev-2b import least-privilege', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// (mu1-iam) MIGRATION-UPLOAD-1 — the migration upload: least-privilege S3 on `migration/*` only
+//     An uploaded WordPress export holds commenters' names and mail addresses; it lives in the
+//     PRIVATE bucket under `migration/<tenantId>/…` (backend/src/import/migration-upload.ts).
+//     The link function signs a PUT (it needs exactly s3:PutObject there); the two importers read
+//     it and delete it after the last batch (exactly s3:GetObject + s3:DeleteObject there). No
+//     statement of these roles reaches the private bucket outside `migration/*`, and none lists
+//     it. Same reasoning as (rev2b-iam). Prose: docs/slices/migration-upload-1.md § Infra.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('MIGRATION-UPLOAD-1 — migration upload least-privilege (mu1-iam)', () => {
+    /**
+     * The one Lambda whose logical id STARTS with `name`, across the stack tree, with its template. "Starts with", not
+     * "contains": `ImportFunc` is contained in MediaImportFunc and ReviewImportFunc.
+     */
+    function fnOf(name: string): { template: Template; roleLogicalId: string; props: any } {
+        for (const t of allTemplates) {
+            const fns = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) => id.startsWith(name));
+            if (fns.length === 0) continue;
+            if (fns.length !== 1) throw new Error(`expected 1 ${name}, found ${fns.length}`);
+            const props = (fns[0][1] as any).Properties;
+            return { template: t, roleLogicalId: props.Role['Fn::GetAtt'][0] as string, props };
+        }
+        throw new Error(`${name} not found in any template`);
+    }
+
+    /** Every S3 statement on the function's role: actions and (JSON) resources. */
+    function s3Statements(name: string): Array<{ actions: string[]; resources: string[] }> {
+        const { template: t, roleLogicalId } = fnOf(name);
+        return Object.values(t.findResources('AWS::IAM::Policy'))
+            .filter((p: any) => (p.Properties.Roles as any[]).some((r) => String(r.Ref) === roleLogicalId))
+            .flatMap((p: any) => p.Properties.PolicyDocument.Statement as any[])
+            .map((st) => ({
+                actions: (Array.isArray(st.Action) ? st.Action : [st.Action]).map(String),
+                resources: (Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((r: unknown) => JSON.stringify(r)),
+            }))
+            .filter((st) => st.actions.some((a: string) => a.startsWith('s3:')));
+    }
+
+    const onPrivate = (s: { resources: string[] }) => s.resources.some((r) => r.includes('PrivateAssetsBucket'));
+    const MIGRATION_OBJECTS = expect.stringMatching(/PrivateAssetsBucket.*\/migration\/\*/);
+    const ROLES = ['MigrationUploadUrlFunc', 'ImportFunc', 'MediaImportFunc'];
+
+    test('(mu1-iam-1) MigrationUploadUrlFunc: its ONLY S3 grant is one statement, s3:PutObject on migration/*', () => {
+        expect(s3Statements('MigrationUploadUrlFunc')).toEqual([{ actions: ['s3:PutObject'], resources: [MIGRATION_OBJECTS] }]);
+    });
+
+    test.each(['ImportFunc', 'MediaImportFunc'])('(mu1-iam-2) %s: its ONLY private-bucket grant is one statement, s3:GetObject + s3:DeleteObject on migration/*', (name) => {
+        expect(s3Statements(name).filter(onPrivate)).toEqual([{ actions: ['s3:GetObject', 's3:DeleteObject'], resources: [MIGRATION_OBJECTS] }]);
+    });
+
+    test('(mu1-iam-3) no statement of the three roles lists the private bucket', () => {
+        const actions = ROLES.flatMap((name) => s3Statements(name).filter(onPrivate).flatMap((s) => s.actions));
+        expect(actions.filter((a) => a.startsWith('s3:List'))).toEqual([]);
+    });
+
+    test.each(ROLES)('(mu1-iam-4) %s has PRIVATE_BUCKET', (name) => {
+        expect(Object.prototype.hasOwnProperty.call(fnOf(name).props.Environment.Variables, 'PRIVATE_BUCKET')).toBe(true);
+    });
+
+    test('(mu1-route) POST /import/upload-url integrates MigrationUploadUrlFunc', () => {
+        const routes = Object.values(template.findResources('AWS::ApiGatewayV2::Route'))
+            .filter((r: any) => r.Properties.RouteKey === 'POST /import/upload-url');
+        expect(routes).toHaveLength(1);
+        const integrationId = JSON.stringify((routes[0] as any).Properties.Target).match(/"Ref":"([^"]+)"/)![1];
+        const integration = template.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+        expect(JSON.stringify(integration.Properties.IntegrationUri)).toMatch(/MigrationUploadUrlFunc/);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (pay1) UpdateOrderFunc — PAY-1 "paid" order mail
 //     PUT /orders/{id} (backend/src/orders/update.ts) sends the "paid" mail on pending → paid. The handler
 //     sends no mail when SES_FROM_EMAIL is absent, and SES refuses the send without ses:SendEmail. These
@@ -1058,10 +1138,11 @@ describe('UpdateOrderFunc — PAY-1 paid-mail wiring', () => {
 //     integrations retargeted in place to the moved functions via a cross-stack Fn::GetAtt.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety invariant)', () => {
-    // The 16 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
-    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 5 (the 4th,
+    // The 17 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
+    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 6 (the 4th,
     // POST /import/glam-pricelist, added by CAT-IMPORT-1 with its function in CatalogApi; the 5th,
-    // POST /import/glam-pricelist/images, added by CAT-IMAGES-1 on the SAME function — 15 functions, 16 routes).
+    // POST /import/glam-pricelist/images, added by CAT-IMAGES-1 on the SAME function; the 6th,
+    // POST /import/upload-url, added by MIGRATION-UPLOAD-1 with its own function — 16 functions, 17 routes).
     const CATALOG_ROUTE_KEYS = [
         'POST /content',
         'GET /content',
@@ -1079,14 +1160,16 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         'POST /import/reviews',
         'POST /import/glam-pricelist',
         'POST /import/glam-pricelist/images',
+        'POST /import/upload-url',
     ];
 
-    test('(split1-1) CatalogApi holds EXACTLY the 15 catalog Lambda functions', () => {
+    test('(split1-1) CatalogApi holds EXACTLY the 16 catalog Lambda functions', () => {
         // The heavy resources that moved out of the parent template to buy headroom under the 500
-        // ceiling. Exactly 15 — content 6 + products 5 + import 4 (CAT-IMPORT-1 added the glam
-        // pricelist import; CAT-IMAGES-1 added a ROUTE to that function, no function) — so a stray
-        // function moved in (count > 15) or one left behind re-inflating the parent (count < 15) both fail here.
-        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(15);
+        // ceiling. Exactly 16 — content 6 + products 5 + import 5 (CAT-IMPORT-1 added the glam
+        // pricelist import; CAT-IMAGES-1 added a ROUTE to that function, no function; MIGRATION-UPLOAD-1
+        // added MigrationUploadUrlFunc) — so a stray function moved in (count > 16) or one left behind
+        // re-inflating the parent (count < 16) both fail here.
+        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(16);
     });
 
     test('(cat-import-1) POST /import/glam-pricelist integrates GlamPricelistImportFunc, whose timeout ≤ the 15-min import lock', () => {
@@ -1136,7 +1219,10 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         }
         const glamS3 = s3Statements('GlamPricelistImportFunc');
         expect(glamS3.length).toBeGreaterThan(0);
-        expect(glamS3).toEqual(s3Statements('MediaImportFunc'));
+        // MIGRATION-UPLOAD-1 gave MediaImportFunc one more statement, on the PRIVATE bucket's `migration/*` (its
+        // export read and delete, (mu1-iam)); the uploads-bucket statements are the ones compared here.
+        const onUploads = (st: any) => !JSON.stringify(st.Resource).includes('/migration/*');
+        expect(glamS3).toEqual(s3Statements('MediaImportFunc').filter(onUploads));
     });
 
     test('(split1-2) CatalogApi contains NO route, integration, or Lambda permission — those stay in the parent', () => {

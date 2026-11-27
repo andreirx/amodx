@@ -509,7 +509,10 @@ src/
     │                      #   `redirectRouteItem`, create only; product items of the export get a redirect old →
     │                      #   <product prefix>/<slug> when this tenant's product is active and available. Every item
     │                      #   of a batch has one row in `rows` (failed reads/writes included). A dry run writes
-    │                      #   nothing and bypasses withInvalidation (as glam-pricelist.ts)
+    │                      #   nothing and bypasses withInvalidation (as glam-pricelist.ts). MIGRATION-UPLOAD-1: an
+    │                      #   `s3Key` is a migration upload, read from PRIVATE_BUCKET (migration-upload.ts); it is
+    │                      #   deleted in the `complete: true` answer of an import (never of a dry run). `wxrContent`
+    │                      #   (inline) unchanged
     ├── wp-addresses.ts    # IMPORT-PATHS-1, pure: requestPathProblem (an address as the request a browser sends: URL
     │                      #   parse, no ?/#, no ./.., Next.js-decodable, no end slash), oldAddressOf (<link> → none |
     │                      #   invalid | home | query-only | undecodable | path in
@@ -644,7 +647,23 @@ src/
     │                      #   (CAT-IMAGES-1: sources + holders, decision per source, per-product rewrite with the
     │                      #   derivation rule injected, termination measure; CAT-IMPORT-GALLERY-1: extras)
     ├── media.ts           # POST /import/media — bulk media import (copies under the image destination policy;
-    │                      #   a refused/failed source → errors[])
+    │                      #   a refused/failed source → errors[]). MIGRATION-UPLOAD-1: `s3Key` = a migration upload,
+    │                      #   read from PRIVATE_BUCKET; deleted in the `complete: true` answer. Cursor = positions in the
+    │                      #   export's own attachment order (mapped ones skipped in their batch, `batchSkipped`);
+    │                      #   `complete` = every position attempted; batchStart int ≥ 0, batchSize int ≥ 1
+    ├── upload-url.ts      # POST /import/upload-url (MIGRATION-UPLOAD-1) — { filename, contentType, size } →
+    │                      #   { uploadUrl, s3Key }: presigned PUT (300 s) in the PRIVATE bucket at
+    │                      #   migration/<tenantId>/<uuid>-<safe name>; XML/CSV only; ≤ 40 MB; requireRole as the
+    │                      #   import routes (TENANT_ADMIN/EDITOR of the tenant, GLOBAL_ADMIN; no service key). No
+    │                      #   record, no audit. Own function (MigrationUploadUrlFunc: s3:PutObject on migration/*).
+    │                      #   Signs `content-type`, no body checksum (requestChecksumCalculation WHEN_REQUIRED; pinned
+    │                      #   by the real-presigner test migration-upload-1-signing.test.ts)
+    ├── migration-upload.ts # MIGRATION-UPLOAD-1 — the migration upload: key form (migrationUploadKey), key rule
+    │                      #   (checkMigrationKey: own `migration/<tenant>/<uuid>-<name>` → owned; other key under
+    │                      #   migration/ → 403; outside → 400), readMigrationUpload (missing → 404 "upload again" —
+    │                      #   NoSuchKey or AccessDenied, the importers may not list; > MIGRATION_UPLOAD_MAX_BYTES →
+    │                      #   413), deleteMigrationUpload (failure logged; lifecycle ExpireMigrationUploads = 1 day
+    │                      #   is the backstop). Users: upload-url.ts, wordpress.ts, media.ts
     ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.
     │                      #   Import-family instance #3 (own NodejsFunction). ORDER (all validation
     │                      #   is read-only BEFORE the first write): parse source → decode+bound the
