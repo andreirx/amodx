@@ -43,6 +43,15 @@ When updating content:
 ## Slug Redirects
 
 When a slug changes, the old `ROUTE#<old-slug>` gets `IsRedirect=true` pointing to the new slug (preserves SEO).
+REDIRECT-1: an owner writes the same item with `POST /redirects` (`backend/src/redirects/create.ts`: one
+`TransactWriteCommand` — the Put under `attribute_not_exists(SK)`, so a page or a redirect at the old address is never
+overwritten, and a `ConditionCheck` `attribute_not_exists(IsRedirect) OR IsRedirect = :no` (`:no` = false) on the
+target's route, `/` read as the home page's route, so the destination is a page route or free at insertion — a stored
+`IsRedirect` other than absent, `false` or `true` is refused, since the renderer serves a truthy one as a redirect — and
+concurrent `/a → /b` and `/b → /a` cannot both succeed; redirects that point at the old address are not checked, so a
+chain `/a → /b → /c` forms when `/a → /b` commits first — F-REDIRECT1-REVERSE-CHAIN in `docs/TECH-DEBT.md`) and deletes it with `DELETE /redirects` (conditioned on
+`IsRedirect = true AND RedirectTo = <read>`, so a page route is never deleted). Both refuse `/` and `/contact`
+(Hard Rules item 4).
 
 ## Conditional & Transactional Writes
 
@@ -72,7 +81,8 @@ Spec: `docs/slices/lang-1.md` § 5, § 6. Pages that are the same page in differ
   post failed). Handlers: `backend/src/content/update.ts` (`planTranslation`, also used by `create.ts`), `restore.ts`,
   `backend/src/import/wordpress.ts`.
 - **Redirect routes (IMPORT-PATHS-1):** `ROUTE#<old path>` with `IsRedirect: true, RedirectTo` — one shape,
-  `redirectRouteItem` (content/update.ts), written by the rename and by the WordPress import. The importer writes it
+  `redirectRouteItem` (content/update.ts), written by the rename, by the WordPress import and by `POST /redirects`
+  (REDIRECT-1). The importer writes it
   create only (`attribute_not_exists(SK)`) and only where the renderer looks up content (`wp-addresses.ts`
   `servedBefore`). Its page write (option on) is ONE `TransactWriteCommand` of the content LATEST and its route,
   conditioned on what authorised it; "the same imported item" = equal `wordpressSourceItem`

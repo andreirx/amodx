@@ -148,7 +148,7 @@ export class AmodxApi extends Construct {
         };
 
         // --- CATALOG GROUP (INFRA-SPLIT-1 v2) ---
-        // The content (6), products (5) and import (3) Lambda Functions moved OUT of this parent
+        // The content (6), redirects (2, REDIRECT-1), products (5) and import (5) Lambda Functions moved OUT of this parent
         // template into the CatalogApi NestedStack to relieve CloudFormation's 500-resource ceiling
         // (email-2 synth hit 501). CatalogApi is instantiated in the composition root
         // (amodx-stack.ts), like CommerceApi/EngagementApi, and handed in via `props.catalog` — the
@@ -190,6 +190,19 @@ export class AmodxApi extends Construct {
             path: '/content/{id}/restore',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('RestoreContentInt', catalog.restoreContentFunc),
+        });
+
+        // --- REDIRECTS API (REDIRECT-1; routes only, functions live in CatalogApi). The list is the existing
+        // GET /content?type=Redirect. Gain at the cdk-diff gate: owners keep old addresses.
+        this.httpApi.addRoutes({
+            path: '/redirects',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateRedirectInt', catalog.createRedirectFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/redirects',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteRedirectInt', catalog.deleteRedirectFunc),
         });
 
         // --- CONTEXT API ---

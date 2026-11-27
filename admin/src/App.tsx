@@ -21,6 +21,7 @@ import DigitalProductEditor from "@/pages/DigitalProductEditor";
 import UsersPage from "@/pages/Users";
 import Comments from "@/pages/Comments";
 import ContentGraph from "@/pages/ContentGraph";
+import Redirects from "@/pages/Redirects";
 import Signals from "@/pages/Signals";
 import Categories from "@/pages/Categories";
 import CategoryEditor from "@/pages/CategoryEditor";
@@ -100,6 +101,7 @@ export const appRoutes = [
             { index: true, element: <ContentList /> },
             { path: "graph", element: <ContentGraph /> },
             { path: "content/:id", element: <ContentEditor /> },
+            { path: "redirects", element: <Redirects /> },   // REDIRECT-1
             { path: "products", element: <Products /> },
             { path: "products/:id", element: <ProductEditor /> },
             { path: "digital-products", element: <DigitalProducts /> },

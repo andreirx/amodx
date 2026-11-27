@@ -4,8 +4,11 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. `gallery-1` is on staging since 2026-11-27 (`docs/slices/gallery-1.md` § "Closeout") and waits for the human's
-production deploy. The order of work is in `docs/ROADMAP.md`, "Order of work from 2026-11-27" (next: `redirect-1`).
+Nothing. `redirect-1` is on staging since 2026-11-27 (`docs/slices/redirect-1.md` § "Closeout") and waits for the
+human's production deploy. Next in the order of work: `stay-1` part A.
+`gallery-1` is on staging since 2026-11-27 (`docs/slices/gallery-1.md` § "Closeout") and waits for the human's
+production deploy. The order of work is in `docs/ROADMAP.md`, "Order of work from 2026-11-27" (after `redirect-1`:
+`stay-1` part A).
 `next-patch-1` (Next.js 16.4.6) and `public-harden-1` are on staging since 2026-11-21.
 
 ## Waiting for the human's production deploy

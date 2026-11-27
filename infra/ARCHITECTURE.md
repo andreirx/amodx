@@ -43,7 +43,7 @@ AmodxStack
 ├── AmodxDatabase (DynamoDB table + 3 GSIs)
 ├── AmodxAuth (Admin Cognito Pool + Public Cognito Pool)
 ├── AmodxEvents (EventBridge bus + Audit rule + SQS DLQ)
-├── CatalogApi (NestedStack — content/products/import FUNCTIONS only; instantiated before AmodxApi and passed in; their routes live in AmodxApi)
+├── CatalogApi (NestedStack — content/redirects/products/import FUNCTIONS only; instantiated before AmodxApi and passed in; their routes live in AmodxApi)
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
 ├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
 ├── EngagementApi (NestedStack — popups, forms)
@@ -92,7 +92,7 @@ Standard template for all functions:
 
 Functions in the PARENT (`api.ts`): comments (3), signals (3), leads (2), context (5), tenant (3), users (1), resources (3), assets (2), audit (3), contact (1), consent (1), themes (3), webhooks (1), email DNS (1).
 
-Functions moved to the `CatalogApi` NestedStack (`api-catalog.ts`, INFRA-SPLIT-1 v2), **their routes still registered here in `api.ts`**: content CRUD (6), products admin CRUD (5), import (3: wordpress/media/reviews). The parent's integrations target these via a cross-stack `Fn::GetAtt`; the functions keep the same runtime/env/grants they had in the parent.
+Functions moved to the `CatalogApi` NestedStack (`api-catalog.ts`, INFRA-SPLIT-1 v2), **their routes still registered here in `api.ts`**: content CRUD (6), redirects (2: `POST`/`DELETE /redirects`, REDIRECT-1 — grants, env and fast lane as UpdateContentFunc), products admin CRUD (5), import (5: wordpress/media/reviews/glam-pricelist/migration upload link). The parent's integrations target these via a cross-stack `Fn::GetAtt`; the functions keep the same runtime/env/grants they had in the parent.
 
 `EmailDnsCheckFunc` (slice `email-2`, `POST /email/dns-check`): read-only guided-DNS
 checker. One `NodejsFunction` + one route + `table.grantReadData` (it Gets the tenant record

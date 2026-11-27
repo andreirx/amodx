@@ -1,8 +1,9 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { QueryCommand, type QueryCommandOutput } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, type QueryCommandOutput } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { routeAtOf, targetFound, type RouteAt } from "../redirects/rules.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -21,12 +22,29 @@ export const handler: Handler = async (event) => {
         const type = event.queryStringParameters?.type || "Content";
 
         if (type === "Redirect") {
-            const result = await db.send(new QueryCommand({
-                TableName: TABLE_NAME,
-                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": "ROUTE#" }
-            }));
-            const redirects = result.Items?.filter(i => i.IsRedirect === true) || [];
+            // REDIRECT-1 (docs/slices/redirect-1.md, ruling 4): every route of the tenant (paginated, projected — Critical
+            // Rule 2), the redirects among them, each with `targetFound` (redirects/rules.ts `targetFound`: route presence
+            // only), computed from the routes this query already reads + one tenant read (`homePageSlug`, for `/`).
+            // Before REDIRECT-1: one unpaginated page, whole items.
+            const routes: Record<string, any>[] = [];
+            let startKey: Record<string, any> | undefined = undefined;
+            do {
+                const page: QueryCommandOutput = await db.send(new QueryCommand({
+                    TableName: TABLE_NAME,
+                    KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                    ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": "ROUTE#" },
+                    ProjectionExpression: "SK, #redirect, #to, #created, #by",
+                    ExpressionAttributeNames: { "#redirect": "IsRedirect", "#to": "RedirectTo", "#created": "CreatedAt", "#by": "UpdatedBy" },
+                    ExclusiveStartKey: startKey,
+                }));
+                routes.push(...(page.Items ?? []));
+                startKey = page.LastEvaluatedKey;
+            } while (startKey);
+            const tenant = await db.send(new GetCommand({ TableName: TABLE_NAME, Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }, ProjectionExpression: "homePageSlug" }));
+            const byAddress = new Map<string, RouteAt>(routes.map((r) => [String(r.SK).slice("ROUTE#".length), routeAtOf(r)]));
+            const homePageSlug = typeof tenant.Item?.homePageSlug === "string" ? tenant.Item.homePageSlug : undefined;
+            const redirects = routes.filter(i => i.IsRedirect === true)
+                .map((i) => ({ ...i, targetFound: targetFound(String(i.RedirectTo), byAddress, homePageSlug) }));
             return { statusCode: 200, body: JSON.stringify({ items: redirects }) };
         }
 

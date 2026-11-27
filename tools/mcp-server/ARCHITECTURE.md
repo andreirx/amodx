@@ -10,7 +10,7 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 
 ```
 src/
-├── index.ts          # MCP server: all 77 tools, block schemas, API helpers
+├── index.ts          # MCP server: all 80 tools, block schemas, API helpers
 └── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products,
                       #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1;
                       #   CAT-IMPORT-PROFILE-1A: the summary adds "Profile: <source>, revision <n>", the sheets
@@ -43,7 +43,7 @@ tsconfig.json
 - **API URL:** `AMODX_API_URL` is normalised once at startup (trailing `/` stripped); every call is `${API_URL}/<path>`
 - **Startup check:** `GET /tenants`; on failure every API tool returns an error with the fix instruction, local tools still work
 
-## Tools (77 total)
+## Tools (80 total)
 
 Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/index.ts`, in source order.
 
@@ -74,6 +74,9 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `page_history` | GET /content/{id}/versions | List saved versions, newest first |
 | `restore_page_version` | POST /content/{id}/restore | Forward rollback to a saved version (new version number) |
 | `list_tags` | GET /content (extract) | List all tags used across pages |
+| `list_redirects` | GET /content?type=Redirect | REDIRECT-1: the site's redirects from old addresses; a target with no page route is marked "target not found (no page at this address yet)" (route presence only) |
+| `add_redirect` | POST /redirects | REDIRECT-1: add a 308 redirect `from` → `to` (same site; lowercase a-z, digits, `-`, `/`, no `//` inside — other addresses refused, never changed; never replaces a page or a redirect; `/` and `/contact` refused; refusal text of the backend) |
+| `delete_redirect` | DELETE /redirects | REDIRECT-1: delete the redirect at `from` (exactly as listed); a page there is refused (409); `/` and `/contact` are refused (400) |
 
 ### Products (catalog — admin CRUD lives in `CatalogApi`)
 | Tool | Method | Purpose |

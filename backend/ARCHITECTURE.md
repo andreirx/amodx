@@ -164,6 +164,10 @@ src/
 │   ├── list.ts            # GET /content. LANG-1A: projects translationKey; a page that holds a key also gets
 │   │                      #   hasTranslationItem (its TRANSLATION#<key>#<nodeId> exists) — one paginated Query of
 │   │                      #   the tenant's TRANSLATION# items, sent only when some page holds a key
+│   │                      #   REDIRECT-1: `?type=Redirect` = the redirects (IsRedirect === true) among every ROUTE#
+│   │                      #   item (paginated, projected), each with `targetFound` (redirects/rules.ts; route presence
+│   │                      #   only: a page route at `to`, or for `/` at `homePageSlug`) computed from those routes + one
+│   │                      #   tenant read (`homePageSlug`). The Redirects page and MCP read it
 │   ├── get.ts             # GET /content/{id}
 │   ├── update.ts          # PUT /content/{id}. LANG-1A (docs/slices/lang-1.md § 5.2, § 6.3; PROTOTYPE): also the
 │   │                      #   translation-set logic `planTranslation` (C2 400, C3 409 read-then-write, no-op,
@@ -181,6 +185,31 @@ src/
 │   └── restore.ts         # POST /content/{id}/restore. LANG-1A: a page with a key keeps its current slug and key
 │                          #   (Put conditioned on both → 409 on a concurrent rename); a keyless page restores as
 │                          #   before (no key copied; condition attribute_not_exists(translationKey))
+├── redirects/             # REDIRECT-1 (docs/slices/redirect-1.md; PROTOTYPE): an owner adds a redirect from an old address
+│   ├── rules.ts           # Pure: the refusal sum `RedirectRefusal` (18 kinds) and its ONE mapping to 400/404/409 +
+│   │                      #   English text (`refusalAnswer`, exhaustive switch, no default); `addressOf` (control
+│   │                      #   characters checked on the string as sent, then trimmed; normalizeSlug, trailing slashes
+│   │                      #   dropped; `//` inside refused (Next.js rewrites it before the route is read); refused —
+│   │                      #   never changed silently — when normalizeSlug would store another address:
+│   │                      #   REDIRECT1-NORMAL-FORM = A); `/` and `/contact` refused as `from` and on delete
+│   │                      #   (system routes); `fromRefusal` (slug-guard `reservedAddressRefusalIn` + import's
+│   │                      #   `rendererRoute`); `effectiveTarget` (`/` → `homePageSlug`); `createRefusal` (incl. the
+│   │                      #   home alias: loop, chain) / `deletableRedirect` on the routes as read; `targetFound`
+│   ├── create.ts          # POST /redirects {from,to}: ONE TransactWrite — Put of `redirectRouteItem` (content/update.ts,
+│   │                      #   the one item of the rename and the importer) under attribute_not_exists(SK) + a
+│   │                      #   ConditionCheck `attribute_not_exists(IsRedirect) OR IsRedirect = :no` (`:no` = false:
+│   │                      #   routeAtOf's page or none; routeAtOf reads `true` as a redirect, absent/false as a page,
+│   │                      #   any other value as unclassified → 409 — text names the value's TYPE only, so it cannot
+│   │                      #   throw (a bigint) — never a target, never overwritten or deleted)
+│   │                      #   on the effective target's route → a page or a redirect at `from`
+│   │                      #   is never overwritten, and the destination is checked at insertion: concurrent `/a → /b`
+│   │                      #   and `/b → /a` cannot both succeed (409, tested). NOT checked: redirects that point AT
+│   │                      #   `from` — when `/a → /b` commits before `/b → /c` (also overlapping) both succeed (a chain;
+│   │                      #   F-REDIRECT1-REVERSE-CHAIN, pinned by a test); the other order is refused (400). Reads: tenant ×2 (reserved addresses, homePageSlug), the two routes. Audit
+│   │                      #   CREATE_REDIRECT; purge of `from` (revalidateTenantPaths)
+│   └── delete.ts          # DELETE /redirects {from} (the stored key, not normalized; `/`, `/contact` refused before any
+│                          #   read): Delete conditioned on IsRedirect = true AND RedirectTo = <read> → a page route is
+│                          #   never deleted (409); audit DELETE_REDIRECT; purge of `from`. Tests: test/unit/redirect-1.test.ts
 ├── products/
 │   ├── create.ts          # POST /products
 │   ├── list.ts            # GET /products — a SERVICE key (catalog:read) gets no resourceId (FINDINGS-1 Part 2)
@@ -787,7 +816,8 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 
 - **Content versioning:** Update writes a snapshot at `CONTENT#<nodeId>#v<N>` before overwriting `#LATEST` with `v<N+1>`
 - **Slug redirects:** When a slug changes, old route gets `IsRedirect=true` pointing to new slug (SEO preservation). One
-  item shape, `redirectRouteItem` (content/update.ts): users the rename and the WordPress import (IMPORT-PATHS-1)
+  item shape, `redirectRouteItem` (content/update.ts): users the rename, the WordPress import (IMPORT-PATHS-1) and
+  `POST /redirects` (REDIRECT-1, an owner's redirect from an old address)
 - **Transactional writes:** `TransactWriteCommand` for multi-item consistency (content + route creation)
 - **Conditional writes:** `ConditionExpression="attribute_not_exists(SK)"` prevents duplicate slugs/IDs
 - **Audit trail:** Handlers call `publishAudit()` → EventBridge → `audit/worker.ts` → DynamoDB. Non-blocking.

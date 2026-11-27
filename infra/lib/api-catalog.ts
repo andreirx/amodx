@@ -38,8 +38,8 @@ interface CatalogApiProps extends NestedStackProps {
 
 /**
  * CatalogApi — a CloudFormation NestedStack holding ONLY the catalog group's Lambda Functions
- * (+ their CDK-generated Role/Policy), for the content (6), products (5) and import (5:
- * wordpress/media/reviews/glam-pricelist, and the migration upload link of MIGRATION-UPLOAD-1) handlers = 16 functions.
+ * (+ their CDK-generated Role/Policy), for the content (6), redirects (2, REDIRECT-1), products (5) and import (5:
+ * wordpress/media/reviews/glam-pricelist, and the migration upload link of MIGRATION-UPLOAD-1) handlers = 18 functions.
  *
  * WHY THIS EXISTS (the single earned axis of variation): AmodxStack reached CloudFormation's hard
  * 500-resource-per-template ceiling (email-2 synth = 501), which BLOCKS every backend deploy that
@@ -71,6 +71,9 @@ export class CatalogApi extends NestedStack {
     public readonly updateContentFunc: nodejs.NodejsFunction;
     public readonly listHistoryFunc: nodejs.NodejsFunction;
     public readonly restoreContentFunc: nodejs.NodejsFunction;
+    // --- REDIRECTS (2, REDIRECT-1) ---
+    public readonly createRedirectFunc: nodejs.NodejsFunction;
+    public readonly deleteRedirectFunc: nodejs.NodejsFunction;
     // --- PRODUCTS (5) ---
     public readonly createProductFunc: nodejs.NodejsFunction;
     public readonly listProductsFunc: nodejs.NodejsFunction;
@@ -173,6 +176,28 @@ export class CatalogApi extends NestedStack {
         });
         table.grantReadWriteData(this.restoreContentFunc);
         props.revalidationSecret.grantRead(this.restoreContentFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
+
+        // --- REDIRECTS (REDIRECT-1, docs/slices/redirect-1.md) ---
+        // An owner adds / deletes a redirect from an old address. Permissions as UpdateContentFunc (the slug rename, the
+        // other writer of the same item): read-write (each handler reads the routes and the tenant before its conditional
+        // write), the revalidation secret and the fast lane (each purges the changed path, revalidateTenantPaths).
+        this.createRedirectFunc = new nodejs.NodejsFunction(this, 'CreateRedirectFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/redirects/create.ts'),
+            handler: 'handler',
+        });
+        table.grantReadWriteData(this.createRedirectFunc);
+        props.revalidationSecret.grantRead(this.createRedirectFunc);
+        wireFastLaneTrigger(this.createRedirectFunc);
+
+        this.deleteRedirectFunc = new nodejs.NodejsFunction(this, 'DeleteRedirectFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/redirects/delete.ts'),
+            handler: 'handler',
+        });
+        table.grantReadWriteData(this.deleteRedirectFunc);
+        props.revalidationSecret.grantRead(this.deleteRedirectFunc);
+        wireFastLaneTrigger(this.deleteRedirectFunc);
 
         // --- PRODUCTS ---
         this.createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {

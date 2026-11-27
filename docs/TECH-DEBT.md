@@ -382,6 +382,31 @@ which amends the slice's scope 3).
   page made in the admin there is stored and never served. The importer checks them (`servedBefore`); the content
   handlers do not — not changed (outside the slice's paths).
 
+### REDIRECT-1 residuals (2026-11-27)
+Record: `docs/slices/redirect-1.md` § "Build record".
+- **F-REDIRECT1-REVERSE-CHAIN**: `POST /redirects` refuses a target that is a redirect, not a `from` that is the target
+  of another redirect. The chain `A → B → C` forms when `A → B` commits before `B → C`, also when the two requests
+  overlap (pinned: `backend/test/unit/redirect-1.test.ts`, "documented limitation"); a slug rename makes the same chain
+  today. In the other order the second add is refused (`B → C` first, then `A → B` → 400 `target-is-redirect`; pinned
+  by "the order that is refused"). Search engines follow a chain. A check needs one paginated read of the tenant's routes per add. Not in scope
+  of REDIRECT-1 (review-1).
+- **F-REDIRECT1-NON-ASCII-FROM** (REDIRECT1-NORMAL-FORM = A, ratified 2026-11-27): an old address with upper case,
+  non-ASCII letters, a dot (`/camere.html`) or `%`-escapes cannot be entered by hand — refused with 400 `not-normal`,
+  because `normalizeSlug` would store another address than visitors ask for, and a redirect stored elsewhere never
+  answers. The WordPress importer has its own rule for such addresses (`import/wp-addresses.ts`: the decoded path).
+  Follow-up only when a real old address needs it.
+- **Stored `IsRedirect` values no writer produces** (operator freeze after review-3): the contract is absent → page,
+  `false` → page, `true` → redirect, any other value → `POST`/`DELETE /redirects` refuse with 409 `unclassified-route`
+  (the text names the value's type only) and write nothing. Such an item is inert for these handlers, not repaired; the
+  renderer still serves a truthy one as a redirect. No repository writer stores one; live data not checked. A further
+  finding about such values is a residual here, not a blocker of REDIRECT-1.
+- **Target mark is route presence only** (operator ruling after review-0): a redirect to a built-in page (`/cart`,
+  `/shop`, `/product/<slug>`) has no route and shows "target not found (no page at this address yet)" even when that
+  page answers. The list cannot know whether a product exists or commerce is on.
+- **`RouteSchema` name mismatch** (`packages/shared/src/index.ts:280-288`): camelCase `isRedirect` / `redirectTo` /
+  `targetNodeId`; the stored item is `IsRedirect` / `RedirectTo` / `TargetNode`. No reader uses the schema. Align or
+  remove in a shared-schema change.
+
 ### Email/Password Customer Accounts via Public Cognito Pool
 The public Cognito pool (`AmodxPublicPool`) is provisioned in CDK but dormant. Currently customer auth is Google-only via NextAuth. This task activates the public pool so tenants can offer email/password registration alongside Google OAuth.
 

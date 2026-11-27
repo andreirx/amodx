@@ -12,7 +12,9 @@ import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteComma
  *    Put / Update / Delete / ConditionCheck — the transaction is ATOMIC (every condition first, then every write) and
  *    refuses two actions on one item (DynamoDB's ValidationException);
  *  - conditions: clauses joined by ` AND `, each `attribute_not_exists(x)`, `attribute_exists(x)` or `x = :v`
- *    (`x` a name or a `#name`), deep equality as DynamoDB compares values;
+ *    (`x` a name or a `#name`), deep equality as DynamoDB compares values; REDIRECT-1: AND-groups joined by ` OR `
+ *    (DynamoDB's precedence: AND binds before OR; no parentheses) — redirects/create.ts sends
+ *    `attribute_not_exists(IsRedirect) OR IsRedirect = :no`;
  *  - update expressions `SET a = :x, #b = :y[, …] [REMOVE c[, d]]`;
  *  - Query `PK = :pk AND begins_with(SK, :sk)` in SK order, with `pageSize`, `Limit` and `LastEvaluatedKey`; and
  *    `PK = :pk AND SK = :sk` (the WordPress importer's route lookup).
@@ -42,7 +44,8 @@ export class LangTable {
 
     private holds(item: Item | undefined, expr: string | undefined, names?: Record<string, string>, values?: Record<string, unknown>): boolean {
         if (!expr) return true;
-        return expr.split(" AND ").every((clause) => {
+        if (expr.includes("(") && /\(\s*[#\w]+\s*=/.test(expr)) throw new Error(`unsupported parenthesised condition "${expr}"`);
+        return expr.split(" OR ").some((group) => group.split(" AND ").every((clause) => {
             const c = clause.trim();
             let m = /^attribute_not_exists\(([#\w]+)\)$/.exec(c);
             if (m) return item === undefined || item[this.name(m[1], names)] === undefined;
@@ -54,7 +57,7 @@ export class LangTable {
                 return item !== undefined && item[this.name(m[1], names)] !== undefined && isDeepStrictEqual(item[this.name(m[1], names)], values[m[2]]);
             }
             throw new Error(`unsupported condition clause "${c}"`);
-        });
+        }));
     }
 
     private applyUpdate(existing: Item | undefined, key: { PK: string; SK: string }, input: any): Item {

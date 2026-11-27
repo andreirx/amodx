@@ -62,6 +62,10 @@ src/
     ├── ContentList.tsx         # Page listing, create, WordPress import
     ├── ContentEditor.tsx       # Full page editor: blocks, metadata, SEO, versions, theme overrides. LANG-1A (lang-1.md § 10; PROTOTYPE): with extra languages (GET /settings), a Language select that rewrites the address prefix, a "Translation of" picker over the content list offering exactly the pages the backend would join (not itself, not its own set, not its language, not a set with a member in its language; sends translationOf only for a choice made; null = "Not a translation"), the set shown as language → page by the § 6.2 membership rule (key held + `hasTranslationItem` from GET /content + an address; `published` = status Published; Draft/Archived members shown as not listed), the search-engine warning only for two PUBLISHED members in one language (neither is then listed) (`text-destructive`). Every decision on PageLanguage / TranslationChoice is an all-arms-return switch. Pure helpers pinned by ContentEditor.test.ts
     ├── ContentGraph.tsx        # ReactFlow + Dagre visualization of internal links, orphan detection
+    ├── Redirects.tsx           # REDIRECT-1: the site's redirects (GET /content?type=Redirect; the mark "target not found (no
+    │                           #   page at this address yet)" when the list's `targetFound` is false — route presence only), an add row (POST /redirects; the API's refusal text inline), delete
+    │                           #   with a confirmation (DELETE /redirects). No request before a site is selected.
+    │                           #   `RedirectsView` (one state = props) is exported for Redirects.test.ts (SSR runs no effects)
     ├── Products.tsx            # Product listing table; on a catalog (CAT-ADMIN-1 § 4.4): catalog subtitle, "Import a
     │                           #   pricelist" link to /catalog-import, no WooCommerce import, no price/stock columns
     ├── CatalogImport.tsx       # "Pricelist import" (catalog sites; CAT-ADMIN-1 § 4.3): the import contract in two
@@ -260,6 +264,7 @@ guard/layout tests in `App.test.ts`; known routes are unchanged.
 | `/login` | Login | Public, unauthenticated |
 | `/` | ContentList | Dashboard / page listing |
 | `/graph` | ContentGraph | Content link visualization |
+| `/redirects` | Redirects | Redirects from old addresses (REDIRECT-1); menu: Content → Redirects |
 | `/content/:id` | ContentEditor | Page editor |
 | `/products` | Products | Product listing |
 | `/products/:id` | ProductEditor | Product editor |

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
-import {Shield, Users, ArrowRightLeft} from "lucide-react";
+import {Shield, Users, ArrowRightLeft, CornerDownRight} from "lucide-react";
 import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart, Upload, CalendarClock } from "lucide-react";
 import { INTEREST_FORM_ID, isCatalogMode } from "@amodx/shared";
 import {
@@ -50,6 +50,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 { name: "Pages", href: "/", icon: LayoutDashboard },
                 { name: "Content Graph", href: "/graph", icon: GitGraph },
                 { name: "Media", href: "/media", icon: ImageIcon },
+                { name: "Redirects", href: "/redirects", icon: CornerDownRight },   // REDIRECT-1
             ]
         },
         // CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.2, CA-L1): one group for the site kind, named by the kind. A catalog

@@ -1087,6 +1087,63 @@ server.tool("restore_page_version",
     }
 );
 
+// REDIRECT-1 (docs/slices/redirect-1.md): redirects from old addresses — list (the existing GET /content?type=Redirect),
+// add (POST /redirects), delete (DELETE /redirects). The refusal texts are the backend's (redirects/rules.ts).
+const REDIRECT_REVALIDATION_ATTEMPT =
+    "On success the backend attempts a best-effort cache revalidation of the old address and attempts to mark listings pending " +
+    "(failures are logged and ignored; skipped when the site has no domain). Until a refresh completes, the old answer may still be served.";
+
+server.tool("list_redirects",
+    "List the site's redirects from old addresses (308). A target with no page route is marked 'target not found (no page at this address yet)' — route presence only; a built-in page such as the cart has no route and is marked too.",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content?type=Redirect`, { headers: getHeaders(tenant_id) });
+            const lines = (response.data.items as any[]).map((i) =>
+                `- ${String(i.SK).replace(/^ROUTE#/, "")} → ${i.RedirectTo}${i.targetFound === false ? " — target not found (no page at this address yet)" : ""}`);
+            return { content: [{ type: "text", text: lines.length ? `Redirects for ${tenant_id}:\n${lines.join("\n")}` : `No redirects for ${tenant_id}.` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("add_redirect",
+    "Add a permanent redirect (308) from an old address of the site to a new one. Both are addresses of this site " +
+    "(start with /; a trailing slash is dropped; lowercase a-z, digits, - and / only, no // inside — any other address is refused, never changed). " +
+    "Never replaces a page or an existing redirect: to change one, delete it first. / and /contact cannot hold a redirect. " +
+    REDIRECT_REVALIDATION_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        from: z.string().describe("Old address, e.g. /room/"),
+        to: z.string().describe("New address on the same site, e.g. /guest-house (need not exist yet; not a redirect itself)"),
+    },
+    async ({ tenant_id, from, to }) => {
+        try {
+            const response = await axios.post(`${API_URL}/redirects`, { from, to }, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Redirect ${response.data.from} → ${response.data.to}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_redirect",
+    "Delete a redirect. Only a redirect is deleted; a page at the address is refused (409); / and /contact are refused (400). " + REDIRECT_REVALIDATION_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        from: z.string().describe("The old address exactly as list_redirects shows it"),
+    },
+    async ({ tenant_id, from }) => {
+        try {
+            await axios.delete(`${API_URL}/redirects`, { headers: getHeaders(tenant_id), data: { from } });
+            return { content: [{ type: "text", text: `✓ Deleted the redirect from ${from}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
 // LIST PRODUCTS
 server.tool("list_products",
     { tenant_id: z.string() },

@@ -78,6 +78,8 @@ const COMMON = {
     Engagement: ["Popups", "Forms"],
     System: ["Comments", "Audit Log", "Resources", "Team", "WP Migration", "Email DNS", "Labels", "Settings"],
 };
+/** REDIRECT-1 (docs/slices/redirect-1.md, ruling 8): "Redirects" at the end of Content, on every site kind. */
+const CONTENT_NOW = [...COMMON.Content, "Redirects"];
 const COMMERCE_ONLY = ["Reports", "Orders", "Customers", "Coupons", "Reviews", "Delivery", "Email Templates"];
 const BEFORE = {
     content: { Content: COMMON.Content, Commerce: ["Products", "Digital Products", "Categories"], Growth: COMMON.Growth, Engagement: COMMON.Engagement, System: COMMON.System },
@@ -85,12 +87,12 @@ const BEFORE = {
 };
 /**
  * BEFORE with the ratified differences applied: Digital Products moves to "Digital sales", placed after Commerce
- * (CAT-ADMIN-1). SCHED-MENU-1: these fixtures have scheduling off, so no Scheduling group.
+ * (CAT-ADMIN-1); Content ends with "Redirects" (REDIRECT-1). SCHED-MENU-1: these fixtures have scheduling off, so no Scheduling group.
  */
 function withRatifiedChanges(before: Record<string, string[]>): Record<string, string[]> {
     const out: Record<string, string[]> = {};
     for (const [group, items] of Object.entries(before)) {
-        out[group] = group === "Commerce" ? items.filter((n) => n !== "Digital Products") : items;
+        out[group] = group === "Commerce" ? items.filter((n) => n !== "Digital Products") : group === "Content" ? CONTENT_NOW : items;
         if (group === "Commerce") out["Digital sales"] = ["Digital Products"];
     }
     return out;
@@ -101,7 +103,7 @@ const hrefOf = (html: string, name: string) =>
 
 describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => {
     for (const [kind, t, before] of [["content", CONTENT_T, BEFORE.content], ["commerce", COMMERCE_T, BEFORE.commerce]] as const) {
-        it(`${kind} tenant with scheduling off: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group`, () => {
+        it(`${kind} tenant with scheduling off: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group and Redirects in Content`, () => {
             const nav = render(t);
             const expected = withRatifiedChanges(before);
             expect(nav).toEqual(expected);
@@ -112,7 +114,7 @@ describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => 
     it("catalog tenant: a Catalog group of exactly four entries, Digital sales, no Commerce group; Engagement keeps only Popups and Forms", () => {
         const nav = render(CATALOG_T);
         expect(nav).toEqual({
-            Content: COMMON.Content,
+            Content: CONTENT_NOW,
             Catalog: ["Products", "Categories", "Pricelist import", "Interest lists"],
             "Digital sales": ["Digital Products"],
             Growth: COMMON.Growth,

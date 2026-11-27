@@ -1072,6 +1072,48 @@ describe('MIGRATION-UPLOAD-1 — migration upload least-privilege (mu1-iam)', ()
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// (redirect1) REDIRECT-1 — POST / DELETE /redirects (docs/slices/redirect-1.md, ruling 7)
+//     Each route reaches its own function in CatalogApi; each function holds the permissions of
+//     UpdateContentFunc (the slug rename, the other writer of the redirect item): read-write on the
+//     table, read of the revalidation secret, invoke of the debounce flusher, and the same env. The
+//     statements are compared with UpdateContentFunc's rather than restated, so they cannot drift apart.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('REDIRECT-1 — the two redirect routes and their permissions', () => {
+    const fnProps = (part: string) => {
+        const found = Object.entries(catalogTemplate.findResources('AWS::Lambda::Function')).filter(([id]) => id.startsWith(part));
+        expect({ part, count: found.length }).toEqual({ part, count: 1 });
+        return (found[0][1] as any).Properties;
+    };
+    /** The role's statements as {Action, Resource} JSON, sorted — comparable across roles. */
+    const statements = (part: string) => {
+        const role = fnProps(part).Role['Fn::GetAtt'][0] as string;
+        return Object.values(catalogTemplate.findResources('AWS::IAM::Policy'))
+            .filter((p: any) => (p.Properties.Roles as any[]).some((r) => r.Ref === role))
+            .flatMap((p: any) => p.Properties.PolicyDocument.Statement as any[])
+            .map((st) => JSON.stringify({ Action: st.Action, Resource: st.Resource, Effect: st.Effect }))
+            .sort();
+    };
+
+    test.each([
+        ['POST /redirects', 'CreateRedirectFunc'],
+        ['DELETE /redirects', 'DeleteRedirectFunc'],
+    ])('(redirect1-route) %s integrates %s', (key, fn) => {
+        const routes = Object.values(template.findResources('AWS::ApiGatewayV2::Route'))
+            .filter((r: any) => r.Properties.RouteKey === key);
+        expect(routes).toHaveLength(1);
+        const integrationId = JSON.stringify((routes[0] as any).Properties.Target).match(/"Ref":"([^"]+)"/)![1];
+        const integration = template.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+        expect(JSON.stringify(integration.Properties.IntegrationUri)).toMatch(new RegExp(fn));
+    });
+
+    test.each(['CreateRedirectFunc', 'DeleteRedirectFunc'])('(redirect1-iam) %s: the statements and env of UpdateContentFunc', (fn) => {
+        expect(statements(fn).length).toBeGreaterThan(0);
+        expect(statements(fn)).toEqual(statements('UpdateContentFunc'));
+        expect(fnProps(fn).Environment).toEqual(fnProps('UpdateContentFunc').Environment);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (pay1) UpdateOrderFunc — PAY-1 "paid" order mail
 //     PUT /orders/{id} (backend/src/orders/update.ts) sends the "paid" mail on pending → paid. The handler
 //     sends no mail when SES_FROM_EMAIL is absent, and SES refuses the send without ses:SendEmail. These
@@ -1138,11 +1180,12 @@ describe('UpdateOrderFunc — PAY-1 paid-mail wiring', () => {
 //     integrations retargeted in place to the moved functions via a cross-stack Fn::GetAtt.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety invariant)', () => {
-    // The 17 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
-    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 6 (the 4th,
+    // The 19 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
+    // counted, so a dropped or renamed route fails by NAME. content 6 + redirects 2 (REDIRECT-1, one function each)
+    // + products 5 + import 6 (the 4th,
     // POST /import/glam-pricelist, added by CAT-IMPORT-1 with its function in CatalogApi; the 5th,
     // POST /import/glam-pricelist/images, added by CAT-IMAGES-1 on the SAME function; the 6th,
-    // POST /import/upload-url, added by MIGRATION-UPLOAD-1 with its own function — 16 functions, 17 routes).
+    // POST /import/upload-url, added by MIGRATION-UPLOAD-1 with its own function — 18 functions, 19 routes).
     const CATALOG_ROUTE_KEYS = [
         'POST /content',
         'GET /content',
@@ -1150,6 +1193,8 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         'PUT /content/{id}',
         'GET /content/{id}/versions',
         'POST /content/{id}/restore',
+        'POST /redirects',
+        'DELETE /redirects',
         'POST /products',
         'GET /products',
         'GET /products/{id}',
@@ -1163,13 +1208,13 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         'POST /import/upload-url',
     ];
 
-    test('(split1-1) CatalogApi holds EXACTLY the 16 catalog Lambda functions', () => {
+    test('(split1-1) CatalogApi holds EXACTLY the 18 catalog Lambda functions', () => {
         // The heavy resources that moved out of the parent template to buy headroom under the 500
-        // ceiling. Exactly 16 — content 6 + products 5 + import 5 (CAT-IMPORT-1 added the glam
+        // ceiling. Exactly 18 — content 6 + redirects 2 (REDIRECT-1) + products 5 + import 5 (CAT-IMPORT-1 added the glam
         // pricelist import; CAT-IMAGES-1 added a ROUTE to that function, no function; MIGRATION-UPLOAD-1
-        // added MigrationUploadUrlFunc) — so a stray function moved in (count > 16) or one left behind
-        // re-inflating the parent (count < 16) both fail here.
-        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(16);
+        // added MigrationUploadUrlFunc) — so a stray function moved in (count > 18) or one left behind
+        // re-inflating the parent (count < 18) both fail here.
+        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(18);
     });
 
     test('(cat-import-1) POST /import/glam-pricelist integrates GlamPricelistImportFunc, whose timeout ≤ the 15-min import lock', () => {
@@ -1244,7 +1289,7 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         expect(catalogTemplate.findResources('AWS::Cognito::UserPool')).toEqual({});
     });
 
-    test('(split1-4) the PARENT keeps all 16 catalog route keys, each wired INTO a CatalogApi function', () => {
+    test('(split1-4) the PARENT keeps all 19 catalog route keys, each wired INTO a CatalogApi function', () => {
         // Both halves of the v2 fix, together: (a) every catalog route key is still in the PARENT
         // template with its key unchanged — no collision on redeploy — and (b) each of those routes
         // now integrates a function that lives in the CatalogApi NestedStack. (b) is what proves the
