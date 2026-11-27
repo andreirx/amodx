@@ -4,8 +4,10 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. `redirect-1` is on staging since 2026-11-27 (`docs/slices/redirect-1.md` § "Closeout") and waits for the
-human's production deploy. Next in the order of work: `stay-1` part A.
+Nothing. `stay-1` part A is on staging since 2026-11-27 (`docs/slices/stay-1.md` § "Closeout (STAY-1A)") and waits
+for the human's production deploy. Next in the order of work: `lead-normalize-1`.
+`redirect-1` is on staging since 2026-11-27 (`docs/slices/redirect-1.md` § "Closeout") and waits for the
+human's production deploy.
 `gallery-1` is on staging since 2026-11-27 (`docs/slices/gallery-1.md` § "Closeout") and waits for the human's
 production deploy. The order of work is in `docs/ROADMAP.md`, "Order of work from 2026-11-27" (after `redirect-1`:
 `stay-1` part A).

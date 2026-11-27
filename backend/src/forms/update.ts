@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
-import { INTEREST_FORM_ID } from "@amodx/shared";
+import { INTEREST_FORM_ID, formFieldsOf, resolveFormDateOrder } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -71,6 +71,13 @@ const _handler: Handler = async (event) => {
             createdAt: existing.Item.createdAt,
             updatedAt: new Date().toISOString(),
         };
+
+        // STAY-1A: `dateOrder: null` removes the pair rule. The rule kept or sent must name two different date fields of
+        // the MERGED form (a new field list can drop a field the stored rule names), read as the submit handler reads them.
+        if (merged.dateOrder === null) delete merged.dateOrder;
+        const order = resolveFormDateOrder(formFieldsOf(merged.fields), merged.dateOrder);
+        if (!order.ok) return { statusCode: 400, body: JSON.stringify({ error: order.error }) };
+        if (order.value !== null) merged.dateOrder = { earlier: order.value.earlier.id, later: order.value.later.id };
 
         if (slugChanged) {
             // Transactional write: update form + delete old slug + create new slug

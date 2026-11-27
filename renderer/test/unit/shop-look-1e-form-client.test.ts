@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { createElement, act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { resolveLocaleStrings } from "@amodx/shared";
 import { RENDER_LOADERS } from "@amodx/plugins/render";
 
@@ -131,5 +132,83 @@ describe("the answer", () => {
         await submit();
         await flush();
         expect(host.querySelector("p.text-destructive")!.textContent).toBe(STRINGS.formSubmissionFailed);
+    });
+});
+
+// STAY-1A (docs/slices/stay-1.md § 2, Build record; ruling 7): the `date` field. A native date input with its label and
+// `required`; `min` is a hint only, set after hydration (`min: "today"` = the visitor's local today) and, for the later
+// field of the pair rule, the day after the earlier value. The value is sent as the input's own text.
+describe("STAY-1A — a date field", () => {
+    const STAY = [
+        { id: "f-arr", label: "Arrival", type: "date", required: true, min: "today" },
+        { id: "f-dep", label: "Departure", type: "date", required: false },
+    ];
+    const stayAttrs = (over: Record<string, unknown> = {}) => attrs({ slug: "stay", fields: STAY, dateOrder: { earlier: "f-arr", later: "f-dep" }, ...over });
+    afterEach(() => vi.useRealTimers());
+
+    it("a native <input type=date>, tied to its label, required when the field is", () => {
+        mount(stayAttrs());
+        const arrival = control("f-arr");
+        expect(arrival.tagName).toBe("INPUT");
+        expect(arrival.type).toBe("date");
+        expect(arrival.required).toBe(true);
+        expect(host.querySelector(`label[for="${arrival.id}"]`)!.textContent).toBe("Arrival*");
+        expect(control("f-dep").required).toBe(false);
+    });
+
+    it("min: today → the visitor's local date after mount; a field without min: no min", () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 10, 27, 23, 30)); // local 2026-11-27 23:30, whatever the process zone
+        mount(stayAttrs({ dateOrder: undefined }));
+        expect(control("f-arr").min).toBe("2026-11-27");
+        expect(control("f-dep").hasAttribute("min")).toBe(false);
+    });
+
+    it("the later field's min follows the earlier value: the day after it", () => {
+        mount(stayAttrs());
+        type(control("f-arr"), "2026-12-31");
+        expect(control("f-dep").min).toBe("2027-01-01");
+        type(control("f-arr"), "");
+        expect(control("f-dep").hasAttribute("min")).toBe(false);
+    });
+
+    it("F-STAY1A-YEAR-REMAP: the day after 0099-12-31 is 0100-01-01 (not 2000-01-01); after 9999-12-31 no min", () => {
+        mount(stayAttrs());
+        type(control("f-arr"), "0099-12-31");
+        expect(control("f-dep").min).toBe("0100-01-01");
+        type(control("f-arr"), "0004-02-28");
+        expect(control("f-dep").min).toBe("0004-02-29");
+        type(control("f-arr"), "9999-12-31");
+        expect(control("f-dep").hasAttribute("min")).toBe(false);
+    });
+
+    it("server HTML has no min (no clock read during render); hydration reports no mismatch; min appears after it", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 10, 27, 12, 0));
+        const element = createElement(FormBlock, { attrs: stayAttrs(), tenantId: "t1", strings: {} });
+        const html = renderToString(element);
+        expect(html).toContain('type="date"');
+        expect(html).not.toContain("min=");
+        host = document.createElement("div");
+        host.innerHTML = html;
+        document.body.appendChild(host);
+        const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+        const recoverable: unknown[] = [];
+        await act(async () => { root = hydrateRoot(host, element, { onRecoverableError: (e) => recoverable.push(e) }); });
+        expect(recoverable).toEqual([]);
+        expect(errors).not.toHaveBeenCalled();
+        errors.mockRestore();
+        expect(control("f-arr").min).toBe("2026-11-27");
+    });
+
+    it("the request: the date values as the inputs' texts, keyed by label; an empty optional date sends \"\"", async () => {
+        const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+        vi.stubGlobal("fetch", fetchMock);
+        mount(stayAttrs());
+        type(control("f-arr"), "2026-12-20");
+        await submit();
+        await flush();
+        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(JSON.parse(String(init.body)).data).toEqual({ Arrival: "2026-12-20", Departure: "" });
     });
 });

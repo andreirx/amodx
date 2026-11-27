@@ -19,7 +19,7 @@ vi.mock("react", async (importOriginal) => {
     return { ...React, default: { ...React, useState }, useState };
 });
 
-import FormSubmissions, { fieldHeader, interestItemRows, isMissingSystemForm, submissionsBackTarget } from "./FormSubmissions";
+import FormSubmissions, { fieldHeader, interestItemRows, isMissingSystemForm, submissionsBackTarget, submissionValueText } from "./FormSubmissions";
 
 /**
  * CAT-INTEREST-1 — the submissions page's pure parts (slice docs/slices/cat-interest-1.md § 2.7; spec
@@ -124,5 +124,22 @@ describe("CDL-1 § 6.2 — fieldHeader: fixed English headers for the interest-l
 
     it("any other form → its stored labels, as today", () => {
         expect(ROMANIAN.map((f) => fieldHeader("contact-form", f))).toEqual(["Nume", "E-mail", "Telefon", "Mesaj", "Produse"]);
+    });
+});
+
+// STAY-1A (docs/slices/stay-1.md § 2, Build record): a date value in the site's locale, from the stored text.
+describe("submissionValueText — a date in the site's locale; every other value as before", () => {
+    it("a date field: ro-RO 27.11.2026, en-US 11/27/2026, no locale → en-US", () => {
+        expect(submissionValueText({ type: "date" }, "2026-11-27", "ro-RO")).toBe("27.11.2026");
+        expect(submissionValueText({ type: "date" }, "2026-11-27", "en-US")).toBe("11/27/2026");
+        expect(submissionValueText({ type: "date" }, "2026-01-01", undefined)).toBe("01/01/2026");
+        // F-STAY1A-YEAR-REMAP: the four-digit year is kept.
+        expect(submissionValueText({ type: "date" }, "0099-12-31", "ro-RO")).toBe("31.12.0099");
+    });
+    it("a blank date stays blank; other types are String() of the value", () => {
+        expect(submissionValueText({ type: "date" }, "", "ro-RO")).toBe("");
+        expect(submissionValueText({ type: "text" }, "2026-11-27", "ro-RO")).toBe("2026-11-27");
+        expect(submissionValueText({ type: "number" }, 3, "ro-RO")).toBe("3");
+        expect(submissionValueText({ type: "checkbox" }, true, "ro-RO")).toBe("true");
     });
 });

@@ -17,7 +17,9 @@ src/
                       #   not current and the refused spec lines — the tool sends no profileChoice, so the
                       #   server applies the producer's stored profile; it cannot change one; CDL-1: optional
                       #   `labels` "site" | "file" → request member `labels`; the summary prints the label set
-                      #   used with its four labels and the other lists that hold other labels)
+                      #   used with its four labels and the other lists that hold other labels); STAY-1A:
+                      #   create_form / update_form body (`formBody`) and their field / pair-rule descriptions
+                      #   (the test binds the listed field types to the shared FormFieldSchema)
                       #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
 
 scripts/
@@ -113,9 +115,9 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `list_popups` | GET /popups | List popups |
 | `list_forms` | GET /forms | List forms |
 | `get_form_submissions` | GET /forms/{id}/submissions | Read submissions of a form |
-| `create_form` | POST /forms | Create form (slug unique per tenant) |
+| `create_form` | POST /forms | Create form (slug unique per tenant). STAY-1A: field type `date` with `min: "today"`; `date_order` JSON `{earlier, later}` (the pair rule) |
 | `get_form` | GET /forms/{id} | Read one form |
-| `update_form` | PUT /forms/{id} | Update form (sent keys only) |
+| `update_form` | PUT /forms/{id} | Update form (sent keys only); `date_order` `null` removes the pair rule |
 | `delete_form` | DELETE /forms/{id} | Delete form + slug (submissions kept) |
 | `create_popup` | POST /popups | Create popup (default `disabled`) |
 | `get_popup` | GET /popups/{id} | Read one popup |

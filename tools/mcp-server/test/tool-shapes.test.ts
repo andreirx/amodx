@@ -5,7 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE } from "../src/tool-shapes.ts";
+import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE, FORM_FIELDS_DESCRIPTION, FORM_DATE_ORDER_DESCRIPTION, formBody } from "../src/tool-shapes.ts";
+// STAY-1A: the shared form schemas, imported as source (test-only), so the form tools' description cannot drift.
+import { FormFieldSchema, FormDefinitionSchema } from "../../../packages/shared/src/index.ts";
 // packages/plugins has no "type": "module", so its source loads as CommonJS here: the module object, then its exports.
 import galleryPluginSchema from "../../../packages/plugins/src/gallery/schema.ts";
 const { GalleryBlockSchema, GalleryItemSchema } = galleryPluginSchema;
@@ -210,4 +212,41 @@ test("gallery is registered in index.ts: BLOCK_SCHEMAS holds the shape and add_b
     assert.match(src, /\n    gallery: GALLERY_BLOCK_SHAPE,\n/);
     const addBlock = src.slice(src.indexOf('"add_block"'), src.indexOf("async ({ tenant_id, page_id, type, attrs, content_text })"));
     assert.match(addBlock, /type: z\.enum\(\[[^\]]*"gallery"[^\]]*\]\)/);
+});
+
+// STAY-1A (docs/slices/stay-1.md § 2, ruling 10): the form tools accept the date field and the pair rule.
+test("form tools: the described field types are exactly the shared FormFieldSchema's, date included; min and the pair rule are described", () => {
+    const described = FORM_FIELDS_DESCRIPTION.match(/type \(([^)]*)\)/)![1].split("|").map((t) => t.replace(/'/g, ""));
+    assert.deepEqual(described, FormFieldSchema.shape.type.options);
+    assert.ok(described.includes("date"));
+    assert.match(FORM_FIELDS_DESCRIPTION, /min\? \('today'/);
+    assert.match(FORM_DATE_ORDER_DESCRIPTION, /"earlier"/);
+    assert.match(FORM_DATE_ORDER_DESCRIPTION, /null to remove/);
+});
+
+test("form tools: the body carries a date field with min and dateOrder as given; the body parses as a form definition", () => {
+    const fields = [
+        { id: "f-arr", label: "Arrival", type: "date", required: true, min: "today" },
+        { id: "f-dep", label: "Departure", type: "date", required: false },
+    ];
+    const body = formBody({ name: "Request a stay", slug: "stay" }, fields, { earlier: "f-arr", later: "f-dep" });
+    assert.deepEqual(body, { name: "Request a stay", slug: "stay", fields, dateOrder: { earlier: "f-arr", later: "f-dep" } });
+    const parsed = FormDefinitionSchema.parse({ id: "x", tenantId: "t", createdAt: "x", updatedAt: "x", ...body });
+    assert.equal(parsed.fields[0].min, "today");
+    assert.deepEqual(parsed.dateOrder, { earlier: "f-arr", later: "f-dep" });
+});
+
+test("form tools: dateOrder null is sent (removes the rule); absent → no key; absent optional args → no keys", () => {
+    assert.deepEqual(formBody({ name: "F" }, undefined, null), { name: "F", dateOrder: null });
+    assert.deepEqual(formBody({ status: "active" }), { status: "active" });
+});
+
+test("create_form and update_form take date_order and build their body with formBody (source check: index.ts starts the server on import)", () => {
+    const src = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+    const input = src.slice(src.indexOf("const FormInput = z.object({"), src.indexOf('server.tool("create_form",'));
+    assert.match(input, /fields: z\.string\(\)\.optional\(\)\.describe\(FORM_FIELDS_DESCRIPTION\)/);
+    assert.match(input, /date_order: z\.string\(\)\.optional\(\)\.describe\(FORM_DATE_ORDER_DESCRIPTION\)/);
+    assert.match(input, /return \{ ok: true, value: formBody\(a, fields, dateOrder\) \};/);
+    assert.match(src, /"create_form",[\s\S]*?\.\.\.FormInput\.shape/);
+    assert.match(src, /"update_form",[\s\S]*?\.\.\.FormInput\.shape/);
 });

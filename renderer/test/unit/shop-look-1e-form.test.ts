@@ -226,3 +226,27 @@ describe("no other block changes", () => {
         expect([withForm[0], withForm[2]]).toEqual(without);
     });
 });
+
+// STAY-1A (docs/slices/stay-1.md § 2, Build record): a form with date fields. The fields keep their `min`; `_form` gets
+// `dateOrder` only when the stored pair rule names two date fields of the form (a client hint), else no key.
+describe("STAY-1A — date fields and the pair rule in `_form`", () => {
+    const STAY = [
+        { id: "a", label: "Arrival", type: "date", required: true, min: "today" },
+        { id: "d", label: "Departure", type: "date", required: false },
+        { id: "r", label: "Room", type: "text", required: true },
+    ];
+
+    it("a valid rule → `_form.dateOrder` = its two ids; the date fields as stored", async () => {
+        store.items = [];
+        storeForm("t1", "contact", "form-1", { fields: STAY, dateOrder: { earlier: "a", later: "d" } });
+        const { blocks } = await prepared([FORM()]);
+        expect(blocks[0].attrs._form).toEqual({ slug: "contact", name: "Form form-1", fields: STAY, submitButtonText: "Send", successMessage: "Thanks!", strings: EN_TEXTS, dateOrder: { earlier: "a", later: "d" } });
+    });
+
+    it("a stored rule that does not resolve (names a text field) → no dateOrder key", async () => {
+        store.items = [];
+        storeForm("t1", "contact", "form-1", { fields: STAY, dateOrder: { earlier: "a", later: "r" } });
+        const { blocks } = await prepared([FORM()]);
+        expect(Object.hasOwn(blocks[0].attrs._form, "dateOrder")).toBe(false);
+    });
+});

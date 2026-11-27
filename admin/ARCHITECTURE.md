@@ -164,7 +164,16 @@ src/
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
     ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6); MIGRATION-UPLOAD-1: the media and pages steps upload through lib/migrationUpload.ts (never /assets); the pages step drops its key after a complete import and on a 404
-    ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists" and (CDL-1) shows fixed English column headers by field id (`fieldHeader`)
+    ├── FormEditor.tsx          # One form: details and the field list. STAY-1A: the picker (`FIELD_TYPES` from a
+    │                           #   Record over the shared FormFieldType — a new type without a label fails the
+    │                           #   compile) offers Date; a date field has "Not before today" (min "today"); the
+    │                           #   "Date Order" card (pair rule) shows only with two or more date fields;
+    │                           #   `dateOrderToSave` (pure): fewer than two date fields → no rule, one picker set → an
+    │                           #   alert; the save sends the rule, null to remove one the form had, else no key.
+    │                           #   One editor stays mounted across /forms/:id: the rule state resets at each id
+    │                           #   change, every loaded form sets it (dateOrderStateOf), a late answer for a form no
+    │                           #   longer on screen is ignored (F-STAY1A-EDITOR-RULE-LEAK)
+    ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists" and (CDL-1) shows fixed English column headers by field id (`fieldHeader`). STAY-1A: a date value in the tenant locale (`submissionValueText` → shared formatFormDate)
     ├── OrderDetail.tsx         # One order: items, totals, customer, payment, status, tracking, history. PAY-1: the
     │                           #   Payment card offers "Mark as paid" (pending, or field absent) or "Mark as refunded"
     │                           #   (paid), none for refunded/null/other (paymentAction); confirm() (the text promises

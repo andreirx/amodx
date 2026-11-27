@@ -2617,15 +2617,44 @@ export type Popup = z.infer<typeof PopupSchema>;
 
 // --- FORMS ---
 
+// STAY-1A (docs/slices/stay-1.md § 2): the field types are a closed set. Every `switch` over `type` ends in a `never`
+// check, so a new type is a compile error at each site that must decide what it does (Build record: the site list).
 export const FormFieldSchema = z.object({
     id: z.string(),
     label: z.string(),
-    type: z.enum(["text", "email", "phone", "textarea", "select", "checkbox", "number"]),
+    type: z.enum(["text", "email", "phone", "textarea", "select", "checkbox", "number", "date"]),
     required: z.boolean().default(false),
     placeholder: z.string().optional(),
     options: z.array(z.string()).optional(), // for select type
+    // STAY-1A: for date type. "today" = a date before the site's today is refused (`earliestFormDate`). Absent = no limit.
+    min: z.literal("today").optional(),
 });
 export type FormField = z.infer<typeof FormFieldSchema>;
+export type FormFieldType = FormField["type"];
+
+/**
+ * The stored form's entries that are fields (`FormFieldSchema`), one per label: labels are the submission's keys, so
+ * the FIRST field of a label defines it and a later field of the same label is not part of the submission (finding
+ * F-1E-DUPLICATE-LABEL). An entry that is not a field is skipped. One rule for the submit handler (which fields it
+ * reads), the renderer (which fields the page shows) and the save handlers (which fields a pair rule may name).
+ */
+export function formFieldsOf(stored: unknown): FormField[] {
+    const seen = new Set<string>();
+    const out: FormField[] = [];
+    for (const entry of Array.isArray(stored) ? stored : []) {
+        const parsed = FormFieldSchema.safeParse(entry);
+        if (!parsed.success || seen.has(parsed.data.label)) continue;
+        seen.add(parsed.data.label);
+        out.push(parsed.data);
+    }
+    return out;
+}
+
+export {
+    FormDateOrderSchema, resolveFormDateOrder, earliestFormDate, formatFormDate, isFormDate,
+    type FormDateOrder, type FormDatePair,
+} from "./form-date.js";
+import { FormDateOrderSchema } from "./form-date.js";
 
 export const FormDefinitionSchema = z.object({
     id: z.string(),
@@ -2633,6 +2662,8 @@ export const FormDefinitionSchema = z.object({
     name: z.string().min(1),
     slug: z.string().min(1),
     fields: z.array(FormFieldSchema).default([]),
+    // STAY-1A: optional pair rule "the date of field `later` is later than the date of field `earlier`".
+    dateOrder: FormDateOrderSchema.optional(),
     submitButtonText: z.string().default("Submit"),
     successMessage: z.string().default("Thank you! Your submission has been received."),
     notifyEmail: z.string().optional(),    // email to notify on submission

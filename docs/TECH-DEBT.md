@@ -1647,3 +1647,17 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
 - **Romanian, German and French viewer texts are proposed by the builder**, not yet approved by a reader of each language.
 - **No measured photo size from the editor:** media assets hold no width/height, so a photo added in the editor has no
   sizes (the 4:3 tile keeps its space; the viewer's photo gets its shape when it loads). Tools may write the sizes.
+
+## stay-1 part A residuals (2026-11-27)
+
+`docs/slices/stay-1.md` § "Build record (STAY-1A)" → *Findings and deferred debt*:
+- **F-STAY1A-ZONE-SOURCE.** "Today" of a `min: "today"` date field uses `scheduling.timezone`, the only stored zone; a
+  tenant without it gets the UTC date − 1 day (a visitor may choose yesterday). No site-level zone setting exists.
+- **F-STAY1A-ERROR-LANGUAGE (pre-existing pattern).** Form submit refusals are English texts and `DynamicForm` shows them
+  as sent, on every site language. Fix = refusal codes in the answer + texts in the locale table (own slice).
+- **Date field "Placeholder" input** is still shown in the admin form editor; a date input ignores it.
+- **Stale entry above (line 334):** `public-submit.ts` does send the notification mail; that entry was not edited.
+- **F-STAY1A-EDITOR-NEW-KEEPS (pre-existing, INFERRED).** The mounted form editor moved to `/forms/new` (history
+  navigation) keeps the previous form's name, slug and fields; a save creates a copy. The pair-rule state is reset.
+- **`zoned-time.ts` `isLocalDate` refuses years 0000-0099** (`Date.UTC` reads 0-99 as 19xx); scheduling only, no known
+  effect. Forms use `isFormDate` (no such limit).

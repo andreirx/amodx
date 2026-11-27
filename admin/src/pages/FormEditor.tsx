@@ -9,25 +9,71 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ArrowLeft, Save, Plus, X, GripVertical, Trash2 } from "lucide-react";
+import { resolveFormDateOrder, type FormDateOrder, type FormFieldType } from "@amodx/shared";
 
 type FormField = {
     id: string;
     label: string;
-    type: string;
+    type: FormFieldType;
     required: boolean;
     placeholder: string;
     options: string[];
+    /** STAY-1A: date fields only. "today" = the visitor may not choose a date before today. */
+    min?: "today";
 };
 
-const FIELD_TYPES = [
-    { value: "text", label: "Text" },
-    { value: "email", label: "Email" },
-    { value: "phone", label: "Phone" },
-    { value: "textarea", label: "Textarea" },
-    { value: "select", label: "Select" },
-    { value: "checkbox", label: "Checkbox" },
-    { value: "number", label: "Number" },
-];
+/**
+ * The field picker, in this order. STAY-1A: keyed by the shared type, so a field type added to `FormFieldSchema`
+ * without a label here is a compile error.
+ */
+const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
+    text: "Text",
+    email: "Email",
+    phone: "Phone",
+    textarea: "Textarea",
+    select: "Select",
+    checkbox: "Checkbox",
+    number: "Number",
+    date: "Date",
+};
+export const FIELD_TYPES = Object.entries(FIELD_TYPE_LABELS).map(([value, label]) => ({ value: value as FormFieldType, label }));
+
+/** STAY-1A: the pair-rule pickers' state: the two picked ids, and whether the loaded form had a rule. */
+type DateOrderState = { draft: { earlier: string | null; later: string | null }; had: boolean };
+const NO_DATE_ORDER: DateOrderState = { draft: { earlier: null, later: null }, had: false };
+
+/**
+ * STAY-1A (finding F-STAY1A-EDITOR-RULE-LEAK): the pickers' state from a loaded form's stored `dateOrder` — the rule's
+ * two ids, or none. Applied to EVERY loaded form, so a form without a rule never shows or saves another form's. Pure.
+ */
+export function dateOrderStateOf(stored: unknown): DateOrderState {
+    if (typeof stored !== "object" || stored === null) return NO_DATE_ORDER;
+    const { earlier, later } = stored as Record<string, unknown>;
+    return typeof earlier === "string" && typeof later === "string" ? { draft: { earlier, later }, had: true } : NO_DATE_ORDER;
+}
+
+/** STAY-1A: the pair-rule pickers' value for "no field" (a Radix select item cannot have the value ""). */
+const NO_FIELD = "__none__";
+
+/**
+ * STAY-1A (docs/slices/stay-1.md § 2, ruling 5): the pair rule the editor saves, from the two pickers. Fewer than two
+ * date fields → no rule (`null`): the pickers are not shown, so nothing hidden can stop the save. A picked id that is
+ * no longer a date field of `fields` counts as not picked (the picker shows "None" for it). Neither picked → no rule;
+ * one picked → an error; both → the shared rule check (two different date fields). Pure.
+ */
+export function dateOrderToSave(
+    fields: FormField[], draft: { earlier: string | null; later: string | null },
+): { ok: true; value: FormDateOrder | null } | { ok: false; error: string } {
+    if (fields.filter((f) => f.type === "date").length < 2) return { ok: true, value: null };
+    const isDate = (id: string | null) => id !== null && fields.some((f) => f.id === id && f.type === "date");
+    const earlier = isDate(draft.earlier) ? draft.earlier : null;
+    const later = isDate(draft.later) ? draft.later : null;
+    if (earlier === null && later === null) return { ok: true, value: null };
+    if (earlier === null || later === null) return { ok: false, error: "Date order: choose both dates, or None for both." };
+    const resolved = resolveFormDateOrder(fields, { earlier, later });
+    if (!resolved.ok) return { ok: false, error: "Date order: choose two different date fields." };
+    return { ok: true, value: { earlier, later } };
+}
 
 function slugify(text: string): string {
     return text
@@ -58,14 +104,25 @@ export default function FormEditor() {
     });
 
     const [fields, setFields] = useState<FormField[]>([]);
+    // STAY-1A: the pair rule's two pickers, and whether the loaded form had a rule (then a save without one sends null).
+    const [dateOrder, setDateOrder] = useState(NO_DATE_ORDER.draft);
+    const [hadDateOrder, setHadDateOrder] = useState(NO_DATE_ORDER.had);
+    const dateFields = fields.filter((f) => f.type === "date");
 
+    // STAY-1A (F-STAY1A-EDITOR-RULE-LEAK): one editor stays mounted across `/forms/:id` changes. The rule state resets at
+    // each change of the form, and a load's answer is applied only while it is still the current form's (`current()`).
     useEffect(() => {
-        if (currentTenant && !isNew && id) loadForm();
+        let current = true;
+        setDateOrder(NO_DATE_ORDER.draft);
+        setHadDateOrder(NO_DATE_ORDER.had);
+        if (currentTenant && !isNew && id) loadForm(() => current);
+        return () => { current = false; };
     }, [id, currentTenant?.id]);
 
-    async function loadForm() {
+    async function loadForm(current: () => boolean) {
         try {
             const data = await apiRequest(`/forms/${id}`);
+            if (!current()) return;
             setForm({
                 name: data.name || "",
                 slug: data.slug || "",
@@ -82,14 +139,19 @@ export default function FormEditor() {
                     required: f.required || false,
                     placeholder: f.placeholder || "",
                     options: f.options || [],
+                    ...(f.min === "today" ? { min: "today" as const } : {}),
                 }))
             );
+            const loaded = dateOrderStateOf(data.dateOrder);
+            setDateOrder(loaded.draft);
+            setHadDateOrder(loaded.had);
             setSlugTouched(true);
         } catch (e) {
+            if (!current()) return;
             alert("Failed to load form");
             navigate("/forms");
         } finally {
-            setLoading(false);
+            if (current()) setLoading(false);
         }
     }
 
@@ -135,9 +197,17 @@ export default function FormEditor() {
             return;
         }
 
+        const order = dateOrderToSave(fields, dateOrder);
+        if (!order.ok) {
+            alert(order.error);
+            return;
+        }
+
         const payload = {
             ...form,
             fields,
+            // STAY-1A: the rule when set; null removes a rule the form had; nothing sent for a form that never had one.
+            ...(order.value !== null ? { dateOrder: order.value } : hadDateOrder ? { dateOrder: null } : {}),
         };
 
         setSaving(true);
@@ -317,7 +387,7 @@ export default function FormEditor() {
                                             <Label className="text-xs">Type</Label>
                                             <Select
                                                 value={field.type}
-                                                onValueChange={v => updateField(field.id, { type: v })}
+                                                onValueChange={v => updateField(field.id, { type: v as FormFieldType, ...(v !== "date" ? { min: undefined } : {}) })}
                                             >
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
@@ -349,6 +419,17 @@ export default function FormEditor() {
                                             />
                                             Required
                                         </label>
+                                        {field.type === "date" && (
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={field.min === "today"}
+                                                    onChange={e => updateField(field.id, { min: e.target.checked ? "today" : undefined })}
+                                                    className="rounded border-border"
+                                                />
+                                                Not before today
+                                            </label>
+                                        )}
                                     </div>
 
                                     {field.type === "select" && (
@@ -369,6 +450,37 @@ export default function FormEditor() {
                             ))}
                         </CardContent>
                     </Card>
+
+                    {/* STAY-1A: the pair rule, offered only when the form has two or more date fields. */}
+                    {dateFields.length >= 2 && (
+                        <Card>
+                            <CardHeader><CardTitle>Date Order</CardTitle></CardHeader>
+                            <CardContent className="space-y-4">
+                                <p className="text-sm text-muted-foreground">
+                                    The later date must be after the earlier date (for example, departure after arrival). Checked when both are filled in.
+                                </p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    {(["earlier", "later"] as const).map(side => (
+                                        <div key={side} className="space-y-2">
+                                            <Label>{side === "earlier" ? "Earlier date" : "Later date"}</Label>
+                                            <Select
+                                                value={dateFields.some(f => f.id === dateOrder[side]) ? dateOrder[side]! : NO_FIELD}
+                                                onValueChange={v => setDateOrder(prev => ({ ...prev, [side]: v === NO_FIELD ? null : v }))}
+                                            >
+                                                <SelectTrigger aria-label={side === "earlier" ? "Earlier date" : "Later date"}><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value={NO_FIELD}>None</SelectItem>
+                                                    {dateFields.map(f => (
+                                                        <SelectItem key={f.id} value={f.id}>{f.label || "(no label)"}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </main>
         </div>

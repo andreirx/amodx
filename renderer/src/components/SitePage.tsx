@@ -23,7 +23,7 @@ import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { localeInputFor } from "@/lib/site-segment";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, newsletterTexts, galleryTexts, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, formFieldsOf, resolveFormDateOrder, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, newsletterTexts, galleryTexts, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -868,18 +868,14 @@ async function withShowcaseCardData(attrs: any, products: any[], config: any): P
  * `getFormBySlug` read (an active form of this tenant) — never the stored item, which also holds the owner's notify
  * address and the keys. `fields`: the stored entries that are fields (`FormFieldSchema`), the first field of each label
  * only — the rule of the submit handler (`backend/src/forms/public-submit.ts` `formFields`), so the page shows exactly
- * the fields the handler reads. `strings`: the four form texts of the tenant's locale table (three of them are not
- * block keys, so `strings` of RenderBlocks does not hold them).
+ * the fields the handler reads (STAY-1A: one shared rule, `formFieldsOf`). `strings`: the four form texts of the tenant's
+ * locale table (three of them are not block keys, so `strings` of RenderBlocks does not hold them). `dateOrder`
+ * (STAY-1A): the pair rule's two field ids, only when it resolves against `fields`; absent otherwise, so a form without
+ * a rule gives the same `_form` as before.
  */
 function formForBlock(form: Record<string, any>, slug: string, site: LocaleStrings["site"]) {
-    const seen = new Set<string>();
-    const fields: FormField[] = [];
-    for (const entry of Array.isArray(form.fields) ? form.fields : []) {
-        const parsed = FormFieldSchema.safeParse(entry);
-        if (!parsed.success || seen.has(parsed.data.label)) continue;
-        seen.add(parsed.data.label);
-        fields.push(parsed.data);
-    }
+    const fields = formFieldsOf(form.fields);
+    const order = resolveFormDateOrder(fields, form.dateOrder);
     return {
         slug,
         name: typeof form.name === "string" ? form.name : "",
@@ -890,6 +886,7 @@ function formForBlock(form: Record<string, any>, slug: string, site: LocaleStrin
             formSubmissionFailed: site.formSubmissionFailed, formErrorShort: site.formErrorShort,
             formSelectPlaceholder: site.formSelectPlaceholder, formSubmitting: site.formSubmitting,
         },
+        ...(order.ok && order.value !== null ? { dateOrder: { earlier: order.value.earlier.id, later: order.value.later.id } } : {}),
     };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
-import { INTEREST_FORM_ID } from "@amodx/shared";
+import { INTEREST_FORM_ID, formatFormDate } from "@amodx/shared";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -68,6 +68,15 @@ export function submissionsBackTarget(formId: string, hasInAppHistory: boolean):
  */
 export function isMissingSystemForm(formId: string, error: unknown): boolean {
     return formId === INTEREST_FORM_ID && error instanceof Error && error.message.startsWith("API Error (404)");
+}
+
+/**
+ * STAY-1A (docs/slices/stay-1.md § 2, Build record): a stored value as its cell text. A `date` field's value (the text
+ * `YYYY-MM-DD`) in the site's locale (`formatFormDate`: from the text, no local-time Date, so no day shift); every other
+ * value with String(), as before. Pure.
+ */
+export function submissionValueText(field: { type: string }, value: unknown, locale: unknown): string {
+    return field.type === "date" && typeof value === "string" ? formatFormDate(value, locale) : String(value);
 }
 
 export default function FormSubmissions() {
@@ -191,9 +200,9 @@ export default function FormSubmissions() {
                                                 {data[field.id] !== undefined
                                                     ? field.type === "checkbox"
                                                         ? data[field.id] ? "Yes" : "No"
-                                                        : String(data[field.id])
+                                                        : submissionValueText(field, data[field.id], currentTenant.locale)
                                                     : (data[field.label] !== undefined
-                                                        ? String(data[field.label])
+                                                        ? submissionValueText(field, data[field.label], currentTenant.locale)
                                                         : "-"
                                                     )
                                                 }

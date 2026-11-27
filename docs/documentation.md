@@ -104,6 +104,7 @@ Prefixes:
 - `rev-` — reviews-with-images import (Track REV; plan `docs/plan-reviews-import.md`)
 - `test-` — test estate characterization & gap-filling (Track TEST)
 - `redirect-` — redirects from old addresses (content-site gaps; first slice `redirect-1`)
+- `stay-` — booking requests for a stay by a stored form (content-site gaps; first slice `stay-1`, part A)
 
 Sub-slices use a letter suffix when one slice splits: `auth-2a-...`, `auth-2b-...`.
 

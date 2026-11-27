@@ -5,7 +5,7 @@ import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { formatFromHeader } from "../lib/email-from.js";
-import { FormFieldSchema, type FormField } from "@amodx/shared";
+import { formFieldsOf, resolveFormDateOrder, earliestFormDate, formatFormDate, isFormDate, type FormField, type LocalDate } from "@amodx/shared";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -31,23 +31,6 @@ const ownValue = (o: Record<string, unknown>, key: string): unknown => (Object.p
 /** CR and LF removed (mail header injection), then trimmed. */
 const cleanEmail = (raw: string): string => raw.replace(/[\r\n]/g, "").trim();
 const isEmail = (v: string): boolean => v.length <= MAX_TEXT && EMAIL_PATTERN.test(v);
-
-/**
- * The stored form's fields that are fields (`FormFieldSchema`), one per label: labels are the submission's keys, so the
- * FIRST field of a label defines it and a later field of the same label is not part of the submission (finding
- * F-1E-DUPLICATE-LABEL). The handler does not validate stored forms, so a stored entry that is not a field is skipped.
- */
-function formFields(stored: unknown): FormField[] {
-    const seen = new Set<string>();
-    const out: FormField[] = [];
-    for (const entry of Array.isArray(stored) ? stored : []) {
-        const parsed = FormFieldSchema.safeParse(entry);
-        if (!parsed.success || seen.has(parsed.data.label)) continue;
-        seen.add(parsed.data.label);
-        out.push(parsed.data);
-    }
-    return out;
-}
 
 /**
  * FORM-SUBMIT-2 (finding A): the result of cleaning one value. A refusal is a separate variant, so no field value (a
@@ -88,6 +71,11 @@ function cleanValue(field: FormField, raw: unknown): CleanedValue {
         case "select":
             if (raw === undefined || raw === "") return accepted("");
             return typeof raw === "string" && (field.options ?? []).includes(raw) ? accepted(raw) : INVALID;
+        case "date":
+            // STAY-1A: exactly the text `YYYY-MM-DD` of a real calendar date, year 0000-9999 (`isFormDate`), kept
+            // as that text. Not trimmed: a native date input sends the exact text or "".
+            if (raw === undefined || raw === "") return accepted("");
+            return typeof raw === "string" && isFormDate(raw) ? accepted(raw) : INVALID;
         default: {
             const unhandled: never = field.type;
             return unhandled;
@@ -101,14 +89,16 @@ const isBlank = (v: FieldValue): boolean => v === "" || v === false;
  * The submission as stored: `data` = label → cleaned value for every field of the form; the submitter email =
  * `body.submitterEmail`, else the first `email` field's value (blank = absent). Refusals, in this order: a value of
  * the wrong type or an option the field does not have ("Invalid value"), a value over its limit ("Value too long"), an
- * email that fails the pattern ("Invalid email format"), a blank required field ("Missing required fields").
+ * email that fails the pattern ("Invalid email format"), a blank required field ("Missing required fields"); STAY-1A
+ * then: a `min: "today"` date before `earliest` ("Date is before today"), and the form's pair rule broken ("Date must
+ * be after the earlier date", naming the later field). The pair rule applies only when both values are present.
  */
-function cleanSubmission(storedFields: unknown, body: Record<string, unknown>): CleanedSubmission {
+function cleanSubmission(form: { fields?: unknown; dateOrder?: unknown }, body: Record<string, unknown>, earliest: LocalDate): CleanedSubmission {
     const rawData = body.data === undefined ? {} : body.data;
     if (!isPlainObject(rawData)) return { ok: false, error: "Invalid form data" };
 
-    const fields = formFields(storedFields);
-    const invalid: string[] = [], tooLong: string[] = [], badEmail: string[] = [], missing: string[] = [];
+    const fields = formFieldsOf(form.fields);
+    const invalid: string[] = [], tooLong: string[] = [], badEmail: string[] = [], missing: string[] = [], beforeToday: string[] = [];
     const entries: [string, FieldValue][] = [];
     for (const field of fields) {
         const result = cleanValue(field, ownValue(rawData, field.label));
@@ -125,15 +115,29 @@ function cleanSubmission(storedFields: unknown, body: Record<string, unknown>): 
         const value = result.value;
         if (field.type === "email" && value !== "" && !isEmail(String(value))) badEmail.push(field.label);
         if (field.required && isBlank(value)) missing.push(field.label);
+        // STAY-1A: "YYYY-MM-DD" texts compare as dates.
+        if (field.type === "date" && field.min === "today" && typeof value === "string" && value !== "" && value < earliest) beforeToday.push(field.label);
         entries.push([field.label, value]);
     }
     if (invalid.length > 0) return { ok: false, error: "Invalid value", fields: invalid };
     if (tooLong.length > 0) return { ok: false, error: "Value too long", fields: tooLong };
     if (badEmail.length > 0) return { ok: false, error: "Invalid email format", fields: badEmail };
     if (missing.length > 0) return { ok: false, error: "Missing required fields", fields: missing };
+    if (beforeToday.length > 0) return { ok: false, error: "Date is before today", fields: beforeToday };
 
     // Built with fromEntries: a label such as "__proto__" becomes an own key, never the object's prototype.
     const data = Object.fromEntries(entries);
+
+    // STAY-1A: the pair rule, checked against the same field list. A stored rule that does not resolve (the save
+    // handlers refuse one, so only a record written around them) is not applied, and logged.
+    const order = resolveFormDateOrder(fields, form.dateOrder);
+    if (!order.ok) console.warn("[forms/public-submit] dateOrder not applied:", order.error);
+    else if (order.value !== null) {
+        const a = data[order.value.earlier.label], b = data[order.value.later.label];
+        if (typeof a === "string" && a !== "" && typeof b === "string" && b !== "" && b <= a) {
+            return { ok: false, error: "Date must be after the earlier date", fields: [order.value.later.label] };
+        }
+    }
 
     let submitterEmail: string | null = null;
     const top = body.submitterEmail;
@@ -155,6 +159,9 @@ function cleanSubmission(storedFields: unknown, body: Record<string, unknown>): 
 
 /** A value in a mail line: blank → "(empty)"; each CR and each LF → a space, so a value cannot add a line. */
 const mailValue = (v: FieldValue): string => (v === "" ? "(empty)" : String(v).replace(/[\r\n]/g, " "));
+/** STAY-1A: a field's mail value; a date in the site's locale (`formatFormDate`, from the stored text). */
+const mailFieldValue = (field: FormField, v: FieldValue, locale: unknown): string =>
+    field.type === "date" && typeof v === "string" && v !== "" ? formatFormDate(v, locale) : mailValue(v);
 
 const badRequest = (error: string, fields?: string[]) => ({
     statusCode: 400,
@@ -241,7 +248,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         // 3. Validate and clean the submission against the stored form's fields (SHOP-LOOK-1E)
-        const cleaned = cleanSubmission(form.fields, body);
+        // STAY-1A: "today" of a `min: "today"` date field — in the site's zone when one is stored (the only stored zone
+        // is the scheduling setting), else the UTC date minus one day (`earliestFormDate`).
+        const cleaned = cleanSubmission(form, body, earliestFormDate(Date.now(), tenantConfig?.scheduling?.timezone));
         if (!cleaned.ok) return badRequest(cleaned.error, cleaned.fields);
         const { data, submitterEmail } = cleaned;
 
@@ -269,7 +278,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         // 5. Send email notification if configured
         if (form.notifyEmail) {
             const fieldLines = cleaned.fields
-                .map((f) => `${f.label}: ${mailValue(data[f.label])}`)
+                .map((f) => `${f.label}: ${mailFieldValue(f, data[f.label], tenantConfig?.locale)}`)
                 .join("\n");
 
             try {

@@ -6,6 +6,7 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
+import { formFieldsOf, resolveFormDateOrder } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -39,6 +40,11 @@ const _handler: Handler = async (event) => {
         const slug = body.slug ? slugify(body.slug) : slugify(body.name);
         if (!slug) return { statusCode: 400, body: JSON.stringify({ error: "Slug is required" }) };
 
+        // STAY-1A: the optional pair rule must name two different date fields of this form, read as the submit handler
+        // reads them (`formFieldsOf`). `null` = no rule. Refused before any read or write.
+        const order = resolveFormDateOrder(formFieldsOf(body.fields), body.dateOrder === null ? undefined : body.dateOrder);
+        if (!order.ok) return { statusCode: 400, body: JSON.stringify({ error: order.error }) };
+
         // Check slug uniqueness
         const existing = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -61,6 +67,7 @@ const _handler: Handler = async (event) => {
             submitButtonText: body.submitButtonText || "Submit",
             successMessage: body.successMessage || "Thank you for your submission!",
             notifyEmail: body.notifyEmail,
+            ...(order.value !== null ? { dateOrder: { earlier: order.value.earlier.id, later: order.value.later.id } } : {}),
             status: body.status || "active",
             createdAt: now,
             updatedAt: now,

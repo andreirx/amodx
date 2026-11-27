@@ -69,3 +69,24 @@ describe("a checkbox field draws one text, beside the box", () => {
         expect(rows(html)).toBe(rows(STATIC["all-six-in-order"]) + checkboxRow);
     });
 });
+
+// STAY-1A (docs/slices/stay-1.md § 2, Build record): a date field — its label line, a native date input, `required`
+// when set, no `min` and no placeholder in the server HTML (the `min` hint is set after hydration).
+describe("STAY-1A — a date field", () => {
+    it("required, min: today: the label with the mark, then <input type=date required>; no min in the server HTML", () => {
+        const html = rows(renderToStaticMarkup(el([{ id: "f", label: "Arrival", type: "date", required: true, min: "today", placeholder: "ignored" }])));
+        expect(html).toBe(`<div><label for="_R_0_-f" class="text-sm font-medium block mb-1">Arrival${MARK}</label><input id="_R_0_-f" type="date" required="" class="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" value=""/></div>`);
+    });
+});
+
+// F-STAY1A-YEAR-REMAP: the client's day arithmetic follows the rule of packages/shared/src/form-date.ts — a day is built
+// with setUTCFullYear, never Date.UTC (which reads a year 0-99 as 1900-1999). Source check (comments removed).
+describe("STAY-1A — DynamicForm calls no year-remapping constructor", () => {
+    it("no Date.UTC( call in the code", async () => {
+        const { readFileSync } = await import("node:fs");
+        const { fileURLToPath } = await import("node:url");
+        const code = readFileSync(fileURLToPath(new URL("../src/form/DynamicForm.tsx", import.meta.url)), "utf8")
+            .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+        expect(code).not.toMatch(/Date\.UTC\s*\(/);
+    });
+});

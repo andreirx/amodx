@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import { chromium } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
-import { createTenantBody, createProductBody, createCategoryBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE } from "./tool-shapes.js";
+import { createTenantBody, createProductBody, createCategoryBody, productListLine, glamPricelistRequest, glamPricelistSummary, GALLERY_BLOCK_SHAPE, FORM_FIELDS_DESCRIPTION, FORM_DATE_ORDER_DESCRIPTION, formBody } from "./tool-shapes.js";
 
 // Storage directory for browser auth states
 const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
@@ -1690,29 +1690,35 @@ server.tool("get_form_submissions",
     }
 );
 
-// Form fields shared by create_form and update_form (snake_case in, camelCase to the API).
-// The forms handlers do not validate these; the shapes below are FormDefinitionSchema's.
+// Form fields shared by create_form and update_form (snake_case in, camelCase to the API; body built by `formBody`).
+// The forms handlers do not validate the fields; the shapes below are FormDefinitionSchema's. STAY-1A: the pair rule
+// `date_order` is validated by the backend at save.
 const FormInput = z.object({
     slug: z.string().optional().describe("URL slug, slugified by the backend; must be unique in the tenant (HTTP 409 otherwise). Default: from name."),
-    fields: z.string().optional().describe(
-        "JSON array of fields. Each: {id (string), label, type ('text'|'email'|'phone'|'textarea'|'select'|'checkbox'|'number'), required (boolean), placeholder?, options? (string array, for select)}"
-    ),
+    fields: z.string().optional().describe(FORM_FIELDS_DESCRIPTION),
+    date_order: z.string().optional().describe(FORM_DATE_ORDER_DESCRIPTION),
     submit_button_text: z.string().optional(),
     success_message: z.string().optional(),
     notify_email: z.string().optional().describe("Email address notified on each submission"),
     status: z.enum(["active", "disabled"]).optional(),
 });
 const formPayload = (a: z.infer<typeof FormInput> & { name?: string }): JsonInput => {
-    const p: Record<string, unknown> = {
-        name: a.name, slug: a.slug, submitButtonText: a.submit_button_text,
-        successMessage: a.success_message, notifyEmail: a.notify_email, status: a.status,
-    };
+    let fields: unknown[] | undefined;
     if (a.fields !== undefined) {
         const parsed = parseJsonInput(a.fields, "array", "fields");
         if (!parsed.ok) return parsed;
-        p.fields = parsed.value;
+        fields = parsed.value;
     }
-    return { ok: true, value: Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) };
+    let dateOrder: Record<string, unknown> | null | undefined;
+    if (a.date_order !== undefined) {
+        if (a.date_order.trim() === "null") dateOrder = null;
+        else {
+            const parsed = parseJsonInput(a.date_order, "object", "date_order");
+            if (!parsed.ok) return parsed;
+            dateOrder = parsed.value;
+        }
+    }
+    return { ok: true, value: formBody(a, fields, dateOrder) };
 };
 
 server.tool("create_form",

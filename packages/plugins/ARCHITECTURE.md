@@ -341,7 +341,8 @@ FormEditor.tsx, FormRender.tsx, DynamicForm.tsx}`; record `docs/slices/shop-look
   `FormFieldSchema`, the first field of each label (the submit handler's rule — labels are the submission's keys);
   `strings` = `formSubmissionFailed`, `formErrorShort`, `formSelectPlaceholder`, `formSubmitting` of the tenant's
   locale table (three of them are not block keys, so the block's `strings` prop does not hold them). No `_form` → the
-  render draws nothing (no slug, no form, disabled form, or the admin preview).
+  render draws nothing (no slug, no form, disabled form, or the admin preview). STAY-1A: `dateOrder` (`{ earlier,
+  later }` field ids) only when the form's pair rule names two date fields of `fields`; absent otherwise.
 - **Render (`FormRender.tsx`).** Optional eyebrow, headline, text (blank = absent), centred above the form; the form at
   most `max-w-lg`; `card === true` → `rounded-xl border border-border bg-background p-6 md:p-8 shadow-sm`. Theme classes
   only.
@@ -350,7 +351,11 @@ FormEditor.tsx, FormRender.tsx, DynamicForm.tsx}`; record `docs/slices/shop-look
   `form_submit` from `window.AMODX_RECAPTCHA_KEY` / `window.grecaptcha`; success → the success text replaces the form;
   failure → the server's `error` text, else `formSubmissionFailed`; a thrown fetch → `formErrorShort`. Required mark and
   error text `text-destructive`; the success icon keeps `text-green-500` (no success token in the theme; finding
-  F-1E-SUCCESS-COLOUR). Each label is tied to its control (`htmlFor` / `id` from `useId`).
+  F-1E-SUCCESS-COLOUR). Each label is tied to its control (`htmlFor` / `id` from `useId`). STAY-1A (`docs/slices/stay-1.md`
+  § 2): `FormField` is the shared type; the controls are one `switch` over the type ending in a `never` check. A `date`
+  field is a native `<input type="date">` (label, `required`); its `min` is a hint set after hydration (an effect, never
+  during render): `min: "today"` → the visitor's local date; the later field of `dateOrder` → the day after the earlier
+  value. The submit handler enforces both. Every other type renders the bytes of `test/dynamicForm.baseline.json`.
 - **Editor (`FormEditor.tsx`).** English; the form list from `editor.storage.form.fetchFormsFn`; a select of the forms by
   name (a disabled form marked), the stored slug kept as an option while the list loads; `formSlugNote` (exported, pure)
   says why the site would draw nothing.

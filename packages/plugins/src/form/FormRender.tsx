@@ -9,7 +9,8 @@ import { DynamicForm, type DynamicFormStrings, type FormField } from "./DynamicF
  * Data. The renderer's server pass (`prepareBlocks` in `renderer/src/components/SitePage.tsx`) reads the form with
  * `getFormBySlug` (active forms only) and gives `attrs._form`, built field by field: `{ slug, name, fields,
  * submitButtonText, successMessage, strings }` — `fields` are the stored fields that are fields, one per label (the
- * submit handler's rule); `strings` are the four form texts of the tenant's locale table. No `_form` (no slug, a slug of
+ * submit handler's rule); `strings` are the four form texts of the tenant's locale table; `dateOrder` (STAY-1A) only when
+ * the form's pair rule names two date fields of `fields` (a client hint; the handler enforces it). No `_form` (no slug, a slug of
  * no form, a disabled form, or no server pass: the admin preview) → the block draws nothing.
  *
  * Submit. The browser posts to the API (`NEXT_PUBLIC_API_URL`, as the showcase's fallback fetch reads it) at
@@ -27,6 +28,7 @@ interface PreparedForm {
     submitButtonText: string;
     successMessage: string;
     strings: DynamicFormStrings;
+    dateOrder?: { earlier: string; later: string };
 }
 
 /** A non-blank string, trimmed; anything else → null (blank = absent). */
@@ -61,6 +63,7 @@ export function FormRender({ attrs, tenantId }: { attrs: any; tenantId?: string 
             tenantId={tenantId ?? ""}
             apiUrl={apiUrl}
             strings={form.strings}
+            dateOrder={form.dateOrder}
         />
     );
 

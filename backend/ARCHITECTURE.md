@@ -291,7 +291,11 @@ src/
 │   └── list.ts            # GET /leads — projected leads (one page); every NEWSLETTER# subscription read to the last
 │                          #   page; shown as `newsletter` on the NORMALIZED lead row only
 ├── forms/
-│   ├── create/list/get/update/delete.ts, submissions.ts   # admin forms (FORM#<id> + FORMSLUG#<slug> pointer)
+│   ├── create/list/get/update/delete.ts, submissions.ts   # admin forms (FORM#<id> + FORMSLUG#<slug> pointer).
+│   │                      #   STAY-1A: create/update check the optional pair rule `dateOrder` on the (merged) form —
+│   │                      #   shared resolveFormDateOrder over formFieldsOf(fields): two different date fields, else
+│   │                      #   400 { error } before any write; stored as { earlier, later }; `null` removes it.
+│   │                      #   Unit: test/unit/stay-1a-form-save.test.ts
 │   └── public-submit.ts   # POST /public/forms/{slug}/submit (public): origin check, then the body parsed once (not a
 │                          #   JSON object → 400), reCAPTCHA, the form read under TENANT#<verified tenant> (FORMSLUG#
 │                          #   → FORM#; 404 / disabled 403). SHOP-LOOK-1E: `data` read BY FIELD LABEL for exactly the
@@ -306,6 +310,13 @@ src/
 │                          #   value "invalid" / "too-long" is stored); an exception (DynamoDB, reCAPTCHA fetch) →
 │                          #   console.error, 500 "Internal error" — its text never goes to the caller (a mail
 │                          #   failure stays logged only, 201). Unit: test/unit/forms-public-submit.test.ts
+│                          #   STAY-1A: the field list is shared formFieldsOf; a `date` value is "" or the exact text
+│                          #   YYYY-MM-DD of a real date, year 0000-9999 (isFormDate), stored as that text, else "Invalid value";
+│                          #   `min: "today"` → before earliestFormDate(now, tenant scheduling.timezone) 400 "Date is
+│                          #   before today" (no zone stored: the UTC date − 1 day); the pair rule (both values present)
+│                          #   later ≤ earlier → 400 "Date must be after the earlier date" naming the later field; a
+│                          #   stored rule that does not resolve is not applied (console.warn). The mail shows a date in
+│                          #   the tenant locale (formatFormDate). Unit: test/unit/stay-1a-submit.test.ts
 ├── interest/
 │   └── public.ts          # CAT-INTEREST-1: the interest list's two PUBLIC routes, one Lambda (dispatch on routeKey).
 │                          #   POST /public/interest — a catalog visitor's shortlist as ONE submission of the system

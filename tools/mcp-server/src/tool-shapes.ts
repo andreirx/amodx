@@ -4,7 +4,7 @@
  * No I/O, no environment, no import from `index.ts`: `index.ts` runs `dotenv.config()` and `main()` when imported,
  * so its handlers cannot be loaded by a test. The handlers named below call these functions; `test/tool-shapes.test.ts`
  * asserts on what they return. Users: `create_tenant`, `create_product`, `list_products`, `import_glam_pricelist` (CAT-IMPORT-1),
- * `create_category` (CATEGORY-CONTENT-1) in `index.ts`.
+ * `create_category` (CATEGORY-CONTENT-1), `create_form` and `update_form` (STAY-1A) in `index.ts`.
  */
 
 /** `POST /tenants` body. `catalogMode` is true only for the literal `true` (the mode is fixed at creation, CM-D11). */
@@ -209,3 +209,32 @@ export const GALLERY_BLOCK_SHAPE = {
         },
     },
 } as const;
+
+/**
+ * STAY-1A (docs/slices/stay-1.md § 2, ruling 10) — the field list and the pair rule as `create_form` / `update_form`
+ * describe them. Here, not in `index.ts`, so `test/tool-shapes.test.ts` binds the listed types to the shared
+ * `FormFieldSchema` (a type added there and not here fails the test).
+ */
+export const FORM_FIELDS_DESCRIPTION =
+    "JSON array of fields. Each: {id (string), label, type ('text'|'email'|'phone'|'textarea'|'select'|'checkbox'|'number'|'date'), required (boolean), placeholder?, options? (string array, for select), min? ('today', for date: a date before the site's today is refused)}. " +
+    "A date value is the text YYYY-MM-DD, stored as sent.";
+export const FORM_DATE_ORDER_DESCRIPTION =
+    "Optional pair rule as JSON: {\"earlier\": \"<field id>\", \"later\": \"<field id>\"} — two different date fields of this form; " +
+    "a submission whose later date is not after the earlier date is refused (checked only when both are filled in). " +
+    "The backend refuses a rule that names a missing or non-date field (HTTP 400). Send null to remove the rule.";
+
+/**
+ * `POST /forms` / `PUT /forms/{id}` body (snake_case in, camelCase to the API). `fields`: already parsed as a JSON array;
+ * `dateOrder`: already parsed as a JSON object, or null (remove the rule). Absent values are omitted keys.
+ */
+export function formBody(
+    args: { name?: string; slug?: string; submit_button_text?: string; success_message?: string; notify_email?: string; status?: string },
+    fields?: unknown[], dateOrder?: Record<string, unknown> | null,
+): Record<string, unknown> {
+    const p: Record<string, unknown> = {
+        name: args.name, slug: args.slug, submitButtonText: args.submit_button_text,
+        successMessage: args.success_message, notifyEmail: args.notify_email, status: args.status,
+        fields, dateOrder,
+    };
+    return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+}

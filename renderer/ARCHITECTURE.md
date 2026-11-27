@@ -1061,8 +1061,10 @@ new class), `sl1d-blank-as-absent` (null, blank and off options: the twin's HTML
 `formSlug` trimmed; blank or not a string → no read; else one `getFormBySlug(tenantId, slug)` per block (two keyed
 `GetCommand`s under `TENANT#<this tenant>`: `FORMSLUG#<slug>`, then `FORM#<id>`; active forms only) → `attrs._form` =
 `formForBlock(form, slug, site texts)`, built field by field: `{ slug, name, fields, submitButtonText, successMessage,
-strings }` — `fields` the stored entries that pass `FormFieldSchema`, the first of each label (the submit handler's rule);
-`strings` the four form texts of the tenant's locale table. Never the stored item (it holds the owner's notify address,
+strings }` — `fields` the stored entries that pass `FormFieldSchema`, the first of each label (the submit handler's rule;
+since STAY-1A the one shared `formFieldsOf`); `strings` the four form texts of the tenant's locale table; STAY-1A: plus
+`dateOrder` only when the stored pair rule resolves against `fields` (`resolveFormDateOrder`), so a form without a rule
+gives the same `_form`. Never the stored item (it holds the owner's notify address,
 the keys, status and dates). No form, a disabled form → no `_form` → the block draws nothing. No other block's attrs
 change; a page without the block makes no new read (every existing row unchanged). The browser submits to
 `<NEXT_PUBLIC_API_URL>/public/forms/{slug}/submit` with `x-tenant-id` (the block's `tenantId` prop); the value of
