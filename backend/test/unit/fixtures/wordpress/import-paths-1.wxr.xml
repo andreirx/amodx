@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- IMPORT-PATHS-1: an INVENTED WordPress export (no real site, person, mail or address). Used by the golden capture
+     of today's import (import-paths-1-golden.capture.test.ts) and by the address-plan tests (import-paths-1.test.ts). -->
+<rss version="2.0"
+	xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/"
+	xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+	<title>Example Atelier</title>
+	<link>https://atelier.example.test</link>
+	<wp:base_site_url>https://atelier.example.test</wp:base_site_url>
+
+	<item>
+		<title>ceara-hero</title>
+		<link>https://atelier.example.test/cursuri/ceara/ceara-hero/</link>
+		<wp:post_id>101</wp:post_id>
+		<wp:post_name>ceara-hero</wp:post_name>
+		<wp:status>inherit</wp:status>
+		<wp:post_parent>11</wp:post_parent>
+		<wp:post_type>attachment</wp:post_type>
+		<wp:attachment_url>https://atelier.example.test/wp-content/uploads/2024/03/ceara-hero.jpg</wp:attachment_url>
+	</item>
+
+	<item>
+		<title>Cursuri</title>
+		<link>https://atelier.example.test/cursuri/</link>
+		<pubDate>Mon, 04 Mar 2024 09:00:00 +0000</pubDate>
+		<content:encoded><![CDATA[<h2>Cursuri</h2><p>Lista cursurilor.</p>]]></content:encoded>
+		<wp:post_id>10</wp:post_id>
+		<wp:post_date>2024-03-04 09:00:00</wp:post_date>
+		<wp:post_name>cursuri</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Ceara</title>
+		<link>https://atelier.example.test/cursuri/ceara/</link>
+		<pubDate>Tue, 05 Mar 2024 09:00:00 +0000</pubDate>
+		<content:encoded><![CDATA[<p>Curs de ceara.</p><p><img src="https://atelier.example.test/wp-content/uploads/2024/03/ceara-hero-300x200.jpg" alt="ceara" /></p>]]></content:encoded>
+		<wp:post_id>11</wp:post_id>
+		<wp:post_date>2024-03-05 09:00:00</wp:post_date>
+		<wp:post_name>ceara</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>10</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+		<wp:postmeta>
+			<wp:meta_key>_thumbnail_id</wp:meta_key>
+			<wp:meta_value>101</wp:meta_value>
+		</wp:postmeta>
+	</item>
+
+	<item>
+		<title>Titlu</title>
+		<link>https://atelier.example.test/2024/03/titlu/</link>
+		<pubDate>Wed, 06 Mar 2024 10:30:00 +0000</pubDate>
+		<content:encoded><![CDATA[<p>Primul articol.</p>]]></content:encoded>
+		<wp:post_id>20</wp:post_id>
+		<wp:post_date>2024-03-06 10:30:00</wp:post_date>
+		<wp:post_name>titlu</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>post</wp:post_type>
+		<wp:postmeta>
+			<wp:meta_key>_thumbnail_id</wp:meta_key>
+			<wp:meta_value>999</wp:meta_value>
+		</wp:postmeta>
+		<wp:comment>
+			<wp:comment_author>Test Visitor</wp:comment_author>
+			<wp:comment_author_email>visitor@example.test</wp:comment_author_email>
+			<wp:comment_date>2024-03-07 08:00:00</wp:comment_date>
+			<wp:comment_content>Un comentariu inventat.</wp:comment_content>
+			<wp:comment_approved>1</wp:comment_approved>
+		</wp:comment>
+	</item>
+
+	<item>
+		<title>Despre magazin</title>
+		<link>https://atelier.example.test/shop/despre/</link>
+		<content:encoded><![CDATA[<p>Despre magazin.</p>]]></content:encoded>
+		<wp:post_id>30</wp:post_id>
+		<wp:post_name>despre</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Ghid produse</title>
+		<link>https://atelier.example.test/product/ghid/</link>
+		<content:encoded><![CDATA[<p>Ghid.</p>]]></content:encoded>
+		<wp:post_id>31</wp:post_id>
+		<wp:post_name>ghid</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Coala</title>
+		<link>https://atelier.example.test/coala/</link>
+		<content:encoded><![CDATA[<p>Coala.</p>]]></content:encoded>
+		<wp:post_id>40</wp:post_id>
+		<wp:post_name>coala</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Școala</title>
+		<link>https://atelier.example.test/%c8%99coala/</link>
+		<content:encoded><![CDATA[<p>Școala.</p>]]></content:encoded>
+		<wp:post_id>41</wp:post_id>
+		<wp:post_name>%c8%99coala</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Program</title>
+		<link>https://atelier.example.test/Atelier/Program/</link>
+		<content:encoded><![CDATA[<p>Program.</p>]]></content:encoded>
+		<wp:post_id>50</wp:post_id>
+		<wp:post_name>program</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Galerie</title>
+		<link>https://atelier.example.test/galerie/#top</link>
+		<content:encoded><![CDATA[<p>Galerie.</p>]]></content:encoded>
+		<wp:post_id>51</wp:post_id>
+		<wp:post_name>galerie</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Ciorna</title>
+		<link>https://atelier.example.test/?page_id=60</link>
+		<content:encoded><![CDATA[<p>Ciorna.</p>]]></content:encoded>
+		<wp:post_id>60</wp:post_id>
+		<wp:post_name>ciorna</wp:post_name>
+		<wp:status>draft</wp:status>
+		<wp:post_parent>10</wp:post_parent>
+		<wp:post_type>page</wp:post_type>
+	</item>
+
+	<item>
+		<title>Vas mare</title>
+		<link>https://atelier.example.test/produs/vas-mare/</link>
+		<content:encoded><![CDATA[<p>Vas.</p>]]></content:encoded>
+		<wp:post_id>70</wp:post_id>
+		<wp:post_name>vas-mare</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:post_type>product</wp:post_type>
+	</item>
+
+	<item>
+		<title>Meniu</title>
+		<link>https://atelier.example.test/meniu/</link>
+		<wp:post_id>80</wp:post_id>
+		<wp:post_name>meniu</wp:post_name>
+		<wp:status>publish</wp:status>
+		<wp:post_type>nav_menu_item</wp:post_type>
+	</item>
+
+	<item>
+		<title>Sters</title>
+		<link>https://atelier.example.test/sters/</link>
+		<wp:post_id>81</wp:post_id>
+		<wp:post_name>sters__trashed</wp:post_name>
+		<wp:status>trash</wp:status>
+		<wp:post_type>page</wp:post_type>
+	</item>
+</channel>
+</rss>

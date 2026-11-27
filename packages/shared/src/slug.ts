@@ -11,10 +11,12 @@
  * NOT guaranteed — stored slugs can still be non-normal:
  *  - update keeps a slug that is absent or resent unchanged (legacy pages are not renamed by an
  *    unrelated save);
- *  - the WordPress importer (import/wordpress.ts) stores raw `/${wp:post_name}` slugs and does not
- *    call this function: kept raw by decision (human, 2026-10-16, IMPORT-POLICY-1): the page keeps
- *    the URL `/<wp:post_name>` exactly as WordPress had the post name (the permalink's folder
- *    structure is not kept — ruling IP1-WARNING-TRUTH); the admin marks such slugs in red for review.
+ *  - the WordPress importer (import/wordpress.ts) with `keepOldAddresses` OFF stores raw
+ *    `/${wp:post_name}` slugs and does not call this function: kept raw by decision (human,
+ *    2026-10-16, IMPORT-POLICY-1; the folder structure is not kept — ruling IP1-WARNING-TRUTH); the
+ *    admin marks such slugs in red for review. With the option ON (IMPORT-PATHS-1) it stores
+ *    `normalizeSlug(<decoded old path>)` (import/wp-addresses.ts) and redirects the old path when the
+ *    two differ.
  *  - repeated leading slashes are kept (`//a` → `//a`): unchanged behaviour, ratified as is.
  *
  * Steps, in order (the order matters: whitespace becomes `-` BEFORE invalid characters are

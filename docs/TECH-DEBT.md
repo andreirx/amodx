@@ -342,6 +342,46 @@ No admin page for viewing order reports, revenue charts, or product performance 
 - **Current state**: Acceptable for content migration (text + paragraphs work), but requires manual cleanup for rich layouts.
 - **Estimated effort**: High (3-5 days for meaningful improvement)
 
+### F-IP1-BUILTIN-ADDRESS-LOST: an old address the renderer answers first cannot be kept or redirected (2026-11-27)
+Found by `import-paths-1` (`docs/slices/import-paths-1.md` "Build record"; operator ruling IP1-BUILTIN-REDIRECTS = A,
+which amends the slice's scope 3).
+- **What:** the serving path answers some addresses before the renderer looks up content and redirects (`ROUTE#`):
+  CloudFront (`infra/lib/renderer-hosting.ts:631-652`: `/assets/*`, `/_next/static/*`, `/favicon.ico` from file
+  storage; `/api/*` to the server function), Next.js (a path with `//` or `\` answers 308 to its normalised form,
+  `next/dist/server/base-server.js:577-581` — for an OLD address that 308 leads on, so the importer keeps the page at the
+  normalised address), the renderer's middleware
+  branches (`renderer/middleware.ts` matcher `:510-515`, `/_next…`/`/api…`/`/static…` `:265-268`, `/_dyn` `:279`/`:301`,
+  booking `:313`, `/tenant/`/`/_site/` `:362`/`:384`), its route handlers (`/robots.txt`, `/sitemap.xml`, `/llms.txt`,
+  `/openai-feed`), the product page by id (`/products/<id>`), the home page `/`, and the site's built-in pages (the
+  tenant's product, category, cart, checkout, shop, account and search prefixes; the interest list on a catalog —
+  `SitePage.tsx` `matchCommercePrefix`). A WordPress address there (typically `/product/<x>` of a WooCommerce site
+  whose product slug changed, or `/category/<x>`) cannot be kept and a redirect there is never read. The importer
+  writes none; the dry run lists each one as "cannot be kept or redirected" with the reason and the page's new
+  address, and the admin shows the count before the import (`backend/src/import/wp-addresses.ts` `servedBefore`).
+- **Proper solution:** the renderer consults the redirect items before its built-in pages: one `GetItem` of
+  `ROUTE#<path>` for a path that a built-in page would answer, a 308 when it is a redirect, else the built-in page as
+  today. A change of what the renderer serves (serving contract, cache keys, one more read on those requests) — its
+  own slice (`redirect-1` or after), with the serving-contract suite moved with it.
+- **When:** at the first site move whose dry run lists such an address.
+- **Drift risk meanwhile:** `rendererRoute` / `servedBefore` is a COPY of the serving path (CloudFront, Next.js, renderer) (pinned by IP1-F4-SERVED-BEFORE in
+  `backend/test/unit/import-paths-1.test.ts`, not against the renderer itself). A new middleware branch or route
+  handler must be added there too.
+
+### IMPORT-PATHS-1 residuals (2026-11-27)
+- **Non-ASCII letters**: `normalizeSlug` drops them (`/școala` → `/coala`, no transliteration), so two old addresses
+  can meet (the second is refused). The redirect key of a non-ASCII old address is its path with every escape decoded
+  once — the renderer's measured page-body rule (`renderer/src/lib/site-segment.ts:96-110`, serving contract
+  `:4436-4443`); the measured cases are ASCII escapes, so the multibyte case is INFERRED, not run against a deployed
+  renderer.
+- **Option off, pre-existing (unchanged by ruling 3)**: a percent-encoded post name is stored raw (`/%c8%99coala`);
+  the renderer looks up the decoded path (`/școala`), so such a page is not found (INFERRED, same evidence).
+- **Pre-existing, parser**: `wxr-parser.ts` `slug.includes('__trashed')` throws when `wp:post_name` is all digits
+  (fast-xml-parser reads it as a number); that post is lost with the whole parse (500). Not changed.
+- **Pre-existing, content create/update**: `reservedAddressRefusal` does not refuse the addresses of
+  F-IP1-BUILTIN-ADDRESS-LOST that are not built-in pages (`/api…`, `/static…`, `/tenant/…`, `/products/<id>`), so a
+  page made in the admin there is stored and never served. The importer checks them (`servedBefore`); the content
+  handlers do not — not changed (outside the slice's paths).
+
 ### Email/Password Customer Accounts via Public Cognito Pool
 The public Cognito pool (`AmodxPublicPool`) is provisioned in CDK but dormant. Currently customer auth is Google-only via NextAuth. This task activates the public pool so tenants can offer email/password registration alongside Google OAuth.
 

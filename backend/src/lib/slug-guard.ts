@@ -29,7 +29,7 @@ const PRECEDENCE = [
  * `category` = those pages. Pinned against the renderer by the same overlap table in
  * `backend/test/unit/cdl-2-paths.test.ts` and `renderer/test/unit/cdl-2-site-page.test.ts`.
  */
-function builtInPageAt(slug: string, p: ReturnType<typeof urlPrefixesOf>, catalog: boolean): { page: string; address: string } | null {
+export function builtInPageAt(slug: string, p: ReturnType<typeof urlPrefixesOf>, catalog: boolean): { page: string; address: string } | null {
     const under = (address: string) => slug.startsWith(address + "/") && slug.length > address.length + 1;
     for (const [key, page] of PRECEDENCE) {
         if (key === "interest" && !catalog) continue;
@@ -48,6 +48,22 @@ function builtInPageAt(slug: string, p: ReturnType<typeof urlPrefixesOf>, catalo
     return null;
 }
 
+/** The reserved addresses of one tenant: its `urlPrefixes` under the per-key rule and whether it is a catalog site. */
+export interface ReservedAddresses {
+    prefixes: ReturnType<typeof urlPrefixesOf>;
+    catalog: boolean;
+}
+
+/** One tenant read (`GetCommand`, own record): the input of `reservedAddressRefusalIn` and `builtInPageAt`. */
+export async function readReservedAddresses(tenantId: string): Promise<ReservedAddresses> {
+    const tenantRes = await db.send(new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` },
+        ProjectionExpression: "urlPrefixes, catalogMode",
+    }));
+    return { prefixes: urlPrefixesOf(tenantRes.Item?.urlPrefixes), catalog: isCatalogMode(tenantRes.Item) };
+}
+
 /**
  * Refuses a content slug that equals, or lies under, a reserved address of this tenant's kind of site: cart,
  * checkout, shop, product, category, account and search on every site, and the interest list on a catalog site only.
@@ -60,19 +76,19 @@ function builtInPageAt(slug: string, p: ReturnType<typeof urlPrefixesOf>, catalo
  * NAME (SMALL-FIXES-1 B, closes F-CDL2-GUARD-NAME of docs/slices/cdl-2.md): the function returns the REFUSAL for a
  * slug at a RESERVED ADDRESS (a built-in page of any kind of site, not only commerce), or null. Its old name said
  * "commerce conflict".
+ *
+ * IMPORT-PATHS-1: = `readReservedAddresses` + `reservedAddressRefusalIn` (the WordPress importer reads the tenant once
+ * and applies the rule to every address of an export). Behaviour unchanged.
  */
 export async function reservedAddressRefusal(tenantId: string, slug: string): Promise<string | null> {
+    return reservedAddressRefusalIn(slug, await readReservedAddresses(tenantId));
+}
+
+/** The rule of `reservedAddressRefusal` for a tenant already read. Pure. */
+export function reservedAddressRefusalIn(slug: string, { prefixes, catalog }: ReservedAddresses): string | null {
     // Ensure slug starts with /
     const normalizedSlug = slug.startsWith("/") ? slug : `/${slug}`;
 
-    const tenantRes = await db.send(new GetCommand({
-        TableName: TABLE_NAME,
-        Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` },
-        ProjectionExpression: "urlPrefixes, catalogMode",
-    }));
-
-    const prefixes = urlPrefixesOf(tenantRes.Item?.urlPrefixes);
-    const catalog = isCatalogMode(tenantRes.Item);
     const hit = PRECEDENCE.find(([key]) => (key !== "interest" || catalog)
         && (normalizedSlug === prefixes[key] || normalizedSlug.startsWith(prefixes[key] + "/")));
     if (!hit) return null;

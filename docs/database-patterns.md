@@ -70,6 +70,14 @@ Spec: `docs/slices/lang-1.md` § 5, § 6. Pages that are the same page in differ
   `attribute_not_exists(translationKey)` when none was read); a failed condition is a `409` (the importer reports the
   post failed). Handlers: `backend/src/content/update.ts` (`planTranslation`, also used by `create.ts`), `restore.ts`,
   `backend/src/import/wordpress.ts`.
+- **Redirect routes (IMPORT-PATHS-1):** `ROUTE#<old path>` with `IsRedirect: true, RedirectTo` — one shape,
+  `redirectRouteItem` (content/update.ts), written by the rename and by the WordPress import. The importer writes it
+  create only (`attribute_not_exists(SK)`) and only where the renderer looks up content (`wp-addresses.ts`
+  `servedBefore`). Its page write (option on) is ONE `TransactWriteCommand` of the content LATEST and its route,
+  conditioned on what authorised it; "the same imported item" = equal `wordpressSourceItem`
+  (`wordpress:<export host>/<post id>`, on option-on pages only; kept by `content/update.ts`, whose `SET` names its
+  attributes, and by its history snapshot). "Does the site hold an imported page?" = one paginated
+  `Query begins_with(SK, "CONTENT#")` projected to `SK, author`.
 - **Admin reads:** `GET /content` (`content/list.ts`) gives each keyed page `hasTranslationItem` (its membership item
   exists), so the editor applies the same membership rule without reading items itself.
 

@@ -1,6 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
@@ -9,30 +9,9 @@ import { loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { readTenantMode } from "../lib/catalog-product.js";
-
-/** Look up existing product by slug using GSI_Slug */
-async function findProductBySlug(tenantId: string, slug: string): Promise<any | null> {
-    const result = await db.send(new QueryCommand({
-        TableName: TABLE_NAME,
-        IndexName: "GSI_Slug",
-        KeyConditionExpression: "TenantSlug = :ts",
-        ExpressionAttributeValues: { ":ts": `${tenantId}#${slug}` },
-    }));
-    return result.Items?.find((item: any) => item.SK?.startsWith("PRODUCT#")) || null;
-}
+import { findProductBySlug, slugify } from "./product-slug.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
-
-const slugify = (str: string) => {
-    return str
-        .toLowerCase()
-        .trim()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")  // strip diacritics
-        .replace(/[^\w\s-]/g, '')
-        .replace(/[\s_]+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-};
 
 /** Clean up description text: convert literal \n to actual newlines, strip excessive whitespace */
 const cleanDescription = (str: string) => {
@@ -114,10 +93,13 @@ function parseCSV(csvText: string): { rows: Record<string, string>[]; weightInGr
     // Strip UTF-8 BOM
     if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
 
-    const lines = csvText.split('\n');
-    if (lines.length < 2) return { rows: [], weightInGrams: false };
+    // IMPORT-PATHS-1 (ruling 2): records, not lines — a quoted cell may hold a line break (a product description with
+    // paragraphs). Before, the file was split on `\n` first, so such a cell broke its row in two (observed: the
+    // description cut at the break, the rest of the row lost, a fragment row counted as skipped).
+    const records = parseCSVRecords(csvText);
+    if (records.length < 2) return { rows: [], weightInGrams: false };
 
-    const rawHeaders = parseCSVLine(lines[0]);
+    const rawHeaders = records[0];
     const headers = rawHeaders.map(h => normalizeHeader(h.trim()));
 
     // Detect weight unit from header
@@ -125,10 +107,10 @@ function parseCSV(csvText: string): { rows: Record<string, string>[]; weightInGr
 
     const rows: Record<string, string>[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const values = parseCSVLine(line);
+    for (let i = 1; i < records.length; i++) {
+        const values = records[i];
+        // A blank line (as before: a line of whitespace only) is no row.
+        if (values.length === 1 && values[0].trim() === '') continue;
         const row: Record<string, string> = {};
         for (let j = 0; j < headers.length; j++) {
             row[headers[j]] = (values[j] || '').trim();
@@ -138,37 +120,53 @@ function parseCSV(csvText: string): { rows: Record<string, string>[]; weightInGr
     return { rows, weightInGrams };
 }
 
-function parseCSVLine(line: string): string[] {
-    const result: string[] = [];
+/**
+ * RFC 4180 records: `,` between cells, a line end between records (`\n`, or `\r\n`), `"` around a cell that holds
+ * `,`, `"` (written `""`) or a line break. Inside quotes a `\r\n` is read as `\n`. A `\r` that does not end a line is
+ * kept, as the line parser before kept it. Pure.
+ */
+function parseCSVRecords(text: string): string[][] {
+    const records: string[][] = [];
+    let record: string[] = [];
     let current = '';
     let inQuotes = false;
 
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
         if (inQuotes) {
             if (char === '"') {
-                if (i + 1 < line.length && line[i + 1] === '"') {
+                if (i + 1 < text.length && text[i + 1] === '"') {
                     current += '"';
                     i++; // skip escaped quote
                 } else {
                     inQuotes = false;
                 }
+            } else if (char === '\r' && text[i + 1] === '\n') {
+                current += '\n';
+                i++;
             } else {
                 current += char;
             }
+        } else if (char === '"') {
+            inQuotes = true;
+        } else if (char === ',') {
+            record.push(current);
+            current = '';
+        } else if (char === '\n' || (char === '\r' && text[i + 1] === '\n')) {
+            if (char === '\r') i++;
+            record.push(current);
+            records.push(record);
+            record = [];
+            current = '';
         } else {
-            if (char === '"') {
-                inQuotes = true;
-            } else if (char === ',') {
-                result.push(current);
-                current = '';
-            } else {
-                current += char;
-            }
+            current += char;
         }
     }
-    result.push(current);
-    return result;
+    if (current !== '' || record.length > 0) {
+        record.push(current);
+        records.push(record);
+    }
+    return records;
 }
 
 function mapAvailability(stockQty: string, stockStatus: string): string {

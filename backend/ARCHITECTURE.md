@@ -123,7 +123,9 @@ src/
 │   │                      #   BULK-PURGE-FOOTER-1: purgeStoredPagesOf{RequestTenant,Tenant,Domains}() — whole-tenant
 │   │                      #   S3 purge for bulk handlers, passed to withInvalidation(h, purge) (purge, then marker)
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
-│   ├── slug-guard.ts      # reservedAddressRefusal(): refuses a content slug equal to, or under, an address the renderer
+│   ├── slug-guard.ts      # reservedAddressRefusal() = readReservedAddresses() + pure reservedAddressRefusalIn() (split
+│   │                      #   by IMPORT-PATHS-1 for the importer, which reads the tenant once; builtInPageAt exported):
+│   │                      #   refuses a content slug equal to, or under, an address the renderer
 │   │                      #   serves before content (CDL-2, design catalog-data-labels-1 § 14 item 1): cart, checkout, shop,
 │   │                      #   product, category, account, search on every site; interest on a catalog site only
 │   │                      #   (isCatalogMode). One GetCommand (urlPrefixes, catalogMode); prefixes via urlPrefixesOf.
@@ -494,12 +496,37 @@ src/
 │   └── paddle.ts          # POST /webhooks/paddle — fulfils nothing (PADDLE-HOOK-1): unverified, so every request
 │                          #   gets 200 + one event-name log line; no table/S3/mail. Verified fulfilment: pay-2
 └── import/
-    ├── wordpress.ts       # WordPress XML import handler (featured-image copy under the image destination policy;
-    │                      #   unreachable today: wxr-parser.ts never sets featuredImage). LANG-1A: an overwrite
-    │                      #   copies the page's translationKey and conditions its Put on it (failed → post failed)
-    ├── wxr-parser.ts      # WXR XML parser utility
+    ├── wordpress.ts       # POST /import/wordpress[?dryRun=1] — WordPress XML import (featured-image copy under the
+    │                      #   image destination policy). LANG-1A: an overwrite copies the page's translationKey and
+    │                      #   conditions its Put on it (failed → post failed). IMPORT-PATHS-1: `keepOldAddresses`
+    │                      #   (absent → on for a site with no page of `author: "wordpress-importer"`, decided on the
+    │                      #   first batch only; absent on a later batch → 400). Off: the import of 30421e3, byte-equal
+    │                      #   (golden; /<post name>, overwrite by slug, no featured image). On: the address plan of
+    │                      #   wp-addresses.ts; content + route in ONE TransactWrite conditioned on what authorised it
+    │                      #   (new: both absent; same item: key as read AND `wordpressSourceItem` equal AND the route
+    │                      #   still names the node); `wordpressSourceItem` = "wordpress:<export host>/<post id>" — a
+    │                      #   page without it, or with another, is never replaced; redirects = content/update.ts
+    │                      #   `redirectRouteItem`, create only; product items of the export get a redirect old →
+    │                      #   <product prefix>/<slug> when this tenant's product is active and available. Every item
+    │                      #   of a batch has one row in `rows` (failed reads/writes included). A dry run writes
+    │                      #   nothing and bypasses withInvalidation (as glam-pricelist.ts)
+    ├── wp-addresses.ts    # IMPORT-PATHS-1, pure: requestPathProblem (an address as the request a browser sends: URL
+    │                      #   parse, no ?/#, no ./.., Next.js-decodable, no end slash), oldAddressOf (<link> → none |
+    │                      #   invalid | home | query-only | undecodable | path in
+    │                      #   the renderer's page-body form, %2F kept, `//` collapsed as Next.js's own 308 does),
+    │                      #   rendererRoute / servedBefore (a COPY of the serving path: CloudFront behaviors, Next.js's
+    │                      #   repeated-slash 308, middleware branches, route handlers, /products/<id>, home,
+    │                      #   builtInPageAt — pinned by IP1-F4-SERVED-BEFORE; F-IP1-BUILTIN-ADDRESS-LOST),
+    │                      #   productPageProblem (a product destination must show that product), planAddresses (export
+    │                      #   order, the first item keeps an address; blocked → flat; every old address classified,
+    │                      #   also when its page is refused; redirect only where the renderer reads one)
+    ├── wxr-parser.ts      # WXR XML parser: posts and pages (+ link, wpId, parentId, sourceHost, featuredImageId,
+    │                      #   featuredImageAttachmentUrl — `featuredImage` stays unset, as before), products (address)
+    ├── product-slug.ts    # slugify + findProductBySlug (GSI_Slug, this tenant's PRODUCT# only — the index key is not
+    │                      #   proof of ownership); users woocommerce.ts, wordpress.ts (moved out of woocommerce.ts)
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
-    ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
+    ├── woocommerce.ts     # POST /import/woocommerce — product CSV import (RFC 4180 records: a quoted cell may hold a
+    │                      #   line break, IMPORT-PATHS-1); refuses a catalog tenant (403) and
     │                      #   a missing tenant (404) before the first write (CATALOG-MODE-1, CM-D8 guard 1);
     │                      #   creates an absent CATEGORY#<slug> with attribute_not_exists(SK) — never replaces
     │                      #   a category (its `blocks`, CATEGORY-CONTENT-1); a refused create fails the row
@@ -721,7 +748,8 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 ## Key Patterns
 
 - **Content versioning:** Update writes a snapshot at `CONTENT#<nodeId>#v<N>` before overwriting `#LATEST` with `v<N+1>`
-- **Slug redirects:** When a slug changes, old route gets `IsRedirect=true` pointing to new slug (SEO preservation)
+- **Slug redirects:** When a slug changes, old route gets `IsRedirect=true` pointing to new slug (SEO preservation). One
+  item shape, `redirectRouteItem` (content/update.ts): users the rename and the WordPress import (IMPORT-PATHS-1)
 - **Transactional writes:** `TransactWriteCommand` for multi-item consistency (content + route creation)
 - **Conditional writes:** `ConditionExpression="attribute_not_exists(SK)"` prevents duplicate slugs/IDs
 - **Audit trail:** Handlers call `publishAudit()` → EventBridge → `audit/worker.ts` → DynamoDB. Non-blocking.

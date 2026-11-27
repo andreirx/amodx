@@ -20,6 +20,25 @@ type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerConte
 // from the page). Every write that changes a page's key is ONE transaction, one action per item, and each page action
 // is conditioned on the key as it was read, so a concurrent change of either page cancels the whole write (→ 409).
 
+/**
+ * IMPORT-PATHS-1 (ruling 4) — the redirect route item: `ROUTE#<from>` answers a permanent redirect to `to`. The ONE
+ * shape both writers use: this handler on a slug rename, and the WordPress importer for an old address it cannot keep
+ * (import/wordpress.ts). The renderer reads it by key `ROUTE#<path>` and serves `RedirectTo` when `IsRedirect` is
+ * truthy (renderer/src/lib/dynamo.ts `getContentBySlug`, SitePage.tsx `permanentRedirect` → 308). It does so only where
+ * the renderer looks up content: not at a built-in page's address (slug-guard.ts `builtInPageAt`).
+ */
+export function redirectRouteItem(tenantId: string, from: string, to: string, timestamp: string, userId: string) {
+    return {
+        PK: `TENANT#${tenantId}`,
+        SK: `ROUTE#${from}`,
+        Type: "Route",
+        IsRedirect: true,
+        RedirectTo: to,
+        CreatedAt: timestamp,
+        UpdatedBy: userId
+    };
+}
+
 /** A stored set id: a non-empty string. Anything else stored there (only a table edit makes it) counts as no set. */
 function isSetKey(value: unknown): value is string {
     return typeof value === "string" && value !== "";
@@ -414,15 +433,7 @@ const _handler: AmodxHandler = async (event) => {
             transactItems.push({
                 Put: {
                     TableName: TABLE_NAME,
-                    Item: {
-                        PK: `TENANT#${tenantId}`,
-                        SK: `ROUTE#${oldSlug}`,
-                        Type: "Route",
-                        IsRedirect: true,
-                        RedirectTo: newSlug,
-                        CreatedAt: timestamp,
-                        UpdatedBy: userId
-                    }
+                    Item: redirectRouteItem(tenantId, oldSlug, newSlug, timestamp, userId)
                 }
             });
             transactItems.push({

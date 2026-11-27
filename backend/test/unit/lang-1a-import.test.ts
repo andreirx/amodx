@@ -27,7 +27,10 @@ const post = (slug: string, title: string) => ({ title, slug, content: "<p>Impor
 const run = async () => {
     const res = await (handler as any)({
         headers: { "x-tenant-id": "t1" },
-        body: JSON.stringify({ wxrContent: "<rss/>" }),
+        // IMPORT-PATHS-1: these rows pin today's overwrite (by slug, any page), which is the option-off import. Without
+        // the option the import keeps the old addresses on a site with no imported page, and never overwrites a page it
+        // did not write (ruling 5) — that mode's key rows are IP1-IDENTITY-KEEPS-KEY in import-paths-1.test.ts.
+        body: JSON.stringify({ wxrContent: "<rss/>", keepOldAddresses: false }),
         requestContext: { authorizer: { lambda: { sub: "u1", email: "ed@t1.test", role: "TENANT_ADMIN", tenantId: "t1" } } },
     }, {}, () => {});
     return { statusCode: res.statusCode as number, body: JSON.parse(res.body) };

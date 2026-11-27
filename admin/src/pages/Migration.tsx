@@ -9,6 +9,8 @@ import { Loader2, Upload, CheckCircle2, AlertCircle, ImageIcon, ShoppingBag, Fil
 import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
 import { useTenant } from "@/context/TenantContext";
 import { isCatalogMode } from "@amodx/shared";
+import { addressRowView, summarizeReport, type AddressRow } from "@/lib/wpAddressReport";
+import { PagesImportFlow, checkAuthorisesImport } from "@/lib/wpImportRun";
 
 interface StepResult {
     success: boolean;
@@ -39,6 +41,13 @@ export default function MigrationPage() {
     const [pagesFile, setPagesFile] = useState<File | null>(null);
     const [pagesLoading, setPagesLoading] = useState(false);
     const [pagesResult, setPagesResult] = useState<StepResult | null>(null);
+    // IMPORT-PATHS-1: the uploaded export (one upload for the check and the import), the option as the check answered
+    // it or the operator set it (null = not checked yet), and the address report of the last check or import.
+    const [pagesS3Key, setPagesS3Key] = useState<string | null>(null);
+    const [keepOldAddresses, setKeepOldAddresses] = useState<boolean | null>(null);
+    const [addressReport, setAddressReport] = useState<AddressReport | null>(null);
+    // The last check and whether it authorises an import (one import per complete check): PagesImportFlow.
+    const [pagesFlow] = useState(() => new PagesImportFlow(apiRequest));
 
     // Check if media already imported on page load
     useEffect(() => {
@@ -172,20 +181,56 @@ export default function MigrationPage() {
         }
     }
 
-    async function handlePagesImport() {
+    async function uploadedPagesKey(): Promise<string> {
+        if (pagesS3Key) return pagesS3Key;
+        const key = await uploadToS3(pagesFile!);
+        setPagesS3Key(key);
+        return key;
+    }
+
+    async function handlePagesCheck() {
         if (!pagesFile) return;
         setPagesLoading(true);
         setPagesResult(null);
+        setAddressReport(null);
+        pagesFlow.reset();
         try {
-            const s3Key = await uploadToS3(pagesFile);
-            const res = await apiRequest("/import/wordpress", {
-                method: "POST",
-                body: JSON.stringify({ s3Key }),
-            });
+            const run = await pagesFlow.runCheck(await uploadedPagesKey(), keepOldAddresses ?? undefined);
+            setKeepOldAddresses(run.keep ?? false);
+            setAddressReport({ dryRun: true, rows: run.rows, productAddresses: run.productAddresses });
+            if (!checkAuthorisesImport(run)) {
+                setPagesResult({ success: false, message: "The check is incomplete: some items could not be checked (in red). The import stays off; fix the cause and check again.", details: { errors: run.errors } });
+            }
+        } catch (e: any) {
+            setPagesResult({ success: false, message: e.message });
+        } finally {
+            setPagesLoading(false);
+        }
+    }
+
+    async function handlePagesImport() {
+        if (!pagesFile || keepOldAddresses === null || !pagesFlow.canImport()) return;
+        setPagesLoading(true);
+        setPagesResult(null);
+        try {
+            // The flow consumes the check before the first call: after a failed or partial import, check again.
+            const run = await pagesFlow.runImport(await uploadedPagesKey(), keepOldAddresses);
+            let created = 0, updated = 0;
+            if (run.rows.length > 0) setAddressReport({ dryRun: false, rows: run.rows });
+            // Each answer counts its own batch only. With the option on the rows of all batches are summed; with it off
+            // there are no rows and the message is the one before this slice.
+            for (const row of run.rows) {
+                if (row.item === "product") continue;
+                const write = "write" in row.page ? row.page.write : null;
+                if (write === "create") created++;
+                if (write === "update") updated++;
+            }
             setPagesResult({
-                success: true,
-                message: `Processed ${res.processedCount} of ${res.totalCount} pages`,
-                details: res,
+                success: run.errors.length === 0,
+                message: run.rows.length > 0
+                    ? `Processed ${run.last.processedCount} of ${run.last.totalCount} items: ${created} pages created, ${updated} updated`
+                    : `Processed ${run.last.processedCount} of ${run.last.totalCount} pages`,
+                details: { ...run.last, errors: run.errors },
             });
         } catch (e: any) {
             setPagesResult({ success: false, message: e.message });
@@ -311,7 +356,12 @@ export default function MigrationPage() {
                                 Upload WordPress pages export XML. Content and comments will be imported.
                             </p>
                             <p className="text-xs text-red-600">
-                                Imported pages get the URL /&lt;WordPress post name&gt;, stored exactly as WordPress had it; the permalink's folder structure (for example /2024/05/) is not kept. Pages whose URL does not follow this site's slug rules are marked REVIEW SLUG in Content — check them after the import.
+                                {keepOldAddresses === null
+                                    ? "Check the addresses first: the check lists every WordPress address and the address it gets on this site, and writes nothing. "
+                                    : keepOldAddresses
+                                        ? "Imported pages keep their WordPress address, in this site's slug form (for example /cursuri/ceara/ becomes /cursuri/ceara). Where an address cannot be kept, the page gets its post name and the old address redirects to it, or the check lists the address as lost. "
+                                        : "Imported pages get the URL /<WordPress post name>, stored exactly as WordPress had it; the permalink's folder structure (for example /2024/05/) is not kept. "}
+                                Pages whose URL does not follow this site's slug rules are marked REVIEW SLUG in Content — check them after the import.
                             </p>
                         </div>
                     </div>
@@ -323,17 +373,50 @@ export default function MigrationPage() {
                             type="file"
                             accept=".xml"
                             className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 file:cursor-pointer"
-                            onChange={e => setPagesFile(e.target.files?.[0] || null)}
+                            onChange={e => {
+                                setPagesFile(e.target.files?.[0] || null);
+                                setPagesS3Key(null);
+                                setKeepOldAddresses(null);
+                                setAddressReport(null);
+                                pagesFlow.reset();
+                                setPagesResult(null);
+                            }}
                             disabled={!mediaComplete || pagesLoading}
                         />
                     </div>
 
-                    <Button onClick={handlePagesImport} disabled={!mediaComplete || !pagesFile || pagesLoading} className="w-full">
-                        {pagesLoading
-                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing pages...</>
-                            : <><Upload className="mr-2 h-4 w-4" /> Import Pages</>}
-                    </Button>
+                    <label className="flex items-start gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={keepOldAddresses === true}
+                            disabled={keepOldAddresses === null || pagesLoading}
+                            onChange={e => { setKeepOldAddresses(e.target.checked); setAddressReport(null); pagesFlow.reset(); }}
+                        />
+                        <span>
+                            Keep the old addresses
+                            <span className="block text-xs text-muted-foreground">
+                                {keepOldAddresses === null
+                                    ? "The check sets this: on for a site with no imported pages, off for a site that has pages from an earlier import."
+                                    : "Change it, then check again before you import."}
+                            </span>
+                        </span>
+                    </label>
 
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handlePagesCheck} disabled={!mediaComplete || !pagesFile || pagesLoading} className="flex-1">
+                            {pagesLoading && addressReport === null
+                                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking...</>
+                                : "Check addresses"}
+                        </Button>
+                        <Button onClick={handlePagesImport} disabled={!mediaComplete || !pagesFile || pagesLoading || !pagesFlow.canImport()} className="flex-1">
+                            {pagesLoading && addressReport !== null
+                                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing pages...</>
+                                : <><Upload className="mr-2 h-4 w-4" /> Import Pages</>}
+                        </Button>
+                    </div>
+
+                    {addressReport && <AddressReportTable report={addressReport} />}
                     {pagesResult && <ResultBanner result={pagesResult} />}
                 </CardContent>
             </Card>
@@ -375,6 +458,63 @@ export default function MigrationPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+        </div>
+    );
+}
+
+/** IMPORT-PATHS-1: the address report of a check (dry run) or of an import with the option on. */
+interface AddressReport {
+    dryRun: boolean;
+    rows: AddressRow[];
+    productAddresses?: { site: string; old: string[] };
+}
+
+function AddressReportTable({ report }: { report: AddressReport }) {
+    const views = report.rows.map(row => addressRowView(row, report.dryRun));
+    const summary = summarizeReport(report.rows, report.dryRun);
+    const product = report.productAddresses;
+    return (
+        <div className="space-y-2">
+            <p className="text-sm">
+                {report.dryRun ? "Check" : "Import"}: {summary.items} items, {summary.problems} with a problem (in red).
+            </p>
+            {summary.cannotKeepOrRedirect > 0 && (
+                <p className="text-sm text-destructive">
+                    {summary.cannotKeepOrRedirect} old {summary.cannotKeepOrRedirect === 1 ? "address" : "addresses"} cannot be kept or redirected: this site answers {summary.cannotKeepOrRedirect === 1 ? "it" : "them"} with its own pages first. {report.dryRun ? "The import does not change that." : ""}
+                </p>
+            )}
+            {summary.failed > 0 && (
+                <p className="text-sm text-destructive">{summary.failed} {summary.failed === 1 ? "item" : "items"} failed.</p>
+            )}
+            {product && product.old.some(p => p !== product.site) && (
+                <p className="text-xs text-muted-foreground">
+                    Product addresses differ: this site uses {product.site}, the old site used {product.old.join(", ")}. With "Keep the old addresses", the import redirects each product that this site has from its old address.
+                </p>
+            )}
+            <div className="border rounded-md overflow-auto max-h-96">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="text-xs">Item</TableHead>
+                            <TableHead className="text-xs">Old address</TableHead>
+                            <TableHead className="text-xs">New address</TableHead>
+                            <TableHead className="text-xs">Redirect</TableHead>
+                            <TableHead className="text-xs">Note</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {views.map((v, i) => (
+                            <TableRow key={i} className={v.problem ? "text-destructive" : ""}>
+                                <TableCell className="text-xs py-1">{v.title}</TableCell>
+                                <TableCell className="text-xs font-mono py-1">{v.oldAddress}</TableCell>
+                                <TableCell className="text-xs font-mono py-1">{v.newAddress}</TableCell>
+                                <TableCell className="text-xs py-1">{v.redirect}</TableCell>
+                                <TableCell className="text-xs py-1">{v.note}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
         </div>
     );
 }
