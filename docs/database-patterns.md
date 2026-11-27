@@ -9,6 +9,7 @@ All entities share one table with composite keys:
 | Entity | PK | SK Pattern |
 |--------|----|-----------:|
 | Tenant config | `SYSTEM` | `TENANT#<id>` |
+| Saved theme (one library shared by all tenants; save: `GLOBAL_ADMIN`, `TENANT_ADMIN`; delete: `GLOBAL_ADMIN` only — THEME-ROLES-1) | `SYSTEM` | `THEME#<id>` |
 | Content (latest) | `TENANT#<id>` | `CONTENT#<nodeId>#LATEST` |
 | Content (version) | `TENANT#<id>` | `CONTENT#<nodeId>#v<N>` |
 | Route | `TENANT#<id>` | `ROUTE#<slug>` |

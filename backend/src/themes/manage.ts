@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, QueryCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -11,9 +12,13 @@ const _createHandler: Handler = async (event) => {
     try {
         const auth = event.requestContext.authorizer.lambda;
 
-        // Security: Only Global Admins should create shared themes for now
-        // Or Tenant Admins can create themes for their tenant?
-        // Let's allow anyone to create for now, filtered by scope in V2.
+        // THEME-ROLES-1 (docs/slices/theme-roles-1.md): the library is shared by all sites (PK SYSTEM). Saving:
+        // GLOBAL_ADMIN and TENANT_ADMIN of any tenant — no tenant argument, the item belongs to no tenant.
+        try {
+            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN"]);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         const body = JSON.parse(event.body || "{}");
         if (!body.name || !body.theme) return { statusCode: 400, body: "Missing name or theme data" };
@@ -56,6 +61,13 @@ export const listHandler: Handler = async () => {
 // DELETE /themes/{id}
 const _deleteHandler: Handler = async (event) => {
     try {
+        // THEME-ROLES-1: deleting an entry every site lists is the agency's only (GLOBAL_ADMIN, the MCP master key too).
+        try {
+            requireRole(event.requestContext.authorizer.lambda, ["GLOBAL_ADMIN"]);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
+
         const id = event.pathParameters?.id;
         if (!id) return { statusCode: 400, body: "Missing ID" };
 

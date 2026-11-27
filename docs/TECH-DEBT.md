@@ -1779,11 +1779,10 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   `config.theme`). Every control of the Settings dark tab ("Dark Mode Overrides", "Applied when user system preference
   is Dark.") stores values nothing renders. The description is false. Options: implement a dark theme in the renderer
   (a feature), or remove the tab; an owner decision.
-- **F-SF1-THEME-WRITE-ROLES.** The saved custom themes are one library shared by all tenants (`PK: "SYSTEM"`) — a
-  documented contract (`tools/mcp-server/ARCHITECTURE.md:193`, `docs/slices/mcp-sync-1.md:157-158`, the `delete_theme`
-  tool description). Open: its write policy is not documented, and `POST` / `DELETE /themes` check no role, so any
-  staff role may add an entry or delete one another site saved. Since SETTINGS-FINDINGS-1 the library shows on page
-  open. DECISION_REQUIRED `SF1-THEME-WRITE-ROLES` in the spec.
+- ~~**F-SF1-THEME-WRITE-ROLES.**~~ **CLOSED 2026-11-28 by `theme-roles-1`** (ruling SF1-THEME-WRITE-ROLES = B,
+  `docs/slices/theme-roles-1.md`): the library stays shared; `POST /themes` admits `GLOBAL_ADMIN` and `TENANT_ADMIN`,
+  `DELETE /themes/{id}` `GLOBAL_ADMIN` only (403 otherwise, nothing written); the Settings screen shows Save and
+  Delete only to those roles. Was: `POST` / `DELETE /themes` checked no role.
 - **F-SF1-FIRST-SAVE-EMPTY-SECRETS (harmless, not changed).** The first Save through the screen stores `""` for
   `recaptcha.secretKey`, `integrations.braveApiKey` and (in `integrations.google`) `clientSecret` when they are absent,
   and the redacted read then answers `integrations.google: {}`. Every reader treats `""` and `{}` as absent. Pinned by
@@ -1793,5 +1792,15 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   renderer merges `themeOverride` into the theme for `ThemeInjector`, which reads no `mode`). Not the Settings screen.
 - **F-SF1-DARK-SAVE-THEME (pre-existing, INFERRED).** "Save Theme" on the dark tab of a site without `darkTheme` posts
   `{ name }` without `theme` (`saveCurrentTheme`), which `POST /themes` refuses (400) → an alert.
-- **F-SF1-DELETE-THEME-UNCAUGHT (pre-existing).** `deleteTheme` has no `try`: a refused `DELETE /themes/{id}` is an
-  unhandled promise rejection, and the list is not reloaded.
+- ~~**F-SF1-DELETE-THEME-UNCAUGHT.**~~ **CLOSED 2026-11-28 by `theme-roles-1`:** `deleteTheme` catches a refused or
+  failed delete, shows it (`alert`, as `saveCurrentTheme`) and reloads the list (admin row TR1-A-DELETE-REFUSED).
+
+## theme-roles-1 residuals (2026-11-28)
+
+`docs/slices/theme-roles-1.md` § *Findings*:
+- **F-TR1-ADMIN-403-SIGNOUT (pre-existing).** `admin/src/lib/api.ts` (`apiRequest`) treats every 401 AND 403 as an
+  expired session: it removes the stored tenant, signs the user out, redirects to `/login` and throws "Session
+  expired. Please login again." A role refusal (every handler answers it with 403) seen from any screen therefore
+  ends the session. The Settings theme controls are hidden for the roles the backend refuses, so the screen does not
+  meet it there; a role changed while signed in (the token keeps the old role until refresh) still can. Fix option:
+  sign out on 401 only and throw an `ApiError` for 403. It changes every screen's refusal handling: its own slice.

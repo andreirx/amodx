@@ -4,8 +4,11 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `theme-roles-1`, then `cmrc-1`.
+Nothing. Next in the order of work: Track B, `cmrc-1a` (`docs/slices/cmrc-1.md` § 5.15).
 
+`theme-roles-1` is on staging since 2026-11-28 (`docs/slices/theme-roles-1.md` § "Closeout") and waits for the human's
+production deploy: saving to the shared theme library needs `TENANT_ADMIN` or `GLOBAL_ADMIN`, deleting needs
+`GLOBAL_ADMIN`; the Settings screen shows each role only the controls it may use.
 `ci-lockfile-1` is done since 2026-11-28 (`docs/slices/ci-lockfile-1.md` § "Closeout"; nothing to deploy): the two
 Playwright workflows install the recorded versions (`npm ci`) on Node 22 and the `ubuntu-24.04` image; the
 reserved-word guard is loaded under `backend/vitest.config.ts` too; "Playwright Tests" is green on `77d82e9`.

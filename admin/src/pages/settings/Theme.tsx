@@ -155,8 +155,13 @@ export function ThemeTabSwitch({ activeTab, setActiveTab }: { activeTab: "light"
     );
 }
 
-/** The theme card ("Standard Theme" / "Dark Mode Overrides"): presets, custom themes, palette, shape. */
-export function ThemeCard({ activeTab, activeConfig, updateTheme, setConfig, customThemes, deleteTheme, isSaveThemeOpen, setIsSaveThemeOpen, newThemeName, setNewThemeName, saveCurrentTheme }: { activeTab: "light" | "dark"; activeConfig: ThemeDraft; updateTheme: ThemeKeySetter; setConfig: Dispatch<SetStateAction<SettingsDraft>>; customThemes: any[]; deleteTheme: (id: string) => void; isSaveThemeOpen: boolean; setIsSaveThemeOpen: (open: boolean) => void; newThemeName: string; setNewThemeName: (name: string) => void; saveCurrentTheme: () => void }) {
+/**
+ * The theme card ("Standard Theme" / "Dark Mode Overrides"): presets, custom themes, palette, shape.
+ * THEME-ROLES-1: `canSaveTheme` shows the Save Theme control, `canDeleteTheme` the delete button of each saved theme
+ * (the backend refuses the others with 403). Every role sees and applies the saved themes. The Dialog root stays mounted
+ * for every role and only its trigger is conditional: the root's `useId` calls keep the page's other React ids as captured.
+ */
+export function ThemeCard({ activeTab, activeConfig, updateTheme, setConfig, customThemes, deleteTheme, canSaveTheme, canDeleteTheme, isSaveThemeOpen, setIsSaveThemeOpen, newThemeName, setNewThemeName, saveCurrentTheme }: { activeTab: "light" | "dark"; activeConfig: ThemeDraft; updateTheme: ThemeKeySetter; setConfig: Dispatch<SetStateAction<SettingsDraft>>; customThemes: any[]; deleteTheme: (id: string) => void; canSaveTheme: boolean; canDeleteTheme: boolean; isSaveThemeOpen: boolean; setIsSaveThemeOpen: (open: boolean) => void; newThemeName: string; setNewThemeName: (name: string) => void; saveCurrentTheme: () => void }) {
     const applyPreset = (presetTheme: any) => {
         if (activeTab === 'light') {
             setConfig(prev => ({
@@ -180,11 +185,13 @@ export function ThemeCard({ activeTab, activeConfig, updateTheme, setConfig, cus
                     <CardTitle className="text-base">{activeTab === 'light' ? 'Standard Theme' : 'Dark Mode Overrides'}</CardTitle>
 
                     <Dialog open={isSaveThemeOpen} onOpenChange={setIsSaveThemeOpen}>
+                        {canSaveTheme && (
                         <DialogTrigger asChild>
                             <Button variant="outline" size="icon" title="Save current styles as Theme">
                                 <Save className="h-4 w-4" />
                             </Button>
                         </DialogTrigger>
+                        )}
                         <DialogContent>
                             <DialogHeader><DialogTitle>Save Custom Theme</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
@@ -219,12 +226,14 @@ export function ThemeCard({ activeTab, activeConfig, updateTheme, setConfig, cus
                                     <div className="w-2 h-2 rounded-full mr-2 border shrink-0" style={{ backgroundColor: t.theme.primaryColor }} />
                                     <span className="truncate">{t.name}</span>
                                 </Button>
+                                {canDeleteTheme && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); deleteTheme(t.id); }}
                                     className="absolute right-1 top-1 p-1 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
                                     <Trash2 className="w-3 h-3" />
                                 </button>
+                                )}
                             </div>
                         ))}
                     </div>

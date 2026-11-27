@@ -192,6 +192,11 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `apply_theme` | GET /themes + GET/PUT /settings | Copy a theme's values into the site's light or dark slot |
 | `delete_theme` | DELETE /themes/{id} | Delete a shared theme (themes are global, not per tenant) |
 
+Who may write the shared library (THEME-ROLES-1, `docs/slices/theme-roles-1.md`): `POST /themes` — `GLOBAL_ADMIN` and
+`TENANT_ADMIN`; `DELETE /themes/{id}` — `GLOBAL_ADMIN` only; `GET /themes` — any caller. This server sends the master
+key, which the authorizer maps to `GLOBAL_ADMIN`, so `create_theme` and `delete_theme` keep working. No tool text states
+a permission, so none changed.
+
 ### Signals & Research
 | Tool | Method | Purpose |
 |------|--------|---------|

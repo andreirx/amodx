@@ -179,13 +179,20 @@ src/
     │                           #   shape), Interface, Page Background Effect; withThemeKey and the theme detail groups.
     │                           #   SETTINGS-FINDINGS-1: the heading/body font fields are in the Typography card only;
     │                           #   Interface has Border Radius only (no Mode control: nothing reads theme.mode) and it
-    │                           #   reads and writes theme.radius on both tabs (the renderer reads no darkTheme)
+    │                           #   reads and writes theme.radius on both tabs (the renderer reads no darkTheme).
+    │                           #   THEME-ROLES-1: ThemeCard gets canSaveTheme (page: isAdmin = TENANT_ADMIN or
+    │                           #   GLOBAL_ADMIN) and canDeleteTheme (page: GLOBAL_ADMIN) — the rule POST / DELETE
+    │                           #   /themes enforce; every role lists and applies the saved themes. Only the Save
+    │                           #   DialogTrigger is conditional (the Dialog root stays mounted: its useId calls keep the
+    │                           #   page's React ids). The page's deleteTheme catches a refusal (alert) and reloads
     ├── Settings.markup.test.ts # REFACTOR-SETTINGS-1 acceptance oracle (jsdom; real page, @/lib/api answered per state):
     │                           #   DOM after load and listed interactions, the PUT /settings body, a sweep of every
     │                           #   field; files under __markup__/refactor-settings-1/ (re-capture only for a slice that
     │                           #   changes the screen on purpose, with a listed, reviewed diff — never `vitest -u` to
     │                           #   "fix" a difference). SETTINGS-FINDINGS-1: one regression test per finding, and the
-    │                           #   first-Save capture under __markup__/settings-findings-1/ (read by the backend test)
+    │                           #   first-Save capture under __markup__/settings-findings-1/ (read by the backend test).
+    │                           #   THEME-ROLES-1: the TR1-A-* rows (theme controls per role, the delete refusal),
+    │                           #   appended LAST — the useId counter is shared by the file's tests in mount order
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"

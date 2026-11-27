@@ -51,6 +51,9 @@ export default function SettingsPage() {
     const [mailerLiteStored, setMailerLiteStored] = useState(false);
 
     const isAdmin = userRole === "TENANT_ADMIN" || userRole === "GLOBAL_ADMIN";
+    // THEME-ROLES-1 (docs/slices/theme-roles-1.md): the saved themes are shared by all sites. Saving: TENANT_ADMIN and
+    // GLOBAL_ADMIN (= isAdmin); deleting: GLOBAL_ADMIN only — the rule POST and DELETE /themes enforce.
+    const canDeleteTheme = userRole === "GLOBAL_ADMIN";
 
     // Country pack apply dialog
     const [pendingPackCode, setPendingPackCode] = useState<string | null>(null);
@@ -176,9 +179,15 @@ export default function SettingsPage() {
         }
     }
 
+    // THEME-ROLES-1 (F-SF1-DELETE-THEME-UNCAUGHT): a refused or failed delete is shown as saveCurrentTheme shows its
+    // error; the list is loaded again in both cases.
     async function deleteTheme(id: string) {
         if (!confirm("Delete this theme?")) return;
-        await apiRequest(`/themes/${id}`, { method: "DELETE" });
+        try {
+            await apiRequest(`/themes/${id}`, { method: "DELETE" });
+        } catch (e: any) {
+            alert(e.message);
+        }
         loadCustomThemes();
     }
 
@@ -369,7 +378,7 @@ export default function SettingsPage() {
                     {/* THEME SWITCHER TAB */}
                     <ThemeTabSwitch activeTab={activeTab} setActiveTab={setActiveTab} />
 
-                    <ThemeCard activeTab={activeTab} activeConfig={activeConfig} updateTheme={updateTheme} setConfig={setConfig} customThemes={customThemes} deleteTheme={deleteTheme} isSaveThemeOpen={isSaveThemeOpen} setIsSaveThemeOpen={setIsSaveThemeOpen} newThemeName={newThemeName} setNewThemeName={setNewThemeName} saveCurrentTheme={saveCurrentTheme} />
+                    <ThemeCard activeTab={activeTab} activeConfig={activeConfig} updateTheme={updateTheme} setConfig={setConfig} customThemes={customThemes} deleteTheme={deleteTheme} canSaveTheme={isAdmin} canDeleteTheme={canDeleteTheme} isSaveThemeOpen={isSaveThemeOpen} setIsSaveThemeOpen={setIsSaveThemeOpen} newThemeName={newThemeName} setNewThemeName={setNewThemeName} saveCurrentTheme={saveCurrentTheme} />
 
 
                     {/* INTERFACE */}

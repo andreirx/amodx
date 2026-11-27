@@ -30,12 +30,14 @@ import { MemoryRouter } from "react-router-dom";
 
 type Answer = Record<string, unknown>;
 type State = {
-    role: "TENANT_ADMIN" | "EDITOR";
+    role: "GLOBAL_ADMIN" | "TENANT_ADMIN" | "EDITOR";
     settings: Answer;
     secrets?: Answer;
     categories?: unknown[] | "fail";
     /** The stored custom themes `GET /themes` answers; "fail" = the request is refused (SETTINGS-FINDINGS-1). */
     themes?: Answer[] | "fail";
+    /** "refuse" = `DELETE /themes/<id>` throws, as `apiRequest` does for a refused or failed request (THEME-ROLES-1). */
+    themeDelete?: "refuse";
 };
 
 const api = vi.hoisted(() => ({
@@ -59,6 +61,11 @@ vi.mock("@/lib/api", async (original) => ({
         }
         if (path === "/service-keys") return { items: [] };
         if (path === "/themes" && method === "POST") { api.themes.push({ id: `theme-${api.themes.length + 1}`, ...body }); return {}; }
+        if (path.startsWith("/themes/") && method === "DELETE") {
+            if (s.themeDelete === "refuse") throw new Error("theme delete refused");
+            api.themes = api.themes.filter((t) => t.id !== path.slice("/themes/".length));
+            return { message: "Deleted" };
+        }
         if (path === "/themes") {
             if (s.themes === "fail") throw new Error("themes refused");
             return { items: structuredClone(api.themes) };
@@ -413,5 +420,66 @@ describe("Settings — SETTINGS-FINDINGS-1 regression tests", () => {
         const body = await saveBody();
         await expect(JSON.stringify({ settings: FIRST_SAVE.settings, secrets: FIRST_SAVE.secrets }, null, 2) + "\n").toMatchFileSnapshot(findingsFile("first-save.answers.json"));
         await expect(JSON.stringify(body, null, 2) + "\n").toMatchFileSnapshot(findingsFile("first-save.save.json"));
+    });
+});
+
+// ── THEME-ROLES-1 (docs/slices/theme-roles-1.md § Proofs) — the theme controls per role; the delete refusal ─────────
+// Appended last: the ids React gives in this file come from one counter in mount order, so tests added before the
+// capture tests would move the ids those captures hold.
+
+const saveThemeTrigger = () => host.querySelector<HTMLButtonElement>('button[title="Save current styles as Theme"]');
+/** The delete button of a saved theme: the second button of the theme's group (the first applies the theme). */
+const deleteButtonOf = (name: string) => buttonByText(name)?.parentElement?.querySelectorAll("button")[1];
+const withStoredTheme = (role: State["role"], extra: Partial<State> = {}): State => ({ ...EMPTY, role, themes: [STORED_THEME], ...extra });
+
+describe("Settings — THEME-ROLES-1: the theme controls per role, the delete refusal", () => {
+    for (const [role, canSave, canDelete] of [["GLOBAL_ADMIN", true, true], ["TENANT_ADMIN", true, false], ["EDITOR", false, false]] as const) {
+        it(`TR1-A-CONTROLS-${role}: Save Theme ${canSave ? "shown" : "hidden"}, delete ${canDelete ? "shown" : "hidden"}; the saved theme listed`, async () => {
+            await mount(withStoredTheme(role));
+            expect(buttonByText("Stored Autumn"), "the saved theme is listed").toBeTruthy();
+            expect(!!saveThemeTrigger(), "the Save Theme control").toBe(canSave);
+            expect(!!deleteButtonOf("Stored Autumn"), "the delete button of the saved theme").toBe(canDelete);
+        });
+    }
+
+    it("TR1-A-APPLY-EDITOR (preservation): an editor applies a saved theme; the Save body holds its colour", async () => {
+        await mount(withStoredTheme("EDITOR"));
+        await click(buttonByText("Stored Autumn"));
+        expect((await saveBody() as { theme: Record<string, unknown> }).theme.primaryColor).toBe("#123456");
+    });
+
+    async function clickDelete(state: State) {
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+        process.on("unhandledRejection", onUnhandled);
+        const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+        const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
+        try {
+            await mount(state);
+            const before = api.calls.length;
+            await click(deleteButtonOf("Stored Autumn")!);
+            await settle();
+            return { unhandled, alerts: alert.mock.calls.map((c) => c[0]), calls: api.calls.slice(before).map((c) => `${c.method} ${c.path}`) };
+        } finally {
+            process.off("unhandledRejection", onUnhandled);
+            confirm.mockRestore();
+            alert.mockRestore();
+        }
+    }
+
+    it("TR1-A-DELETE-REFUSED: a refused delete shows the error, the list is loaded again, no unhandled rejection", async () => {
+        const r = await clickDelete(withStoredTheme("GLOBAL_ADMIN", { themeDelete: "refuse" }));
+        expect(r.unhandled, "no unhandled rejection").toEqual([]);
+        expect(r.alerts, "the page's error means for the theme actions").toEqual(["theme delete refused"]);
+        expect(r.calls).toEqual(["DELETE /themes/stored-1", "GET /themes"]);
+        expect(buttonByText("Stored Autumn"), "still listed").toBeTruthy();
+    });
+
+    it("TR1-A-DELETE-OK (preservation): a delete that succeeds sends DELETE and loads the list again; no alert", async () => {
+        const r = await clickDelete(withStoredTheme("GLOBAL_ADMIN"));
+        expect(r.unhandled).toEqual([]);
+        expect(r.alerts).toEqual([]);
+        expect(r.calls).toEqual(["DELETE /themes/stored-1", "GET /themes"]);
+        expect(buttonByText("Stored Autumn"), "gone from the list").toBeUndefined();
     });
 });

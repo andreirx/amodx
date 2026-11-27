@@ -563,7 +563,11 @@ src/
 ├── consent/
 │   └── create.ts          # POST /consent (public, GDPR tracking)
 ├── themes/
-│   └── manage.ts          # Theme CRUD (create, list, delete handlers)
+│   └── manage.ts          # The shared theme library (PK SYSTEM, SK THEME#<id>; one for all sites): list, save,
+│                          #   delete (no update). THEME-ROLES-1: GET any caller; POST requireRole GLOBAL_ADMIN,
+│                          #   TENANT_ADMIN (no tenant argument: the item is no tenant's); DELETE GLOBAL_ADMIN only
+│                          #   (the MCP master key is GLOBAL_ADMIN); a refusal → 403 { error }, no command sent
+│                          #   (test/unit/theme-roles-1.test.ts)
 ├── webhooks/
 │   └── paddle.ts          # POST /webhooks/paddle — fulfils nothing (PADDLE-HOOK-1): unverified, so every request
 │                          #   gets 200 + one event-name log line; no table/S3/mail. Verified fulfilment: pay-2
