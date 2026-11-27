@@ -4,9 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `refactor-renderer-reads-1`, then `settings-findings-1` and `ci-lockfile-1`
-(the human, 2026-11-27), then `cmrc-1`.
+Nothing. Next in the order of work: `settings-findings-1`, then `ci-lockfile-1` (the human, 2026-11-27), then `cmrc-1`.
 
+`refactor-renderer-reads-1` is on staging since 2026-11-27 (`docs/slices/refactor-renderer-reads-1.md` § "Closeout")
+and waits for the human's production deploy: the three reads of personal commerce data (`getOrderForCustomer`,
+`getCustomerOrders`, `getCustomerProfile`) live in `renderer/src/lib/dynamo-customer-reads.ts`, the client in
+`renderer/src/lib/dynamo-client.ts`; `dynamo.ts` re-exports them; moves only.
 `refactor-mcp-1` is done since 2026-11-27 (`docs/slices/refactor-mcp-1.md` § "Closeout"; a local tool, nothing to
 deploy): `tools/mcp-server/src/index.ts` keeps the server start (130 lines); the 80 tools live in 21 group files
 under `tools/mcp-server/src/tools/`, moves only; an MCP client receives a byte-identical tool list.

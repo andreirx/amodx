@@ -364,8 +364,8 @@ the old HTTP-200 "Site Not Found" shell suppressed the page's own `notFound()`.)
 Ratified 2026-07-26 (human decision **CACHE-1-D4**), after review found the rule was
 implemented for `getTenantConfig()` only.
 
-**Every read helper in `renderer/src/lib/dynamo.ts` lets AWS/SDK errors propagate, and so
-does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
+**Every read helper in `renderer/src/lib/dynamo.ts` and `renderer/src/lib/dynamo-customer-reads.ts` (the order and
+customer reads, re-exported by `dynamo.ts`) lets AWS/SDK errors propagate, and so does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
 the record genuinely is not there. Not one of them catches an operational failure. This is
 not a `getTenantConfig()` rule, not a "`lib/dynamo.ts` only" rule and not a "cacheable routes
 only" rule — dual read semantics were explicitly rejected, so there is no render-mode

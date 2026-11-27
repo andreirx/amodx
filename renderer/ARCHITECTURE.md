@@ -78,7 +78,9 @@ src/
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
-    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
+    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing; re-exports the customer reads
+    ├── dynamo-client.ts                       # The read layer's one DynamoDB document client (`docClient`) and `requireTableName()` (refactor-renderer-reads-1)
+    ├── dynamo-customer-reads.ts               # Reads of one customer's own commerce data: getOrderForCustomer, getCustomerOrders, getCustomerProfile — cmrc-1 changes this file
     ├── tenant-directory.ts                    # EDGE runtime: the host verdict for middleware — unknown / unwired / wired + languages (own client — see file header)
     ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input; FINDINGS-1: `SITEMAP_BY_ID_HEADER` (middleware → sitemap route)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
@@ -137,7 +139,7 @@ record exist for this host, and which extra languages does it list?" (`HostVerdi
 verdict is `unwired`. This
 is the **only** place a production 404 can be non-cacheable, because a route in ISR mode
 cannot emit one (see `docs/caching-architecture.md`). It **fails open** on any lookup error:
-a DynamoDB blip must not 404 the whole estate. The client is separate from `lib/dynamo.ts` on
+a DynamoDB blip must not 404 the whole estate. The client is separate from the read layer's client (`lib/dynamo-client.ts`) on
 purpose — the edge runtime has no default AWS credential provider chain, so credentials are
 passed explicitly; do not "de-duplicate" the two.
 
@@ -389,6 +391,28 @@ is the right list*.
 and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 
 ## Direct DynamoDB Access (`lib/dynamo.ts`)
+
+**Three files, one read layer** (slice `refactor-renderer-reads-1`, moves only):
+
+| File | Holds | Imports from the tree |
+|---|---|---|
+| `lib/dynamo-client.ts` | the one `DynamoDBClient` + `DynamoDBDocumentClient` (`docClient`, created at import) and `requireTableName()` | none |
+| `lib/dynamo-customer-reads.ts` | `getOrderForCustomer`, `getCustomerOrders`, `getCustomerProfile` — the reads of `ORDER#`, `CUSTORDER#`, `CUSTOMER#` | `dynamo-client.ts` |
+| `lib/dynamo.ts` | every other read; re-exports the three customer reads, so importers keep `from "@/lib/dynamo"` | `dynamo-client.ts`, `dynamo-customer-reads.ts` |
+
+- **Rule:** reads of orders and customers go in `lib/dynamo-customer-reads.ts`; Track B (`cmrc-1`, the commerce
+  private table) changes that file. No other file of the renderer reads those items.
+- **Direction:** `dynamo.ts` → `dynamo-customer-reads.ts` → `dynamo-client.ts`, and `dynamo.ts` → `dynamo-client.ts`.
+  Nothing imports `dynamo.ts` back (that would be a cycle); a new read file imports the client from
+  `dynamo-client.ts`, never from `dynamo.ts`.
+- **One client:** `new DynamoDBClient(` appears once in the read layer (`dynamo-client.ts`). The other two in
+  `renderer/src` are separate on purpose: `lib/tenant-directory.ts` (edge, see above) and `app/api/posts/route.ts`.
+- **The error rule below covers all three files.** The `dynamo.ts` file header and the `requireTableName` comment
+  say "this file"; the moves-only rule kept their text, so this section is where the rule is stated for the customer
+  reads too (finding F-RRR1-HEADER-SCOPE in `docs/slices/refactor-renderer-reads-1.md`).
+- **Server only:** the callers are server code (`components/SitePage.tsx`, `app/api/account/orders/route.ts`,
+  `app/api/profile/route.ts`); no `"use client"` module reaches these files. None of the three files has an
+  `import "server-only"` marker (finding F-RRR1-NO-SERVER-ONLY).
 
 The renderer reads directly from DynamoDB for performance (bypasses backend API):
 - `getTenantConfig(identifier)` — by domain (GSI) or tenant ID (PK)
@@ -717,7 +741,7 @@ Tests: `test/unit/price-locale-1.test.ts` (real provider, button, cart page, che
 
 ## Order read by email — slice `order-email-1`
 
-Record `docs/slices/order-email-1.md`. `getOrderForCustomer(tenant, orderId, email)` (`lib/dynamo.ts`) reads
+Record `docs/slices/order-email-1.md`. `getOrderForCustomer(tenant, orderId, email)` (`lib/dynamo-customer-reads.ts`, re-exported by `lib/dynamo.ts`) reads
 `ORDER#<orderId>` and returns it (without `internalNotes`) only when the stored `customerEmail` equals
 `normalizeEmail(email)` (`@amodx/shared`). The order handler stores `normalizeEmail(typed)`; the confirmation address
 (`CheckoutPageView`) and the account page's tracking link carry the email as typed or as the session gives it, so the

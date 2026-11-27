@@ -67,7 +67,7 @@ with online payment (Paddle) never delivered a purchase (§ 2.3).
 - **C10** — The confirmation and tracking pages read the order straight from DynamoDB on the server side
   (`getOrderForCustomer`: key `ORDER#<id>`, then the stored email must equal the normalized query email); they are
   served by the dynamic twin (`no-store`). `GET /public/orders/{id}?email=` applies the same rule.
-  `renderer/src/components/SitePage.tsx` (`SitePage`, the `checkout-confirm` and `checkout-track` branches); `renderer/src/lib/dynamo.ts:536-549`;
+  `renderer/src/components/SitePage.tsx` (`SitePage`, the `checkout-confirm` and `checkout-track` branches); `getOrderForCustomer` in `renderer/src/lib/dynamo-customer-reads.ts`;
   `backend/src/orders/public-get.ts:16-28`; `docs/caching-architecture.md:97-109`.
 - **C11** — The renderer's server function can read the whole main table (`grantReadData`).
   `infra/lib/renderer-hosting.ts:272`.

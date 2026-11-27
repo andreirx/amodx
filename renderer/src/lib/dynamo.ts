@@ -44,32 +44,11 @@
 //     status — so no 200-with-empty-data is produced either way. Reached only from `/api/*`
 //     handlers; verified by grep over `renderer/src`: `getRendererKey`/`getMasterKey` have
 //     no callers under `app/[siteId]/` or `components/`.
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings, pageLanguageOf, languageTagOf, localeLanguageSubtag } from "@amodx/shared";
-
-const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
-const docClient = DynamoDBDocumentClient.from(client);
-
-/**
- * The DynamoDB table every helper in this file reads, or an error.
- *
- * Not configurable, not defaulted, never absent-shaped: a renderer with no `TABLE_NAME`
- * cannot answer "does this record exist?", so it must not answer "no". See the file header.
- * Call this BEFORE any legitimate empty-input short-circuit (e.g. a blank search query), so
- * a misconfigured deployment can never hide behind an empty-looking result.
- */
-function requireTableName(): string {
-    const table = process.env.TABLE_NAME;
-    if (!table) {
-        throw new Error(
-            "TABLE_NAME is not set: the renderer cannot read tenant data. This is a deployment " +
-            "misconfiguration, not an empty result — failing the render so nothing is cached.",
-        );
-    }
-    return table;
-}
+import { QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings, pageLanguageOf, languageTagOf, localeLanguageSubtag } from "@amodx/shared";
+import { docClient, requireTableName } from "./dynamo-client";
+export { getOrderForCustomer, getCustomerOrders, getCustomerProfile } from "./dynamo-customer-reads";
 
 /** Check if a product is within its availability date window today (UTC day). The rule is `@amodx/shared`'s
  *  `isProductAvailable` (CAT-IMPORT-PROFILE-1B moved it there for the admin preview); this binds it to the clock. */
@@ -557,22 +536,6 @@ export async function getDeliveryConfig(tenantId: string) {
     return result.Item || null;
 }
 
-// 10. Fetch Order for Customer (public - requires email match)
-export async function getOrderForCustomer(tenantId: string, orderId: string, email: string) {
-    const tableName = requireTableName();
-
-    const result = await docClient.send(new GetCommand({
-        TableName: tableName,
-        Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${orderId}` }
-    }));
-
-    if (!result.Item) return null;
-    if (result.Item.customerEmail !== normalizeEmail(email)) return null; // stored normalized (orders/create.ts); order-email-1
-
-    const { internalNotes, ...order } = result.Item;
-    return order;
-}
-
 // 11. Fetch approved reviews for a product
 export async function getProductReviews(tenantId: string, productId: string) {
     const tableName = requireTableName();
@@ -651,55 +614,6 @@ export async function getSiteReviews(tenantId: string) {
     const averageRating = totalReviews > 0 ? Math.round((items.reduce((s: number, r: any) => s + r.rating, 0) / totalReviews) * 10) / 10 : 0;
 
     return { items, averageRating, totalReviews };
-}
-
-// 12. Fetch customer orders by email (CUSTORDER# adjacency)
-export async function getCustomerOrders(tenantId: string, email: string) {
-    const tableName = requireTableName();
-
-    // Paginate through all results
-    const allItems: any[] = [];
-    let lastKey: any = undefined;
-
-    do {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": `CUSTORDER#${normalizeEmail(email)}#`,
-            },
-            // `total` and `status` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
-            ProjectionExpression: "orderNumber, #total, #s, createdAt, SK",
-            ExpressionAttributeNames: { "#s": "status", "#total": "total" },
-            ExclusiveStartKey: lastKey,
-        }));
-        allItems.push(...(result.Items || []));
-        lastKey = result.LastEvaluatedKey;
-    } while (lastKey);
-
-    return allItems
-        .map((item: any) => ({
-            orderNumber: item.orderNumber,
-            total: item.total,
-            status: item.status,
-            createdAt: item.createdAt,
-            orderId: item.SK.split("#").pop(),
-        }))
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
-
-// 13. Fetch customer profile by email
-export async function getCustomerProfile(tenantId: string, email: string) {
-    const tableName = requireTableName();
-
-    const result = await docClient.send(new GetCommand({
-        TableName: tableName,
-        Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizeEmail(email)}` },
-        ProjectionExpression: "email, #n, phone, birthday, defaultAddress",
-        ExpressionAttributeNames: { "#n": "name" },
-    }));
-    return result.Item || null;
 }
 
 export async function getPosts(tenantId: string, tag?: string, limit: number = 6) {
