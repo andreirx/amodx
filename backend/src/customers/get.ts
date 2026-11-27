@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { customerRef, customerOrdersQuery } from "../lib/commerce-db.js";
 import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -25,22 +26,12 @@ export const handler: Handler = async (event) => {
         const normalizedEmail = normalizeEmail(email);
 
         // Fetch customer record
-        const customerResult = await db.send(new GetCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` }
-        }));
+        const customerResult = await db.send(new GetCommand(customerRef(tenantId, normalizedEmail)));
 
         if (!customerResult.Item) return { statusCode: 404, body: JSON.stringify({ error: "Customer not found" }) };
 
         // Fetch customer orders
-        const ordersResult = await db.send(new QueryCommand({
-            TableName: TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": `CUSTORDER#${normalizedEmail}#`
-            }
-        }));
+        const ordersResult = await db.send(new QueryCommand(customerOrdersQuery(tenantId, normalizedEmail)));
 
         return {
             statusCode: 200,

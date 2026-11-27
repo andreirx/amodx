@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { orderRef } from "../lib/commerce-db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -22,10 +23,7 @@ export const handler: Handler = async (event) => {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
 
-        const result = await db.send(new GetCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${id}` }
-        }));
+        const result = await db.send(new GetCommand(orderRef(tenantId, id)));
 
         if (!result.Item) return { statusCode: 404, body: JSON.stringify({ error: "Order not found" }) };
 

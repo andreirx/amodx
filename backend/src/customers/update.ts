@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { customerRef } from "../lib/commerce-db.js";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -32,8 +33,7 @@ const _handler: Handler = async (event) => {
         const normalizedEmail = normalizeEmail(email);
 
         const result = await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
+            ...customerRef(tenantId, normalizedEmail),
             UpdateExpression: "SET notes = :notes, updatedAt = :now",
             ExpressionAttributeValues: {
                 ":notes": notes ?? "",

@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
+import { orderRef, customerRef, customerOrderRef, orderCounterRef } from "../lib/commerce-db.js";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { createHash } from "node:crypto";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
@@ -383,8 +384,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             // --- Generate order number via atomic counter (once: a second pass keeps the number of the first) ---
             if (orderNumber === undefined) {
                 const counterResult = await db.send(new UpdateCommand({
-                    TableName: TABLE_NAME,
-                    Key: { PK: `TENANT#${tenantId}`, SK: `COUNTER#ORDER` },
+                    ...orderCounterRef(tenantId),
                     UpdateExpression: "SET currentValue = if_not_exists(currentValue, :zero) + :one",
                     ExpressionAttributeValues: {
                         ":zero": 0,
@@ -398,14 +398,18 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
 
             // --- Build transaction items ---
+            // CMRC-1A: the three commerce-private items take their table and key from lib/commerce-db.ts; the two
+            // coupon items below keep TABLE_NAME (cmrc-4 moves the first three to another table; the transaction
+            // then spans two tables with no edit here).
+            const orderReference = orderRef(tenantId, orderId);
+            const customerOrderReference = customerOrderRef(tenantId, normalizedEmail, orderId);
             const transactItems: any[] = [
                 // 1. Full order item
                 {
                     Put: {
-                        TableName: TABLE_NAME,
+                        TableName: orderReference.TableName,
                         Item: {
-                            PK: `TENANT#${tenantId}`,
-                            SK: `ORDER#${orderId}`,
+                            ...orderReference.Key,
                             id: orderId,
                             tenantId,
                             orderNumber,
@@ -436,10 +440,9 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 // 2. Customer order reference (lightweight)
                 {
                     Put: {
-                        TableName: TABLE_NAME,
+                        TableName: customerOrderReference.TableName,
                         Item: {
-                            PK: `TENANT#${tenantId}`,
-                            SK: `CUSTORDER#${normalizedEmail}#${orderId}`,
+                            ...customerOrderReference.Key,
                             orderNumber,
                             total,
                             status: "placed",
@@ -451,11 +454,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 // 3. Customer upsert (Phase 1.2: use if_not_exists for PII to prevent overwrite attacks)
                 {
                     Update: {
-                        TableName: TABLE_NAME,
-                        Key: {
-                            PK: `TENANT#${tenantId}`,
-                            SK: `CUSTOMER#${normalizedEmail}`
-                        },
+                        ...customerRef(tenantId, normalizedEmail),
                         UpdateExpression: [
                             // Only set name/phone/address on FIRST order (protect existing customer data)
                             "SET #n = if_not_exists(#n, :name)",

@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { customerRef } from "../lib/commerce-db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -71,8 +72,7 @@ const _handler: AmodxHandler = async (event) => {
 
         // Check if customer exists
         const existing = await db.send(new GetCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
+            ...customerRef(tenantId, normalizedEmail),
             ProjectionExpression: "email"
         }));
 
@@ -105,8 +105,7 @@ const _handler: AmodxHandler = async (event) => {
         }
 
         const result = await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
+            ...customerRef(tenantId, normalizedEmail),
             UpdateExpression: `SET ${updates.join(", ")}`,
             ExpressionAttributeValues: values,
             ReturnValues: "ALL_NEW"

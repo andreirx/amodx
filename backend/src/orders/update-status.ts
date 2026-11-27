@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
+import { orderRef } from "../lib/commerce-db.js";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -45,10 +46,7 @@ const _handler: Handler = async (event) => {
         const now = new Date().toISOString();
 
         // Fetch existing order to get current statusHistory
-        const existing = await db.send(new GetCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${id}` }
-        }));
+        const existing = await db.send(new GetCommand(orderRef(tenantId, id)));
 
         if (!existing.Item) return { statusCode: 404, body: JSON.stringify({ error: "Order not found" }) };
 
@@ -71,8 +69,7 @@ const _handler: Handler = async (event) => {
         }
 
         await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${id}` },
+            ...orderRef(tenantId, id),
             UpdateExpression: updateExpr,
             ExpressionAttributeNames: exprNames,
             ExpressionAttributeValues: exprValues

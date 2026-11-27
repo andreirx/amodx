@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
+import { orderRef } from "../lib/commerce-db.js";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { PaymentStatusSchema, paymentTransition, type PaymentStatus } from "@amodx/shared";
@@ -75,11 +76,7 @@ const _handler: Handler = async (event) => {
         }
 
         await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: {
-                PK: `TENANT#${tenantId}`,
-                SK: `ORDER#${id}`
-            },
+            ...orderRef(tenantId, id),
             UpdateExpression: `SET ${expressionParts.join(", ")}`,
             ExpressionAttributeNames: expressionNames,
             ExpressionAttributeValues: expressionValues,
@@ -117,9 +114,8 @@ async function changePaymentStatus(args: {
         return answer(400, { error: `note must be text of at most ${NOTE_MAX} characters` });
     }
     const next = requested.data;
-    const key = { PK: `TENANT#${tenantId}`, SK: `ORDER#${id}` };
 
-    const read = await db.send(new GetCommand({ TableName: TABLE_NAME, Key: key }));
+    const read = await db.send(new GetCommand(orderRef(tenantId, id)));
     const order = read.Item;
     if (!order) return answer(404, { error: "Order not found" });
 
@@ -152,8 +148,7 @@ async function changePaymentStatus(args: {
 
     try {
         await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: key,
+            ...orderRef(tenantId, id),
             UpdateExpression: `SET #paymentStatus = :next, #updatedAt = :now, #${timeAttribute} = :now`,
             ConditionExpression: condition,
             ExpressionAttributeNames: names,

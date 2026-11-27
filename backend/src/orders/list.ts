@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { ordersQuery } from "../lib/commerce-db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -25,10 +26,8 @@ export const handler: Handler = async (event) => {
         const search = event.queryStringParameters?.search?.toLowerCase();
 
         const filterParts: string[] = [];
-        const exprValues: Record<string, any> = {
-            ":pk": `TENANT#${tenantId}`,
-            ":sk": "ORDER#"
-        };
+        const query = ordersQuery(tenantId);
+        const exprValues: Record<string, any> = { ...query.ExpressionAttributeValues };
         // `status` and `total` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
         const exprNames: Record<string, string> = { "#s": "status", "#total": "total" };
 
@@ -48,8 +47,7 @@ export const handler: Handler = async (event) => {
         }
 
         const result = await db.send(new QueryCommand({
-            TableName: TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ...query,
             ...(filterParts.length > 0 ? { FilterExpression: filterParts.join(" AND ") } : {}),
             ExpressionAttributeValues: exprValues,
             ExpressionAttributeNames: exprNames,

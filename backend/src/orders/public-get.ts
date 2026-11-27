@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { orderRef } from "../lib/commerce-db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { normalizeEmail } from "@amodx/shared";
 
@@ -13,10 +14,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (!orderId) return { statusCode: 400, body: JSON.stringify({ error: "Missing order ID" }) };
         if (!email) return { statusCode: 400, body: JSON.stringify({ error: "Email query parameter is required" }) };
 
-        const result = await db.send(new GetCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${orderId}` }
-        }));
+        const result = await db.send(new GetCommand(orderRef(tenantId, orderId)));
 
         if (!result.Item) return { statusCode: 404, body: JSON.stringify({ error: "Order not found" }) };
 

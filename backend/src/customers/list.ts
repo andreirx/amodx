@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { customersQuery } from "../lib/commerce-db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -15,12 +16,7 @@ export const handler: Handler = async (event) => {
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         const result = await db.send(new QueryCommand({
-            TableName: TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "CUSTOMER#"
-            },
+            ...customersQuery(tenantId),
             ProjectionExpression: "email, #n, phone, orderCount, totalSpent, lastOrderDate, createdAt",
             ExpressionAttributeNames: { "#n": "name" }
         }));

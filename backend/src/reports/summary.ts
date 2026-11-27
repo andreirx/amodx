@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db } from "../lib/db.js";
+import { ordersQuery } from "../lib/commerce-db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -21,12 +22,7 @@ export const handler: Handler = async (event) => {
 
         // Fetch all orders with relevant fields
         const result = await db.send(new QueryCommand({
-            TableName: TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "ORDER#"
-            },
+            ...ordersQuery(tenantId),
             // `status`, `total` and `items` are DynamoDB reserved words: each needs an alias (PROJECTION-RESERVED-1).
             ExpressionAttributeNames: { "#s": "status", "#total": "total", "#items": "items" },
             ProjectionExpression: "id, #s, #total, currency, paymentMethod, paymentStatus, #items, createdAt, couponCode, couponDiscount"

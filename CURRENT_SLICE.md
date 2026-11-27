@@ -4,8 +4,13 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: Track B, `cmrc-1a` (`docs/slices/cmrc-1.md` § 5.15).
+Nothing. Next in the order of work: Track B, `cmrc-1b` (`docs/slices/cmrc-1.md` § 5.15), then part L of `cmrc-1`
+when the human confirms the order-lookup authority.
 
+`cmrc-1a` is on staging since 2026-11-28 (`docs/slices/cmrc-1a.md` § "Closeout") and waits for the human's production
+deploy: `backend/src/lib/commerce-db.ts` is the backend's only code that names the commerce-private key families
+(`ORDER#`, `CUSTORDER#`, `CUSTOMER#`, `COUNTER#ORDER`) and their table; every command the fifteen sites send is
+unchanged (the command trace). Three renderer reads still name those keys (`cmrc-1b` removes two, part L the third).
 `theme-roles-1` is on staging since 2026-11-28 (`docs/slices/theme-roles-1.md` § "Closeout") and waits for the human's
 production deploy: saving to the shared theme library needs `TENANT_ADMIN` or `GLOBAL_ADMIN`, deleting needs
 `GLOBAL_ADMIN`; the Settings screen shows each role only the controls it may use.
@@ -59,7 +64,8 @@ site; one real order with a price change in the cart; one real custom-form submi
 ## Not started, by track
 
 - **B commerce-private** (`cmrc-1`…`6`): mandatory (human 2026-11-20; a client with real orders is named).
-  Slice docs not yet written. Backlog behind it: `cmrc-reviews-ask`, `cmrc-withdrawal`.
+  Specification `docs/slices/cmrc-1.md`; `cmrc-1a` is built (above); `cmrc-1b`, part L and `cmrc-2`…`6` are not
+  started. Backlog behind it: `cmrc-reviews-ask`, `cmrc-withdrawal`.
 - **C customer sign-in** (`auth-1`…`7`): planned, no code; Google sign-in exists.
 - **D scheduling**: draft `sched-1` — two shapes (a slot with a practitioner, a seat in a group), booking by
   emailed link; `sched-frame-1` offers it to sites that are not on AMODX. Four decisions open.

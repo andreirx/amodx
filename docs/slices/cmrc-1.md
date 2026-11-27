@@ -6,6 +6,13 @@ Status: **PLANNED (specification draft, revision 1 of 2026-11-22, not ratified) 
 (`docs/platform-decisions.md`), tenant isolation, no DynamoDB scan. Maturity target of `cmrc-1`: PROTOTYPE until
 the staging procedure of § 5.13 passes; MATURE when `cmrc-4` passes on staging.
 
+**Build status (2026-11-28):** `cmrc-1a` (C2, and C1 for the backend sites only: the data module, the re-pointing of S1-S15, T1b, T2, T3; the renderer sites S16-S18 of C1 stay) is built —
+`docs/slices/cmrc-1a.md`, baseline `a78c006`, operator gates pending. Not built: `cmrc-1b` (C3-C6 part K) and part L.
+The § 2.2 site table below is corrected to `a78c006`. Every other file:line citation of this document stays as read
+at `5aee9cb`. `cmrc-1a` made the twelve handler files of S1-S15 shorter by zero to nine lines each (the largest:
+`customers/get.ts`, nine), so a citation into one of them can be off by that much on the current tree
+(`backend/src/orders/create.ts`: by one line, except inside the transaction items, old lines 386-458).
+
 This document changes no code. It does three things: it checks the source plan claim by claim against `main` at
 `5aee9cb` (§ 2, § 3), it specifies the first build slice `cmrc-1` in full (§ 5), and it re-cuts `cmrc-2`…`cmrc-6`
 to today's code (§ 6), including the seam for a later WooCommerce pickup (§ 7). Revision 1 applies the eight
@@ -76,25 +83,31 @@ A text search is a **lower bound**: it finds a key written as one literal. It mi
 example `"ORD" + "ER#"`) or read through a generic helper. Each hit below was read in its file. Two widening searches
 found nothing more: `git grep -n -F 'COUNTER#'` (only `create.ts:387`, the migration script and a shared test
 comment) and a search for quoted `CUST…`/`…ORDER"` strings (only the unrelated scheduling `CUST#` of
-`backend/src/lib/scheduling-db.ts:181`, `:809` and the authorizer role literal `"CUSTOMER"`).
+`backend/src/lib/scheduling-db.ts:175`, `:733` and the authorizer role literal `"CUSTOMER"`).
+
+The S1-S15 lines are those of `a78c006`, the commit before `cmrc-1a` (corrected 2026-11-28 from the inventory of
+`docs/slices/cmrc-1a.md`; no site was added or removed since `5aee9cb`). Since `cmrc-1a` the backend sites S1-S15 take
+the key and the table from `backend/src/lib/commerce-db.ts`; within `backend/src` the four prefixes are written in
+that file only. S16-S18 (the renderer) and S19 (the operational tool) are not changed by `cmrc-1a`: they still build
+the keys and choose their table themselves, so C1 is met for the backend and open for the renderer.
 
 | # | Site (OBSERVED) | Key | Operation | Table | Reached by |
 |---|---|---|---|---|---|
-| S1 | `backend/src/orders/create.ts:385-397` | `COUNTER#ORDER` | UpdateItem (`if_not_exists + 1`), **before** the transaction, once per order | main | `POST /public/orders` (anonymous) |
-| S2 | `backend/src/orders/create.ts:401-435` | `ORDER#<orderId>` | Put in the transaction | main | same |
-| S3 | `backend/src/orders/create.ts:437-449` | `CUSTORDER#<email>#<orderId>` | Put in the transaction (`orderNumber, total, status, createdAt, Type`) | main | same |
-| S4 | `backend/src/orders/create.ts:450-491` | `CUSTOMER#<email>` | Update in the transaction (`if_not_exists` profile fields, additive counters) | main | same |
-| S5 | `backend/src/orders/get.ts:27` | `ORDER#` | GetItem | main | `GET /orders/{id}` (admin) |
-| S6 | `backend/src/orders/list.ts:30`, `:50-55` | `ORDER#` prefix | Query, projection | main | `GET /orders` (admin) |
+| S1 | `backend/src/orders/create.ts:385-394` | `COUNTER#ORDER` | UpdateItem (`if_not_exists + 1`), **before** the transaction, once per order | main | `POST /public/orders` (anonymous) |
+| S2 | `backend/src/orders/create.ts:403-435` | `ORDER#<orderId>` | Put in the transaction | main | same |
+| S3 | `backend/src/orders/create.ts:437-450` | `CUSTORDER#<email>#<orderId>` | Put in the transaction (`orderNumber, total, status, createdAt, Type`) | main | same |
+| S4 | `backend/src/orders/create.ts:452-492` | `CUSTOMER#<email>` | Update in the transaction (`if_not_exists` profile fields, additive counters) | main | same |
+| S5 | `backend/src/orders/get.ts:25-28` | `ORDER#` | GetItem | main | `GET /orders/{id}` (admin) |
+| S6 | `backend/src/orders/list.ts:28-31`, `:50-57` | `ORDER#` prefix | Query, projection | main | `GET /orders` (admin) |
 | S7 | `backend/src/orders/public-get.ts:16-19` | `ORDER#` | GetItem, then compares `normalizeEmail(stored)` with `normalizeEmail(query email)`; authority = possession of order id + email, no session | main | `GET /public/orders/{id}?email=` (anonymous) |
-| S8 | `backend/src/orders/update-status.ts:50`, `:75` | `ORDER#` | GetItem, UpdateItem | main | `PUT /orders/{id}/status` (admin) |
-| S9 | `backend/src/orders/update.ts:81`, `:120` | `ORDER#` | GetItem, UpdateItem | main | `PUT /orders/{id}` (admin; `pay-1`) |
-| S10 | `backend/src/reports/summary.ts:10`, `:28` | `ORDER#` prefix | Query, projection | main | `GET /reports/summary` (admin) |
-| S11 | `backend/src/customers/get.ts:30`, `:38-41` | `CUSTOMER#`, `CUSTORDER#<email>#` | GetItem, Query | main | `GET /customers/{email}` (admin) |
-| S12 | `backend/src/customers/list.ts:22` | `CUSTOMER#` prefix | Query | main | `GET /customers` (admin) |
-| S13 | `backend/src/customers/update.ts:36` | `CUSTOMER#` | UpdateItem | main | `PUT /customers/{email}` (admin) |
+| S8 | `backend/src/orders/update-status.ts:48-51`, `:73-79` | `ORDER#` | GetItem, UpdateItem | main | `PUT /orders/{id}/status` (admin) |
+| S9 | `backend/src/orders/update.ts:77-87`; `:120`, `:122`, `:154-161` | `ORDER#` | UpdateItem (field patch); GetItem and conditional UpdateItem (payment transition) | main | `PUT /orders/{id}` (admin; `pay-1`) |
+| S10 | `backend/src/reports/summary.ts:23-33` | `ORDER#` prefix | Query, projection | main | `GET /reports/summary` (admin) |
+| S11 | `backend/src/customers/get.ts:28-31`, `:36-43` | `CUSTOMER#`, `CUSTORDER#<email>#` | GetItem, Query | main | `GET /customers/{email}` (admin) |
+| S12 | `backend/src/customers/list.ts:17-26` | `CUSTOMER#` prefix | Query | main | `GET /customers` (admin) |
+| S13 | `backend/src/customers/update.ts:34-44` | `CUSTOMER#` | UpdateItem | main | `PUT /customers/{email}` (admin) |
 | S14 | `backend/src/customers/public-update.ts:73-77`, `:107-113` | `CUSTOMER#` | GetItem, UpdateItem | main | `POST /public/customers/profile` (renderer key) |
-| S15 | `backend/src/resources/presign.ts:38-47` | `CUSTORDER#<email>#` | Query, projection `items` | main | `GET /resources/{id}/download` (`infra/lib/api.ts:490-497`, `:517`) |
+| S15 | `backend/src/resources/presign.ts:40-50` | `CUSTORDER#<email>#` | Query, projection `#items` | main | `GET /resources/{id}/download` (`infra/lib/api.ts:490-497`, `:517`) |
 | S16 | `renderer/src/lib/dynamo-customer-reads.ts` `getOrderForCustomer` | `ORDER#` | GetItem; returns the item without `internalNotes` when `stored customerEmail === normalizeEmail(given)`; the order id and the email come from the page address, with **no session check** (the `checkout-confirm` / `checkout-track` branches of `SitePage` in `SitePage.tsx`) | main | `renderer/src/components/SitePage.tsx` (the two `getOrderForCustomer` calls of `SitePage`) |
 | S17 | `renderer/src/lib/dynamo-customer-reads.ts` `getCustomerOrders` | `CUSTORDER#<email>#` | Query, paginated, projection | main | `renderer/src/app/api/account/orders/route.ts:57` |
 | S18 | `renderer/src/lib/dynamo-customer-reads.ts` `getCustomerProfile` | `CUSTOMER#<email>` | GetItem, projection | main | `renderer/src/app/api/profile/route.ts:151` |

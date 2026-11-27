@@ -1,0 +1,4228 @@
+{
+  "scenarios": {
+    "create: commerce switched off → 403 after the tenant read": {
+      "answer": {
+        "body": "{\"error\":\"This site does not take online orders.\"}",
+        "statusCode": 403
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: coupon item cancelled → second pass without the coupon, same order number → 201": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0010\",\"couponDiscount\":0}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPONCODE#TEN"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPON#cp1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": "TEN",
+                    "couponDiscount": 7.5,
+                    "couponId": "cp1",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0010",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 67.5,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0010",
+                    "status": "placed",
+                    "total": 67.5
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 67,
+                    ":total": 67.5,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              },
+              {
+                "Update": {
+                  "ConditionExpression": "attribute_not_exists(usageLimit) OR usageLimit = :zero OR attribute_not_exists(usageCount) OR usageCount < usageLimit",
+                  "ExpressionAttributeValues": {
+                    ":one": 1,
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "COUPON#cp1"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET usageCount = if_not_exists(usageCount, :zero) + :one"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": null,
+                    "couponDiscount": 0,
+                    "couponId": null,
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0010",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 75,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0010",
+                    "status": "placed",
+                    "total": 75
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 75,
+                    ":total": 75,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#c": "count",
+              "#h": "hour",
+              "#ttl": "ttl"
+            },
+            "ExpressionAttributeValues": {
+              ":hour": 498850,
+              ":one": 1,
+              ":ttl": 1795867200,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0010!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0010 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "owner@t1.test",
+                "orders@t1.test"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0010!\n\n--- Internal Details ---\nCustomer: Test Buyer\nEmail: buyer@example.com\nPayment: Cash on Delivery"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0010 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: coupon item cancelled, expectedTotal was the discounted total → 409 on the second pass": {
+      "answer": {
+        "body": "{\"code\":\"price-changed\",\"error\":\"Prices have changed. Check the new total, then place the order again.\",\"message\":\"Prices have changed. Check the new total, then place the order again.\",\"total\":75,\"subtotal\":75,\"shippingCost\":0,\"couponDiscount\":0,\"items\":[{\"productId\":\"c0000000-0000-4000-8000-000000000001\",\"quantity\":3,\"unitPrice\":25,\"totalPrice\":75}]}",
+        "statusCode": 409
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPONCODE#TEN"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPON#cp1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": "TEN",
+                    "couponDiscount": 7.5,
+                    "couponId": "cp1",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0011",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 67.5,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0011",
+                    "status": "placed",
+                    "total": 67.5
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 67,
+                    ":total": 67.5,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              },
+              {
+                "Update": {
+                  "ConditionExpression": "attribute_not_exists(usageLimit) OR usageLimit = :zero OR attribute_not_exists(usageCount) OR usageCount < usageLimit",
+                  "ExpressionAttributeValues": {
+                    ":one": 1,
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "COUPON#cp1"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET usageCount = if_not_exists(usageCount, :zero) + :one"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: coupon with a per-customer limit → 201, five transaction items": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0008\",\"couponDiscount\":7.5}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPONCODE#TEN"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPON#cp1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "ConsistentRead": true,
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPONUSE#cp1#6a6c26195c3682faa816966af789717c3bfa834eee6c599d667d2b3429c27cfd"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": "TEN",
+                    "couponDiscount": 7.5,
+                    "couponId": "cp1",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0008",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 67.5,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0008",
+                    "status": "placed",
+                    "total": 67.5
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 67,
+                    ":total": 67.5,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              },
+              {
+                "Update": {
+                  "ConditionExpression": "attribute_not_exists(usageLimit) OR usageLimit = :zero OR attribute_not_exists(usageCount) OR usageCount < usageLimit",
+                  "ExpressionAttributeValues": {
+                    ":one": 1,
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "COUPON#cp1"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET usageCount = if_not_exists(usageCount, :zero) + :one"
+                }
+              },
+              {
+                "Update": {
+                  "ConditionExpression": "attribute_not_exists(#c) OR #c < :limit",
+                  "ExpressionAttributeNames": {
+                    "#c": "count",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":limit": 2,
+                    ":one": 1,
+                    ":type": "CouponUse",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "COUPONUSE#cp1#6a6c26195c3682faa816966af789717c3bfa834eee6c599d667d2b3429c27cfd"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #c = if_not_exists(#c, :zero) + :one, #t = :type"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#c": "count",
+              "#h": "hour",
+              "#ttl": "ttl"
+            },
+            "ExpressionAttributeValues": {
+              ":hour": 498850,
+              ":one": 1,
+              ":ttl": 1795867200,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0008!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0008 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "owner@t1.test",
+                "orders@t1.test"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0008!\n\n--- Internal Details ---\nCustomer: Test Buyer\nEmail: buyer@example.com\nPayment: Cash on Delivery"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0008 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: coupon without limits → 201, four transaction items": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0009\",\"couponDiscount\":7.5}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPONCODE#TEN"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUPON#cp1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": "TEN",
+                    "couponDiscount": 7.5,
+                    "couponId": "cp1",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0009",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 67.5,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0009",
+                    "status": "placed",
+                    "total": 67.5
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 67,
+                    ":total": 67.5,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              },
+              {
+                "Update": {
+                  "ConditionExpression": "attribute_not_exists(usageLimit) OR usageLimit = :zero OR attribute_not_exists(usageCount) OR usageCount < usageLimit",
+                  "ExpressionAttributeValues": {
+                    ":one": 1,
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "COUPON#cp1"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET usageCount = if_not_exists(usageCount, :zero) + :one"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#c": "count",
+              "#h": "hour",
+              "#ttl": "ttl"
+            },
+            "ExpressionAttributeValues": {
+              ":hour": 498850,
+              ":one": 1,
+              ":ttl": 1795867200,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0009!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0009 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "owner@t1.test",
+                "orders@t1.test"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0009!\n\n--- Internal Details ---\nCustomer: Test Buyer\nEmail: buyer@example.com\nPayment: Cash on Delivery"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0009 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: expectedTotal differs → 409 before the first write": {
+      "answer": {
+        "body": "{\"code\":\"price-changed\",\"error\":\"Prices have changed. Check the new total, then place the order again.\",\"message\":\"Prices have changed. Check the new total, then place the order again.\",\"total\":75,\"subtotal\":75,\"shippingCost\":0,\"couponDiscount\":0,\"items\":[{\"productId\":\"c0000000-0000-4000-8000-000000000001\",\"quantity\":3,\"unitPrice\":25,\"totalPrice\":75}]}",
+        "statusCode": 409
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: invalid input → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"Invalid input\",\"details\":{\"formErrors\":[],\"fieldErrors\":{\"items\":[\"Too small: expected array to have >=1 items\"]}}}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "createOrder"
+    },
+    "create: mail counter at the limit → 201, no mail": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0001\",\"couponDiscount\":0}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": null,
+                    "couponDiscount": 0,
+                    "couponId": null,
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0001",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 75,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0001",
+                    "status": "placed",
+                    "total": 75
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 75,
+                    ":total": 75,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: no coupon, every optional field, delivery cost, expectedTotal equal → 201": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0007\",\"couponDiscount\":0}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000002"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": {
+                      "billingCity": "",
+                      "billingCountry": "",
+                      "billingCounty": "",
+                      "billingPostalCode": "",
+                      "billingStreet": "",
+                      "companyName": "Test Company SRL",
+                      "firstName": "",
+                      "isCompany": true,
+                      "lastName": "",
+                      "registrationNumber": "",
+                      "taxId": "RO000000",
+                      "useSameAsShipping": true,
+                      "vatNumber": ""
+                    },
+                    "couponCode": null,
+                    "couponDiscount": 0,
+                    "couponId": null,
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": "0700000000",
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      },
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000002",
+                        "productTitle": "Product 2",
+                        "quantity": 1,
+                        "selectedVariant": null,
+                        "totalPrice": 10,
+                        "unitPrice": "10.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0007",
+                    "paymentMethod": "bank_transfer",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": "2026-12-05",
+                    "shippingAddress": {
+                      "city": "Testville",
+                      "country": "Romania",
+                      "county": "Test County",
+                      "notes": "Ring twice",
+                      "postalCode": "010101",
+                      "street": "1 Test Street"
+                    },
+                    "shippingCost": 15,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 85,
+                    "tenantId": "t1",
+                    "total": 100,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0007",
+                    "status": "placed",
+                    "total": 100
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": {
+                      "city": "Testville",
+                      "country": "Romania",
+                      "county": "Test County",
+                      "notes": "Ring twice",
+                      "postalCode": "010101",
+                      "street": "1 Test Street"
+                    },
+                    ":billing": {
+                      "billingCity": "",
+                      "billingCountry": "",
+                      "billingCounty": "",
+                      "billingPostalCode": "",
+                      "billingStreet": "",
+                      "companyName": "Test Company SRL",
+                      "firstName": "",
+                      "isCompany": true,
+                      "lastName": "",
+                      "registrationNumber": "",
+                      "taxId": "RO000000",
+                      "useSameAsShipping": true,
+                      "vatNumber": ""
+                    },
+                    ":birthday": "1990-01-31",
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": "0700000000",
+                    ":points": 100,
+                    ":total": 100,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type, birthday = if_not_exists(birthday, :birthday), defaultBillingDetails = if_not_exists(defaultBillingDetails, :billing)"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#c": "count",
+              "#h": "hour",
+              "#ttl": "ttl"
+            },
+            "ExpressionAttributeValues": {
+              ":hour": 498850,
+              ":one": 1,
+              ":ttl": 1795867200,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0007!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0007 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "owner@t1.test",
+                "orders@t1.test"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0007!\n\n--- Internal Details ---\nCustomer: Test Buyer\nEmail: buyer@example.com\nPhone: 0700000000\nPayment: Bank Transfer\nShipping: 1 Test Street, Testville, Test County 010101\nNotes: Ring twice\nRequested Delivery: 2026-12-05"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0007 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: no coupon, smallest request, counter answers no value → 201, three transaction items, mails": {
+      "answer": {
+        "body": "{\"orderId\":\"00000000-0000-4000-8000-000000000001\",\"orderNumber\":\"PPB-0001\",\"couponDiscount\":0}",
+        "statusCode": 201
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": null,
+                    "couponDiscount": 0,
+                    "couponId": null,
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0001",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 75,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0001",
+                    "status": "placed",
+                    "total": 75
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 75,
+                    ":total": 75,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#c": "count",
+              "#h": "hour",
+              "#ttl": "ttl"
+            },
+            "ExpressionAttributeValues": {
+              ":hour": 498850,
+              ":one": 1,
+              ":ttl": 1795867200,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "EMAILLIMIT#buyer@example.com"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0001!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0001 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "owner@t1.test",
+                "orders@t1.test"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Thank you for your order PPB-0001!\n\n--- Internal Details ---\nCustomer: Test Buyer\nEmail: buyer@example.com\nPayment: Cash on Delivery"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0001 – Thank You!"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: no tenant header → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"Missing x-tenant-id header\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "createOrder"
+    },
+    "create: product not found → 400, no write": {
+      "answer": {
+        "body": "{\"error\":\"Product not found: c0000000-0000-4000-8000-000000000001\"}",
+        "statusCode": 400
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "create: the transaction fails for another reason → 500": {
+      "answer": {
+        "body": "{\"error\":\"Internal error\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "PRODUCT#c0000000-0000-4000-8000-000000000001"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "DELIVERYCONFIG#default"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":one": 1,
+              ":zero": 0
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "COUNTER#ORDER"
+            },
+            "ReturnValues": "UPDATED_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET currentValue = if_not_exists(currentValue, :zero) + :one"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "TransactWriteCommand",
+          "input": {
+            "TransactItems": [
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "ORDER#00000000-0000-4000-8000-000000000001",
+                    "Type": "Order",
+                    "billingDetails": null,
+                    "couponCode": null,
+                    "couponDiscount": 0,
+                    "couponId": null,
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "currency": "RON",
+                    "customerEmail": "buyer@example.com",
+                    "customerName": "Test Buyer",
+                    "customerPhone": null,
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "items": [
+                      {
+                        "imageLink": null,
+                        "personalizations": [],
+                        "productId": "c0000000-0000-4000-8000-000000000001",
+                        "productTitle": "Product 1",
+                        "quantity": 3,
+                        "selectedVariant": null,
+                        "totalPrice": 75,
+                        "unitPrice": "25.00"
+                      }
+                    ],
+                    "orderNumber": "PPB-0001",
+                    "paymentMethod": "cash_on_delivery",
+                    "paymentStatus": "pending",
+                    "requestedDeliveryDate": null,
+                    "shippingAddress": null,
+                    "shippingCost": 0,
+                    "status": "placed",
+                    "statusHistory": [
+                      {
+                        "note": "Order placed",
+                        "status": "placed",
+                        "timestamp": "2026-11-28T10:00:00.000Z"
+                      }
+                    ],
+                    "subtotal": 75,
+                    "tenantId": "t1",
+                    "total": 75,
+                    "updatedAt": "2026-11-28T10:00:00.000Z"
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Put": {
+                  "Item": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTORDER#buyer@example.com#00000000-0000-4000-8000-000000000001",
+                    "Type": "CustomerOrder",
+                    "createdAt": "2026-11-28T10:00:00.000Z",
+                    "orderNumber": "PPB-0001",
+                    "status": "placed",
+                    "total": 75
+                  },
+                  "TableName": "test-table"
+                }
+              },
+              {
+                "Update": {
+                  "ExpressionAttributeNames": {
+                    "#n": "name",
+                    "#t": "Type"
+                  },
+                  "ExpressionAttributeValues": {
+                    ":address": null,
+                    ":name": "Test Buyer",
+                    ":now": "2026-11-28T10:00:00.000Z",
+                    ":one": 1,
+                    ":phone": null,
+                    ":points": 75,
+                    ":total": 75,
+                    ":type": "Customer",
+                    ":zero": 0
+                  },
+                  "Key": {
+                    "PK": "TENANT#t1",
+                    "SK": "CUSTOMER#buyer@example.com"
+                  },
+                  "TableName": "test-table",
+                  "UpdateExpression": "SET #n = if_not_exists(#n, :name), phone = if_not_exists(phone, :phone), defaultAddress = if_not_exists(defaultAddress, :address), orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points, lastOrderDate = :now, #t = :type"
+                }
+              }
+            ]
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "customer get: absent → 404, no Query": {
+      "answer": {
+        "body": "{\"error\":\"Customer not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getCustomer"
+    },
+    "customer get: admin of another tenant → 500 (the role refusal is not caught as 403)": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 500
+      },
+      "effects": [],
+      "handler": "getCustomer"
+    },
+    "customer get: found → 200, GetItem then Query": {
+      "answer": {
+        "body": "{\"customer\":{\"PK\":\"TENANT#t1\",\"SK\":\"CUSTOMER#buyer@example.com\",\"name\":\"Test Buyer\",\"phone\":\"0700000000\",\"defaultAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"orderCount\":2,\"totalSpent\":165,\"loyaltyPoints\":165,\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Customer\"},\"orders\":[{\"PK\":\"TENANT#t1\",\"SK\":\"CUSTORDER#buyer@example.com#o-1\",\"orderNumber\":\"PPB-0041\",\"total\":75,\"status\":\"placed\",\"createdAt\":\"2026-11-26T09:00:00.000Z\",\"Type\":\"CustomerOrder\"},{\"PK\":\"TENANT#t1\",\"SK\":\"CUSTORDER#buyer@example.com#0a000000-0000-4000-8000-0000000000aa\",\"orderNumber\":\"PPB-0042\",\"total\":90,\"status\":\"placed\",\"createdAt\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"CustomerOrder\"}]}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTORDER#buyer@example.com#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getCustomer"
+    },
+    "customer list: admin of another tenant → 500 (the role refusal is not caught as 403)": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 500
+      },
+      "effects": [],
+      "handler": "listCustomers"
+    },
+    "customer list: three customers, one without an order date → 200, newest order first": {
+      "answer": {
+        "body": "{\"items\":[{\"name\":\"Test Buyer\",\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\"},{\"name\":\"Older\",\"lastOrderDate\":\"2026-11-01T09:00:00.000Z\"},{\"name\":\"No Order Yet\"}]}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#n": "name"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTOMER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "email, #n, phone, orderCount, totalSpent, lastOrderDate, createdAt",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "listCustomers"
+    },
+    "customer note: absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Customer not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(PK)",
+            "ExpressionAttributeValues": {
+              ":notes": "x",
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET notes = :notes, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateCustomer"
+    },
+    "customer note: admin of another tenant → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "updateCustomer"
+    },
+    "customer note: found → 200": {
+      "answer": {
+        "body": "{\"PK\":\"TENANT#t1\",\"SK\":\"CUSTOMER#buyer@example.com\",\"name\":\"Test Buyer\",\"phone\":\"0700000000\",\"defaultAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"orderCount\":2,\"totalSpent\":165,\"loyaltyPoints\":165,\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Customer\",\"notes\":\"Prefers phone calls\",\"updatedAt\":\"2026-11-28T10:00:00.000Z\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(PK)",
+            "ExpressionAttributeValues": {
+              ":notes": "Prefers phone calls",
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET notes = :notes, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateCustomer"
+    },
+    "customer note: no body → 400": {
+      "answer": {
+        "body": "{\"error\":\"Missing data\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "updateCustomer"
+    },
+    "customer note: no notes field → 200, empty text stored": {
+      "answer": {
+        "body": "{\"PK\":\"TENANT#t1\",\"SK\":\"CUSTOMER#buyer@example.com\",\"name\":\"Test Buyer\",\"phone\":\"0700000000\",\"defaultAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"orderCount\":2,\"totalSpent\":165,\"loyaltyPoints\":165,\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Customer\",\"notes\":\"\",\"updatedAt\":\"2026-11-28T10:00:00.000Z\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(PK)",
+            "ExpressionAttributeValues": {
+              ":notes": "",
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET notes = :notes, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateCustomer"
+    },
+    "download: caller without an email → 403, no CUSTORDER# query": {
+      "answer": {
+        "body": "{\"error\":\"Purchase required to download this resource\"}",
+        "statusCode": 403
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ConsistentRead": true,
+            "ExclusiveStartKey": "<undefined>",
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":resourceId": "r1",
+              ":sk": "PRODUCT#"
+            },
+            "FilterExpression": "resourceId = :resourceId",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: customer, a CUSTORDER# row lists the product → 200": {
+      "answer": {
+        "body": "{\"downloadUrl\":\"https://signed.test/private-test/t1/r1-guide.pdf\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ConsistentRead": true,
+            "ExclusiveStartKey": "<undefined>",
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":resourceId": "r1",
+              ":sk": "PRODUCT#"
+            },
+            "FilterExpression": "resourceId = :resourceId",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTORDER#buyer@example.com#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "#items",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: customer, the rows hold no items (today's stored shape) → 403": {
+      "answer": {
+        "body": "{\"error\":\"Purchase required to download this resource\"}",
+        "statusCode": 403
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ConsistentRead": true,
+            "ExclusiveStartKey": "<undefined>",
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":resourceId": "r1",
+              ":sk": "PRODUCT#"
+            },
+            "FilterExpression": "resourceId = :resourceId",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTORDER#buyer@example.com#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "#items",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: customer, two products, the second is bought → 200, two CUSTORDER# queries": {
+      "answer": {
+        "body": "{\"downloadUrl\":\"https://signed.test/private-test/t1/r1-guide.pdf\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ConsistentRead": true,
+            "ExclusiveStartKey": "<undefined>",
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":resourceId": "r1",
+              ":sk": "PRODUCT#"
+            },
+            "FilterExpression": "resourceId = :resourceId",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTORDER#buyer@example.com#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "#items",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTORDER#buyer@example.com#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "#items",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: resource absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Resource not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: resource linked to no product → 403": {
+      "answer": {
+        "body": "{\"error\":\"This resource is not available for download\"}",
+        "statusCode": 403
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ConsistentRead": true,
+            "ExclusiveStartKey": "<undefined>",
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":resourceId": "r1",
+              ":sk": "PRODUCT#"
+            },
+            "FilterExpression": "resourceId = :resourceId",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "download: tenant admin → 200, no purchase check": {
+      "answer": {
+        "body": "{\"downloadUrl\":\"https://signed.test/private-test/t1/r1-guide.pdf\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "order get: absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getOrder"
+    },
+    "order get: admin of another tenant → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "getOrder"
+    },
+    "order get: found → 200": {
+      "answer": {
+        "body": "{\"PK\":\"TENANT#t1\",\"SK\":\"ORDER#0a000000-0000-4000-8000-0000000000aa\",\"id\":\"0a000000-0000-4000-8000-0000000000aa\",\"tenantId\":\"t1\",\"orderNumber\":\"PPB-0042\",\"items\":[{\"productId\":\"c0000000-0000-4000-8000-000000000001\",\"productTitle\":\"Product 1\",\"quantity\":3,\"unitPrice\":\"25.00\",\"totalPrice\":75,\"selectedVariant\":null,\"personalizations\":[],\"imageLink\":null}],\"customerEmail\":\"buyer@example.com\",\"customerName\":\"Test Buyer\",\"customerPhone\":\"0700000000\",\"shippingAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"billingDetails\":null,\"paymentMethod\":\"bank_transfer\",\"requestedDeliveryDate\":null,\"subtotal\":75,\"shippingCost\":15,\"couponCode\":null,\"couponId\":null,\"couponDiscount\":0,\"total\":90,\"currency\":\"RON\",\"status\":\"placed\",\"paymentStatus\":\"pending\",\"internalNotes\":\"call before delivery\",\"statusHistory\":[{\"status\":\"placed\",\"timestamp\":\"2026-11-27T09:00:00.000Z\",\"note\":\"Order placed\"}],\"createdAt\":\"2026-11-27T09:00:00.000Z\",\"updatedAt\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Order\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getOrder"
+    },
+    "order get: no tenant header → 400": {
+      "answer": {
+        "body": "{\"error\":\"Missing x-tenant-id header\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "getOrder"
+    },
+    "order list: admin of another tenant → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "listOrders"
+    },
+    "order list: no filter, the answer has a LastEvaluatedKey → 200, one Query": {
+      "answer": {
+        "body": "{\"items\":[{\"id\":\"0a000000-0000-4000-8000-0000000000aa\",\"orderNumber\":\"PPB-0042\",\"customerEmail\":\"buyer@example.com\",\"customerName\":\"Test Buyer\",\"status\":\"placed\",\"paymentMethod\":\"bank_transfer\",\"paymentStatus\":\"pending\",\"total\":90,\"currency\":\"RON\",\"createdAt\":\"2026-11-27T09:00:00.000Z\"},{\"id\":\"o-1\",\"orderNumber\":\"PPB-0041\",\"customerEmail\":\"other@example.com\",\"customerName\":\"Other Person\",\"status\":\"delivered\",\"paymentMethod\":\"cash_on_delivery\",\"paymentStatus\":\"paid\",\"total\":75,\"currency\":\"RON\",\"createdAt\":\"2026-11-26T09:00:00.000Z\"}]}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, orderNumber, customerEmail, customerName, #s, paymentMethod, paymentStatus, #total, currency, createdAt",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "listOrders"
+    },
+    "order list: status, dates and search → 200, filter expression": {
+      "answer": {
+        "body": "{\"items\":[{\"id\":\"0a000000-0000-4000-8000-0000000000aa\",\"orderNumber\":\"PPB-0042\",\"customerEmail\":\"buyer@example.com\",\"customerName\":\"Test Buyer\",\"status\":\"placed\",\"paymentMethod\":\"bank_transfer\",\"paymentStatus\":\"pending\",\"total\":90,\"currency\":\"RON\",\"createdAt\":\"2026-11-27T09:00:00.000Z\"}]}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":dateFrom": "2026-11-01",
+              ":dateTo": "2026-11-30",
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#",
+              ":statusVal": "placed"
+            },
+            "FilterExpression": "#s = :statusVal AND createdAt >= :dateFrom AND createdAt <= :dateTo",
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, orderNumber, customerEmail, customerName, #s, paymentMethod, paymentStatus, #total, currency, createdAt",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "listOrders"
+    },
+    "order patch: absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK)",
+            "ExpressionAttributeNames": {
+              "#trackingNumber": "trackingNumber",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":trackingNumber": "AWB123",
+              ":updatedAt": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #updatedAt = :updatedAt, #trackingNumber = :trackingNumber"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order patch: no known field → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"No valid fields to update\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "updateOrder"
+    },
+    "order patch: three fields → 200, one conditional update": {
+      "answer": {
+        "body": "{\"message\":\"Order updated\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK)",
+            "ExpressionAttributeNames": {
+              "#estimatedDeliveryDate": "estimatedDeliveryDate",
+              "#internalNotes": "internalNotes",
+              "#trackingNumber": "trackingNumber",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":estimatedDeliveryDate": "2026-12-05",
+              ":internalNotes": "fragile",
+              ":trackingNumber": "AWB123",
+              ":updatedAt": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #updatedAt = :updatedAt, #trackingNumber = :trackingNumber, #internalNotes = :internalNotes, #estimatedDeliveryDate = :estimatedDeliveryDate"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: another field in the same request → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"Send the payment state alone: paymentStatus and an optional note.\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "updateOrder"
+    },
+    "order payment: no stored state → paid → 200, condition attribute_not_exists": {
+      "answer": {
+        "body": "{\"message\":\"Payment status updated\",\"paymentStatus\":\"paid\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK) AND attribute_not_exists(#paymentStatus)",
+            "ExpressionAttributeNames": {
+              "#paidAt": "paidAt",
+              "#paymentStatus": "paymentStatus",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":next": "paid",
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #paymentStatus = :next, #updatedAt = :now, #paidAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_PAYMENT",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "next": "paid",
+              "note": "<undefined>",
+              "previous": "pending"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "We have received the payment for your order PPB-0042. Thank you!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0042 – Payment Received"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: paid → paid → 200, no write": {
+      "answer": {
+        "body": "{\"message\":\"Payment status unchanged\",\"paymentStatus\":\"paid\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: paid → refunded → 200, audit, no mail": {
+      "answer": {
+        "body": "{\"message\":\"Payment status updated\",\"paymentStatus\":\"refunded\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK) AND #paymentStatus = :previous",
+            "ExpressionAttributeNames": {
+              "#paymentStatus": "paymentStatus",
+              "#refundedAt": "refundedAt",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":next": "refunded",
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":previous": "paid"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #paymentStatus = :next, #updatedAt = :now, #refundedAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_PAYMENT",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "next": "refunded",
+              "note": "<undefined>",
+              "previous": "paid"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: pending → paid with a note → 200, audit, mail": {
+      "answer": {
+        "body": "{\"message\":\"Payment status updated\",\"paymentStatus\":\"paid\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK) AND #paymentStatus = :previous",
+            "ExpressionAttributeNames": {
+              "#paidAt": "paidAt",
+              "#paymentStatus": "paymentStatus",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":next": "paid",
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":previous": "pending"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #paymentStatus = :next, #updatedAt = :now, #paidAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_PAYMENT",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "next": "paid",
+              "note": "Bank statement 12",
+              "previous": "pending"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "We have received the payment for your order PPB-0042. Thank you!"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0042 – Payment Received"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: pending → refunded → 409, no write": {
+      "answer": {
+        "body": "{\"error\":\"Only a paid order can be refunded.\",\"paymentStatus\":\"pending\"}",
+        "statusCode": 409
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: stored state outside the enum → 409, no write": {
+      "answer": {
+        "body": "{\"error\":\"The stored payment state is not one of pending, paid, refunded.\",\"paymentStatus\":\"partial\"}",
+        "statusCode": 409
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order payment: the state changed between read and write → 409": {
+      "answer": {
+        "body": "{\"error\":\"The payment state changed; read the order again.\"}",
+        "statusCode": 409
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK) AND #paymentStatus = :previous",
+            "ExpressionAttributeNames": {
+              "#paidAt": "paidAt",
+              "#paymentStatus": "paymentStatus",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":next": "paid",
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":previous": "pending"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #paymentStatus = :next, #updatedAt = :now, #paidAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "order status: absent → 404, no write": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "order status: admin of another tenant → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "updateOrderStatus"
+    },
+    "order status: confirmed, no tracking number, no note → 200, audit, mail": {
+      "answer": {
+        "body": "{\"message\":\"Order status updated\",\"status\":\"confirmed\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status"
+            },
+            "ExpressionAttributeValues": {
+              ":history": [
+                {
+                  "note": "Order placed",
+                  "status": "placed",
+                  "timestamp": "2026-11-27T09:00:00.000Z"
+                },
+                {
+                  "note": null,
+                  "status": "confirmed",
+                  "timestamp": "2026-11-28T10:00:00.000Z"
+                }
+              ],
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":status": "confirmed"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #s = :status, statusHistory = :history, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_STATUS",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "newStatus": "confirmed",
+              "note": "<undefined>",
+              "previousStatus": "placed"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Your order PPB-0042 has been confirmed."
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0042 Confirmed"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "order status: shipped with a tracking number → 200, audit, mail": {
+      "answer": {
+        "body": "{\"message\":\"Order status updated\",\"status\":\"shipped\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status"
+            },
+            "ExpressionAttributeValues": {
+              ":history": [
+                {
+                  "note": "Order placed",
+                  "status": "placed",
+                  "timestamp": "2026-11-27T09:00:00.000Z"
+                },
+                {
+                  "note": "Left the workshop",
+                  "status": "shipped",
+                  "timestamp": "2026-11-28T10:00:00.000Z"
+                }
+              ],
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":status": "shipped",
+              ":tracking": "AWB123"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #s = :status, statusHistory = :history, updatedAt = :now, trackingNumber = :tracking"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_STATUS",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "newStatus": "shipped",
+              "note": "Left the workshop",
+              "previousStatus": "placed"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Your order PPB-0042 has been shipped. Tracking: AWB123"
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0042 Shipped"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "order status: the status it already has → 200, audit, no mail": {
+      "answer": {
+        "body": "{\"message\":\"Order status updated\",\"status\":\"placed\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status"
+            },
+            "ExpressionAttributeValues": {
+              ":history": [
+                {
+                  "note": "Order placed",
+                  "status": "placed",
+                  "timestamp": "2026-11-27T09:00:00.000Z"
+                },
+                {
+                  "note": null,
+                  "status": "placed",
+                  "timestamp": "2026-11-28T10:00:00.000Z"
+                }
+              ],
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":status": "placed"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #s = :status, statusHistory = :history, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_STATUS",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "newStatus": "placed",
+              "note": "<undefined>",
+              "previousStatus": "placed"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "order status: the stored order has no statusHistory → 200, a history of one entry": {
+      "answer": {
+        "body": "{\"message\":\"Order status updated\",\"status\":\"prepared\"}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status"
+            },
+            "ExpressionAttributeValues": {
+              ":history": [
+                {
+                  "note": "Packed",
+                  "status": "prepared",
+                  "timestamp": "2026-11-28T10:00:00.000Z"
+                }
+              ],
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":status": "prepared"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #s = :status, statusHistory = :history, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "kind": "audit",
+          "params": {
+            "action": "UPDATE_ORDER_STATUS",
+            "actor": {
+              "email": "admin@t1.test",
+              "id": "u1"
+            },
+            "details": {
+              "newStatus": "prepared",
+              "note": "Packed",
+              "previousStatus": "placed"
+            },
+            "ip": "203.0.113.7",
+            "target": {
+              "id": "0a000000-0000-4000-8000-0000000000aa",
+              "title": "PPB-0042"
+            },
+            "tenantId": "t1"
+          }
+        },
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "input": {
+            "Destination": {
+              "ToAddresses": [
+                "buyer@example.com"
+              ]
+            },
+            "Message": {
+              "Body": {
+                "Text": {
+                  "Data": "Your order PPB-0042 is ready for shipping."
+                }
+              },
+              "Subject": {
+                "Data": "[Trace Shop] Order PPB-0042 Ready for Shipping"
+              }
+            },
+            "Source": "\"Trace Shop\" <shop@platform.test>"
+          },
+          "kind": "mail"
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "order status: unknown status → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"Invalid status. Allowed: placed, confirmed, prepared, shipped, delivered, cancelled, annulled\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "updateOrderStatus"
+    },
+    "outage: createOrder → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Internal error\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "SYSTEM",
+              "SK": "TENANT#t1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "createOrder"
+    },
+    "outage: download → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "RESOURCE#r1"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "download"
+    },
+    "outage: getCustomer → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getCustomer"
+    },
+    "outage: getOrder → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "getOrder"
+    },
+    "outage: listCustomers → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#n": "name"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "CUSTOMER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "email, #n, phone, orderCount, totalSpent, lastOrderDate, createdAt",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "listCustomers"
+    },
+    "outage: listOrders → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, orderNumber, customerEmail, customerName, #s, paymentMethod, paymentStatus, #total, currency, createdAt",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "listOrders"
+    },
+    "outage: publicGetOrder → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Internal error\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicGetOrder"
+    },
+    "outage: publicUpdateCustomer → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ProjectionExpression": "email",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicUpdateCustomer"
+    },
+    "outage: reportsSummary → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items",
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, #s, #total, currency, paymentMethod, paymentStatus, #items, createdAt, couponCode, couponDiscount",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "reportsSummary"
+    },
+    "outage: updateCustomer → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(PK)",
+            "ExpressionAttributeValues": {
+              ":notes": "x",
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET notes = :notes, updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateCustomer"
+    },
+    "outage: updateOrder → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Internal error\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ConditionExpression": "attribute_exists(SK)",
+            "ExpressionAttributeNames": {
+              "#trackingNumber": "trackingNumber",
+              "#updatedAt": "updatedAt"
+            },
+            "ExpressionAttributeValues": {
+              ":trackingNumber": "AWB123",
+              ":updatedAt": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table",
+            "UpdateExpression": "SET #updatedAt = :updatedAt, #trackingNumber = :trackingNumber"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrder"
+    },
+    "outage: updateOrderStatus → 500 at its first command": {
+      "answer": {
+        "body": "{\"error\":\"Simulated DynamoDB failure\"}",
+        "statusCode": 500
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "updateOrderStatus"
+    },
+    "profile update: birthday in another format → 400": {
+      "answer": {
+        "body": "{\"error\":\"Invalid birthday format. Use YYYY-MM-DD\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: customer absent → 404, no write": {
+      "answer": {
+        "body": "{\"error\":\"Customer not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ProjectionExpression": "email",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: customer present, fields cleared → 200, empty phone and null values": {
+      "answer": {
+        "body": "{\"name\":\"Test Buyer\",\"phone\":\"\",\"defaultAddress\":null,\"orderCount\":2,\"totalSpent\":165,\"loyaltyPoints\":165,\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Customer\",\"birthday\":null}",
+        "headers": {
+          "Cache-Control": "no-store"
+        },
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ProjectionExpression": "email",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":address": null,
+              ":billing": null,
+              ":birthday": null,
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":phone": ""
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET updatedAt = :now, phone = :phone, birthday = :birthday, defaultAddress = :address, defaultBillingDetails = :billing"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: customer present, four fields → 200": {
+      "answer": {
+        "body": "{\"name\":\"Test Buyer\",\"phone\":\"0711111111\",\"defaultAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"orderCount\":2,\"totalSpent\":165,\"loyaltyPoints\":165,\"lastOrderDate\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Customer\",\"birthday\":\"1990-01-31\",\"updatedAt\":\"2026-11-28T10:00:00.000Z\"}",
+        "headers": {
+          "Cache-Control": "no-store"
+        },
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ProjectionExpression": "email",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":address": {
+                "city": "Testville",
+                "country": "Romania",
+                "county": "Test County",
+                "notes": "Ring twice",
+                "postalCode": "010101",
+                "street": "1 Test Street"
+              },
+              ":billing": {
+                "isCompany": false
+              },
+              ":birthday": "1990-01-31",
+              ":now": "2026-11-28T10:00:00.000Z",
+              ":phone": "0711111111"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET updatedAt = :now, phone = :phone, birthday = :birthday, defaultAddress = :address, defaultBillingDetails = :billing"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: customer present, no field → 200, only updatedAt": {
+      "answer": {
+        "body": "{}",
+        "headers": {
+          "Cache-Control": "no-store"
+        },
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ProjectionExpression": "email",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        },
+        {
+          "command": "UpdateCommand",
+          "input": {
+            "ExpressionAttributeValues": {
+              ":now": "2026-11-28T10:00:00.000Z"
+            },
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "CUSTOMER#buyer@example.com"
+            },
+            "ReturnValues": "ALL_NEW",
+            "TableName": "test-table",
+            "UpdateExpression": "SET updatedAt = :now"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: email without a domain → 400": {
+      "answer": {
+        "body": "{\"error\":\"Invalid email format\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: no email → 400": {
+      "answer": {
+        "body": "{\"error\":\"Email is required\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "publicUpdateCustomer"
+    },
+    "profile update: tenant admin → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: Role 'TENANT_ADMIN' is not in [GLOBAL_ADMIN, RENDERER]\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "publicUpdateCustomer"
+    },
+    "public order get: absent → 404": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicGetOrder"
+    },
+    "public order get: email does not match → 404": {
+      "answer": {
+        "body": "{\"error\":\"Order not found\"}",
+        "statusCode": 404
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicGetOrder"
+    },
+    "public order get: email matches (other letter case) → 200 without internalNotes, PK, SK": {
+      "answer": {
+        "body": "{\"id\":\"0a000000-0000-4000-8000-0000000000aa\",\"tenantId\":\"t1\",\"orderNumber\":\"PPB-0042\",\"items\":[{\"productId\":\"c0000000-0000-4000-8000-000000000001\",\"productTitle\":\"Product 1\",\"quantity\":3,\"unitPrice\":\"25.00\",\"totalPrice\":75,\"selectedVariant\":null,\"personalizations\":[],\"imageLink\":null}],\"customerEmail\":\"buyer@example.com\",\"customerName\":\"Test Buyer\",\"customerPhone\":\"0700000000\",\"shippingAddress\":{\"street\":\"1 Test Street\",\"city\":\"Testville\",\"county\":\"Test County\",\"postalCode\":\"010101\",\"country\":\"Romania\",\"notes\":\"Ring twice\"},\"billingDetails\":null,\"paymentMethod\":\"bank_transfer\",\"requestedDeliveryDate\":null,\"subtotal\":75,\"shippingCost\":15,\"couponCode\":null,\"couponId\":null,\"couponDiscount\":0,\"total\":90,\"currency\":\"RON\",\"status\":\"placed\",\"paymentStatus\":\"pending\",\"statusHistory\":[{\"status\":\"placed\",\"timestamp\":\"2026-11-27T09:00:00.000Z\",\"note\":\"Order placed\"}],\"createdAt\":\"2026-11-27T09:00:00.000Z\",\"updatedAt\":\"2026-11-27T09:00:00.000Z\",\"Type\":\"Order\"}",
+        "headers": {
+          "Cache-Control": "no-cache"
+        },
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "GetCommand",
+          "input": {
+            "Key": {
+              "PK": "TENANT#t1",
+              "SK": "ORDER#0a000000-0000-4000-8000-0000000000aa"
+            },
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "publicGetOrder"
+    },
+    "public order get: no email → 400, no command": {
+      "answer": {
+        "body": "{\"error\":\"Email query parameter is required\"}",
+        "statusCode": 400
+      },
+      "effects": [],
+      "handler": "publicGetOrder"
+    },
+    "reports: admin of another tenant → 403, no command": {
+      "answer": {
+        "body": "{\"error\":\"Access Denied: You do not have access to this tenant.\"}",
+        "statusCode": 403
+      },
+      "effects": [],
+      "handler": "reportsSummary"
+    },
+    "reports: no order → 200": {
+      "answer": {
+        "body": "{\"kpi\":{\"totalRevenue\":\"0.00\",\"totalOrders\":0,\"avgOrderValue\":\"0.00\",\"deliveredRevenue\":\"0.00\",\"todayRevenue\":\"0.00\",\"todayOrders\":0,\"monthRevenue\":\"0.00\",\"monthOrders\":0,\"currency\":\"USD\"},\"byStatus\":{},\"byPayment\":{},\"revenueByMonth\":[],\"topProducts\":[],\"coupons\":{\"orders\":0,\"discount\":\"0.00\"}}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items",
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, #s, #total, currency, paymentMethod, paymentStatus, #items, createdAt, couponCode, couponDiscount",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "reportsSummary"
+    },
+    "reports: three orders, the answer has a LastEvaluatedKey → 200, one Query": {
+      "answer": {
+        "body": "{\"kpi\":{\"totalRevenue\":\"152.50\",\"totalOrders\":3,\"avgOrderValue\":\"50.83\",\"deliveredRevenue\":\"75.00\",\"todayRevenue\":\"75.00\",\"todayOrders\":1,\"monthRevenue\":\"142.50\",\"monthOrders\":2,\"currency\":\"RON\"},\"byStatus\":{\"delivered\":{\"count\":1,\"revenue\":75},\"placed\":{\"count\":1,\"revenue\":67.5},\"unknown\":{\"count\":1,\"revenue\":10}},\"byPayment\":{\"cash_on_delivery\":{\"count\":1,\"revenue\":75},\"bank_transfer\":{\"count\":1,\"revenue\":67.5},\"unknown\":{\"count\":1,\"revenue\":10}},\"revenueByMonth\":[{\"month\":\"2026-11\",\"count\":2,\"revenue\":142.5},{\"month\":\"2026-10\",\"count\":1,\"revenue\":10}],\"topProducts\":[{\"id\":\"c0000000-0000-4000-8000-000000000001\",\"title\":\"Product 1\",\"quantity\":6,\"revenue\":150},{\"id\":\"c0000000-0000-4000-8000-000000000002\",\"title\":\"c0000000-0000-4000-8000-000000000002\",\"quantity\":1,\"revenue\":10}],\"coupons\":{\"orders\":1,\"discount\":\"7.50\"}}",
+        "statusCode": 200
+      },
+      "effects": [
+        {
+          "command": "QueryCommand",
+          "input": {
+            "ExpressionAttributeNames": {
+              "#items": "items",
+              "#s": "status",
+              "#total": "total"
+            },
+            "ExpressionAttributeValues": {
+              ":pk": "TENANT#t1",
+              ":sk": "ORDER#"
+            },
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ProjectionExpression": "id, #s, #total, currency, paymentMethod, paymentStatus, #items, createdAt, couponCode, couponDiscount",
+            "TableName": "test-table"
+          },
+          "kind": "dynamodb"
+        }
+      ],
+      "handler": "reportsSummary"
+    }
+  },
+  "traceTime": "2026-11-28T10:00:00.000Z"
+}

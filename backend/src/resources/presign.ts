@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, TABLE_NAME } from "../lib/db.js";
+import { customerOrdersQuery } from "../lib/commerce-db.js";
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { normalizeEmail } from "@amodx/shared";
@@ -38,12 +39,7 @@ async function hasUserPurchasedProduct(
     // read the CUSTORDER# adjacency under the same key checkout wrote).
     const normalizedEmail = normalizeEmail(userEmail);
     const ordersResult = await db.send(new QueryCommand({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-        ExpressionAttributeValues: {
-            ":pk": `TENANT#${tenantId}`,
-            ":sk": `CUSTORDER#${normalizedEmail}#`,
-        },
+        ...customerOrdersQuery(tenantId, normalizedEmail),
         // `items` is a DynamoDB reserved word: it needs an alias (PROJECTION-RESERVED-1).
         ProjectionExpression: "#items",
         ExpressionAttributeNames: { "#items": "items" },
