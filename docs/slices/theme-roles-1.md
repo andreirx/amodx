@@ -300,4 +300,3 @@ Builder `claude-opus-5-5`, 2026-11-28. Not committed (the tree holds the change 
 - NOT proven on staging: the refusals for `TENANT_ADMIN` (delete) and `EDITOR` (save, delete), and the hidden
   controls for those roles. Staging has one test user. Basis: the backend unit tests (each role and operation, no
   write command on a refusal) and the admin unit tests.
-
