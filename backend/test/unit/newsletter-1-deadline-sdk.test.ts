@@ -11,8 +11,12 @@ import { HttpResponse } from "@smithy/protocol-http";
  * therefore retries with backoff past 4 s. MailerLite (global fetch) answers 201 at once. Credential-free: fake
  * credentials, no network (the handler answers every request in-process).
  *
- * Control: `pushAndRecord` alone — the abort signal only, no timer race — overruns the bound (the review-1 probe).
  * Contract: `newsletterSignup` (which races a timer around the post-store work) answers within the bound.
+ *
+ * No control test on `pushAndRecord` alone (removed 2026-11-27). It asserted that the SDK's retry backoff does NOT
+ * observe the abort signal (an overrun past the bound). That is a property of one SDK version, not of this product:
+ * true with `@aws-sdk/client-dynamodb` 3.1009 (the lockfile), false with 3.1178 (4009 ms; the CI workflow installs
+ * without the lockfile). The timer race in `newsletterSignup` holds the bound with either behaviour.
  */
 
 const stub = vi.hoisted(() => ({
@@ -48,11 +52,10 @@ vi.mock("../../src/lib/db.js", async () => {
     return { db: DynamoDBDocumentClient.from(client, { marshallOptions: { removeUndefinedValues: true } }), TABLE_NAME: "test-table" };
 });
 
-import { newsletterSignup, pushAndRecord, POST_STORE_DEADLINE_MS } from "../../src/leads/newsletter.js";
+import { newsletterSignup, POST_STORE_DEADLINE_MS } from "../../src/leads/newsletter.js";
 import { LANGUAGE_PACKS } from "@amodx/shared";
 
 const TENANT = { id: "t1", locale: "en-US", integrations: { mailerlite: { apiToken: "SENTINEL-ML-TOKEN-sdk", groupId: "g1" } } };
-const settings = TENANT.integrations.mailerlite;
 
 beforeEach(() => {
     stub.calls = [];
@@ -63,15 +66,6 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("NL1-R4 through the real SDK: throttling + retry backoff on the result write", () => {
-    it("control: pushAndRecord with an abort signal only (no timer race) overruns the 4 s bound — the SDK's backoff does not observe the signal", async () => {
-        const started = Date.now();
-        const outcome = await pushAndRecord("t1", "reader@example.test", "c1", "a1", settings, AbortSignal.timeout(POST_STORE_DEADLINE_MS));
-        const elapsed = Date.now() - started;
-        expect(outcome.resultWrite).toBe("unconfirmed");
-        expect(stub.calls.filter((c) => c.target === "UpdateItem").length).toBeGreaterThanOrEqual(2);   // the SDK retried
-        expect(elapsed).toBeGreaterThan(POST_STORE_DEADLINE_MS + 50);
-    }, 20_000);
-
     it(`contract: the signup answers within ${POST_STORE_DEADLINE_MS} ms of the committed transaction, while the SDK is still retrying the result write`, async () => {
         const res = await newsletterSignup("t1", TENANT, { email: "reader@example.test", consentText: LANGUAGE_PACKS.en.site.newsletterConsent, consentLocale: "en-US" });
         const answeredAt = Date.now();
