@@ -755,6 +755,17 @@ their own e2e evidence.
 
 `security-audit.yml` is unaffected: it already used `npm ci` and only installs, never builds.
 
+### The Playwright workflows are pinned to `ubuntu-24.04`; raise the image together with a Playwright upgrade
+**Found:** `ci-lockfile-1` revision 2 (CL1-RUNNER-OS, 2026-11-28). **Priority:** low (a pin, working as intended).
+
+`playwright.yml` and `staging-e2e.yml` run on `ubuntu-24.04`, not `ubuntu-latest`: the recorded Playwright 1.57.0
+supports Ubuntu up to 24.04 (`node_modules/playwright-core/lib/server/utils/hostPlatform.js:78-80`), and
+`ubuntu-latest` rolled to 26.04, where `npx playwright install --with-deps` fails (GitHub run 46076252585). Raise the
+image only together with a Playwright upgrade that supports the new image, in its own tested slice (lockfile and
+manifest change; the staging scripts and the e2e suite use the recorded version). The pin ends when GitHub retires the
+`ubuntu-24.04` image; INFERRED (not checked): the workflows then no longer get a runner, which is the signal to do that
+upgrade.
+
 ### Orphan and archived `TRANSLATION#` membership items are never removed
 **Found:** `lang-1` specification § 6.1, § 15 (carried by the operator from `lang-1a`); entered by `lang-1c`, the first
 reader (2026-11-22). **Priority:** low (inert data; a read cost, not a wrong output).

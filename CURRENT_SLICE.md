@@ -5,10 +5,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 ## In the worktree
 
 `ci-lockfile-1` (the human, 2026-11-27; `docs/slices/ci-lockfile-1.md`): IMPLEMENTED 2026-11-28, built, operator
-proof on GitHub pending. `playwright.yml` and `staging-e2e.yml` install with `npm ci` and pin Node `'22'`;
+proof on GitHub pending. Committed as `4d485af`; revision 2 (CL1-RUNNER-OS, in the worktree) pins the runner image of
+the two Playwright workflows to `ubuntu-24.04`, because Playwright 1.57.0 cannot install browsers on
+`ubuntu-latest` = 26.04. `playwright.yml` and `staging-e2e.yml` install with `npm ci` and pin Node `'22'`;
 `backend/vitest.config.ts` loads the shared reserved-word guard setup file for the unit files, so the backend step of "Playwright Tests"
-(red since `31112cb`) can pass. The proof is the operator's: the GitHub run of "Playwright Tests" on the commit is
-green and its install log shows `npm ci`. Next in the order of work: `theme-roles-1`, then `cmrc-1`.
+(red since `31112cb`) can pass. The proof is the operator's: the GitHub run of "Playwright Tests" on the commit that
+contains revision 2 is green, its install log shows `npm ci`, and its browser install passes. Next in the order of work: `theme-roles-1`, then `cmrc-1`.
 
 `settings-findings-1` is on staging since 2026-11-28 (`docs/slices/settings-findings-1.md` § "Closeout") and waits
 for the human's production deploy: the Settings screen lists the saved themes on open, the Interface card shows the
