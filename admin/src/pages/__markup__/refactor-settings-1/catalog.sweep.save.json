@@ -1,0 +1,139 @@
+{
+  "id": "t-cat",
+  "name": "v2",
+  "domain": "v5",
+  "catalogMode": true,
+  "commerceEnabled": false,
+  "locale": "v63",
+  "schedulingEnabled": false,
+  "searchBar": {
+    "enabled": false,
+    "placeholder": "Search"
+  },
+  "urlPrefixes": {
+    "product": "v47",
+    "category": "v48",
+    "shop": "v49",
+    "search": "v50",
+    "interest": "v51"
+  },
+  "contactChannels": {
+    "phone": "v37",
+    "email": "v39",
+    "whatsapp": "v38"
+  },
+  "interestListEmail": "v42",
+  "integrations": {
+    "contactEmail": "v43",
+    "analytics": {
+      "provider": "plausible"
+    },
+    "paddle": {
+      "environment": "production",
+      "clientToken": "v23"
+    },
+    "orderProcessingEmail": "v44",
+    "googleAnalyticsId": "v52"
+  },
+  "navLinks": [
+    {
+      "label": "v45",
+      "href": "v46"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "v31",
+      "href": "v32"
+    }
+  ],
+  "footer": {
+    "columns": [
+      {
+        "heading": "v20",
+        "links": []
+      }
+    ],
+    "contentMaxWidth": "max-w-full",
+    "backgroundColor": "v16",
+    "textColor": "v18",
+    "brandText": "v19"
+  },
+  "header": {
+    "showLogo": false,
+    "showTitle": false,
+    "tagline": "v8",
+    "categoryBarIds": [
+      "c1"
+    ],
+    "backgroundColor": "v11",
+    "textColor": "v13"
+  },
+  "description": "v4",
+  "hideSocialSharing": true,
+  "homePageSlug": "v7",
+  "companyDetails": {
+    "legalName": "v25",
+    "cui": "v26",
+    "tradeRegister": "v27",
+    "phone": "v28",
+    "address": "v29",
+    "email": "v30"
+  },
+  "legalLinks": {
+    "termsUrl": "v33",
+    "privacyUrl": "v34",
+    "anpcUrl": "v35",
+    "anpcSalUrl": "v36"
+  },
+  "pageEffect": {
+    "type": "bubbles",
+    "colors": [
+      "#0370a5",
+      "#0380a8",
+      "#0390ab"
+    ],
+    "speed": 0.3,
+    "timeOffset": 0.3,
+    "intensity": 0.3,
+    "invertY": true,
+    "bgColor": "#03e0ba",
+    "overlayOpacity": 0.85
+  },
+  "currency": "v64",
+  "gdpr": {
+    "enabled": false,
+    "position": "top"
+  },
+  "recaptcha": {
+    "threshold": 0.3
+  },
+  "theme": {
+    "fontHeading": "v96",
+    "fontBody": "v97",
+    "fontNav": "v71",
+    "fontWeights": [
+      100,
+      200,
+      300,
+      500,
+      600,
+      800,
+      900
+    ],
+    "headingWeight": 900,
+    "backgroundColor": "v81",
+    "textColor": "v83",
+    "primaryColor": "v85",
+    "primaryForeground": "v87",
+    "secondaryColor": "v89",
+    "surfaceColor": "v91",
+    "mutedColor": "v93",
+    "borderColor": "v95",
+    "shape": "editorial",
+    "cardImage": "landscape",
+    "cardCategoryLine": true,
+    "radius": "v101",
+    "mode": "dark"
+  }
+}

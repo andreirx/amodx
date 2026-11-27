@@ -1,0 +1,209 @@
+{
+  "id": "t-lang",
+  "name": "v2",
+  "domain": "v5",
+  "locale": "v86",
+  "countryCode": "RO",
+  "currency": "v87",
+  "languages": [
+    "en",
+    "de"
+  ],
+  "navLinks": [
+    {
+      "label": "Acasă",
+      "href": "/"
+    },
+    {
+      "label": "New Link",
+      "href": "/"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "Contact",
+      "href": "/contact"
+    },
+    {
+      "label": "New Link",
+      "href": "/"
+    }
+  ],
+  "navLinksByLang": {
+    "en": [
+      {
+        "label": "Home",
+        "href": "/en"
+      },
+      {
+        "label": "Menu",
+        "href": "/en/menu",
+        "children": [
+          {
+            "label": "Lunch",
+            "href": "/en/lunch"
+          }
+        ]
+      }
+    ]
+  },
+  "footerLinksByLang": {
+    "fr": []
+  },
+  "integrations": {
+    "contactEmail": "v57",
+    "mailerlite": {
+      "groupId": "v94",
+      "apiToken": "v95"
+    },
+    "google": {
+      "clientId": "v70",
+      "clientSecret": "v71"
+    },
+    "paddle": {
+      "environment": "production",
+      "clientToken": "v25"
+    },
+    "bankTransfer": {
+      "bankName": "v38",
+      "accountHolder": "v39",
+      "iban": "v40",
+      "swift": "v41",
+      "referencePrefix": "v42"
+    },
+    "orderProcessingEmail": "v58",
+    "googleAnalyticsId": "v68",
+    "analytics": {
+      "provider": "plausible"
+    },
+    "braveApiKey": "v96"
+  },
+  "recaptcha": {
+    "threshold": 0.3,
+    "siteKey": "v92",
+    "secretKey": "v93"
+  },
+  "footer": {
+    "columns": [
+      {
+        "heading": "v20",
+        "links": []
+      }
+    ],
+    "contentMaxWidth": "max-w-full",
+    "backgroundColor": "v16",
+    "textColor": "v18",
+    "brandText": "v19"
+  },
+  "header": {
+    "showLogo": false,
+    "showTitle": false,
+    "tagline": "v8",
+    "backgroundColor": "v11",
+    "textColor": "v13"
+  },
+  "description": "v4",
+  "hideSocialSharing": true,
+  "homePageSlug": "v7",
+  "commerceEnabled": true,
+  "schedulingEnabled": true,
+  "scheduling": {
+    "timezone": "v23"
+  },
+  "commerceBar": {
+    "enabled": true,
+    "height": "h-14",
+    "fontSize": "text-lg",
+    "iconSize": "h-7 w-7",
+    "phone": "v30",
+    "whatsappNumber": "v31",
+    "ctaButton": {
+      "text": "v32",
+      "url": "v33"
+    }
+  },
+  "searchBar": {
+    "enabled": true,
+    "placeholder": "v35"
+  },
+  "enabledPaymentMethods": [
+    "cash_on_delivery",
+    "bank_transfer"
+  ],
+  "companyDetails": {
+    "legalName": "v43",
+    "cui": "v44",
+    "tradeRegister": "v45",
+    "phone": "v46",
+    "address": "v47",
+    "email": "v48"
+  },
+  "legalLinks": {
+    "termsUrl": "v50",
+    "privacyUrl": "v51",
+    "anpcUrl": "v52",
+    "anpcSalUrl": "v53"
+  },
+  "contactChannels": {
+    "phone": "v54",
+    "whatsapp": "v55",
+    "email": "v56"
+  },
+  "urlPrefixes": {
+    "product": "v60",
+    "category": "v61",
+    "cart": "v62",
+    "checkout": "v63",
+    "checkoutConfirmation": "v64",
+    "shop": "v65",
+    "account": "v66",
+    "search": "v67"
+  },
+  "pageEffect": {
+    "type": "bubbles",
+    "colors": [
+      "#04d0e7",
+      "#04e0ea",
+      "#04f0ed"
+    ],
+    "speed": 0.3,
+    "timeOffset": 0.3,
+    "intensity": 0.3,
+    "invertY": true,
+    "bgColor": "#0540fc",
+    "overlayOpacity": 0.85
+  },
+  "celebrationEnabled": true,
+  "gdpr": {
+    "enabled": false,
+    "position": "top"
+  },
+  "theme": {
+    "fontHeading": "v124",
+    "fontBody": "v125",
+    "fontNav": "v99",
+    "fontWeights": [
+      100,
+      200,
+      300,
+      500,
+      600,
+      800,
+      900
+    ],
+    "headingWeight": 900,
+    "backgroundColor": "v109",
+    "textColor": "v111",
+    "primaryColor": "v113",
+    "primaryForeground": "v115",
+    "secondaryColor": "v117",
+    "surfaceColor": "v119",
+    "mutedColor": "v121",
+    "borderColor": "v123",
+    "shape": "editorial",
+    "cardImage": "landscape",
+    "cardCategoryLine": true,
+    "radius": "v129",
+    "mode": "dark"
+  }
+}

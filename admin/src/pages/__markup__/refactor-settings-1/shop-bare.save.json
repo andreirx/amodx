@@ -1,0 +1,24 @@
+{
+  "id": "t-bare",
+  "name": "Bare shop",
+  "domain": "bare.test",
+  "commerceEnabled": true,
+  "commerceBar": {
+    "enabled": false
+  },
+  "enabledPaymentMethods": [
+    "cash_on_delivery"
+  ],
+  "navLinks": [],
+  "footerLinks": [],
+  "schedulingEnabled": false,
+  "integrations": {
+    "contactEmail": "owner@bare.test",
+    "analytics": {
+      "provider": "none"
+    },
+    "mailerlite": null,
+    "google": {}
+  },
+  "recaptcha": {}
+}

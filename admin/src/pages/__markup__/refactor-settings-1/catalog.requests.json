@@ -1,0 +1,5 @@
+[
+  "GET /settings",
+  "GET /categories",
+  "PUT /settings"
+]

@@ -1,0 +1,9 @@
+{
+  "id": "t-empty",
+  "name": "New site",
+  "domain": "new.test",
+  "recaptcha": {},
+  "integrations": {
+    "google": {}
+  }
+}

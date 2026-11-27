@@ -558,6 +558,13 @@ behavior change). Both are for `rev-2` to reconcile when it opens the System-A w
 ### Split Settings page into sections
 The Settings page (`admin/src/pages/Settings.tsx`) is ~1300 lines covering site identity, theme, analytics, identity providers, payments, GDPR, commerce bar, URL prefixes, company details, legal links, and more. Split into tabbed sections.
 
+Update 2026-11-27 (REFACTOR-SETTINGS-1, `docs/slices/refactor-settings-1.md`): the FILE split is done — the page
+(2,666 lines then) composes one file per section under `admin/src/pages/settings/` (the largest 376 lines). The screen
+is unchanged: still one long page, no tabs. Tabbed sections are an owner-visible change and need their own slice.
+Left by the move (moves only): the theme card takes 11 props, because the theme-tab state (`activeTab`, the custom
+themes, the Save Theme dialog) stays in the page, which unmounts its sections while `loading` (a state moved into the
+card would reset after a logo upload). The findings recorded by that slice (§ *Findings, not fixed*) are open.
+
 ### Extract commerce views from catch-all page
 `renderer/src/app/[siteId]/[[...slug]]/page.tsx` is ~900 lines containing ProductPageView, CategoryPageView, CartPageView, CheckoutPageView, ConfirmationPageView, OrderTrackingView, and ShopPageView all inline. Extract each to its own file under `renderer/src/components/commerce/`.
 

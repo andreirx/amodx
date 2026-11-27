@@ -1,0 +1,33 @@
+{
+  "id": "t-cat",
+  "name": "Catalog",
+  "domain": "cat.test",
+  "catalogMode": true,
+  "commerceEnabled": false,
+  "locale": "xx-YY",
+  "schedulingEnabled": false,
+  "searchBar": {
+    "enabled": true,
+    "placeholder": "Search"
+  },
+  "urlPrefixes": {
+    "product": "/product",
+    "category": "/category",
+    "shop": "/shop",
+    "search": "/search",
+    "interest": "/my-list"
+  },
+  "contactChannels": {
+    "phone": "0721",
+    "email": "office@cat.test"
+  },
+  "interestListEmail": "lists@cat.test",
+  "integrations": {
+    "contactEmail": "owner@cat.test",
+    "analytics": {
+      "provider": "plausible"
+    }
+  },
+  "navLinks": [],
+  "footerLinks": []
+}

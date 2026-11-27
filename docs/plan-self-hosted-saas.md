@@ -780,7 +780,7 @@ Webhook secret stored in SSM Parameter Store (SecureString), loaded once per Lam
 | Tool executor (calls AMODX API server-side) | New: `backend/src/ai/tool-executor.ts` | 2d | Reuses existing handler logic |
 | API key storage (encrypted in DDB) | `backend/src/settings/` | 1d | New field in TenantConfig |
 | Admin UI: AiAssistant panel | New: `admin/src/components/AiAssistant.tsx` | 3d | Chat UI, SSE consumer, tool indicators |
-| Admin UI: AiSetup in Settings | `admin/src/pages/Settings.tsx` | 1d | Key input, test, toggle |
+| Admin UI: AiSetup in Settings | `admin/src/pages/settings/` (new section file) + one call in `Settings.tsx` | 1d | Key input, test, toggle |
 | Admin UI: useAiChat hook | New: `admin/src/hooks/useAiChat.ts` | 1d | Conversation state, SSE management |
 | CDK: Lambda Function URL for AI endpoint | `amodx-stack.ts` | 0.5d | Streaming enabled, IAM auth |
 | System prompt engineering | Config file | 1d | Site-aware, tool-aware, safety guardrails |
@@ -966,7 +966,8 @@ admin/
     hooks/
       useAiChat.ts               SSE consumer + conversation state
     pages/
-      Settings.tsx               (Modified: add AI Setup section)
+      Settings.tsx               (Modified: one call of the AI Setup card)
+      settings/AiSetup.tsx       (New: the AI Setup card; one file per section since REFACTOR-SETTINGS-1)
 
 manage-app/                      Customer self-service portal (new SPA)
   src/

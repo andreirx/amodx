@@ -4,8 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `refactor-settings-1`.
+Nothing. Next in the order of work: `refactor-sitepage-1`.
 
+`refactor-settings-1` is on staging since 2026-11-27 (`docs/slices/refactor-settings-1.md` § "Closeout") and waits
+for the human's production deploy: `admin/src/pages/Settings.tsx` is split into one file per section under
+`admin/src/pages/settings/`, moves only; the markup and Save-body captures taken before the move are byte-identical
+after it.
 `projection-reserved-1` (hotfix) is on staging since 2026-11-27 (`docs/slices/projection-reserved-1.md` §
 "Closeout") and waits for the human's production deploy: five DynamoDB projections that named a reserved word
 bare are aliased (admin Orders list, review moderation list, Reports page, the download check, the account order

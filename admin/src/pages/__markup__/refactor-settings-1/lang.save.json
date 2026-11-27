@@ -1,0 +1,51 @@
+{
+  "id": "t-lang",
+  "name": "Bilingual",
+  "domain": "lang.test",
+  "locale": "ro-RO",
+  "countryCode": "RO",
+  "currency": "RON",
+  "languages": [
+    "en",
+    "de"
+  ],
+  "navLinks": [
+    {
+      "label": "Acasă",
+      "href": "/"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "Contact",
+      "href": "/contact"
+    }
+  ],
+  "navLinksByLang": {
+    "en": [
+      {
+        "label": "Home",
+        "href": "/en"
+      },
+      {
+        "label": "Menu",
+        "href": "/en/menu",
+        "children": [
+          {
+            "label": "Lunch",
+            "href": "/en/lunch"
+          }
+        ]
+      }
+    ]
+  },
+  "footerLinksByLang": {
+    "fr": []
+  },
+  "integrations": {
+    "contactEmail": "owner@lang.test",
+    "mailerlite": true,
+    "google": {}
+  },
+  "recaptcha": {}
+}

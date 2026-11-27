@@ -1,0 +1,175 @@
+{
+  "id": "t-empty",
+  "name": "v2",
+  "domain": "v5",
+  "recaptcha": {
+    "threshold": 0.3,
+    "siteKey": "v94",
+    "secretKey": "v95"
+  },
+  "integrations": {
+    "google": {
+      "clientId": "v72",
+      "clientSecret": "v73"
+    },
+    "paddle": {
+      "environment": "production",
+      "clientToken": "v25"
+    },
+    "bankTransfer": {
+      "bankName": "v38",
+      "accountHolder": "v39",
+      "iban": "v40",
+      "swift": "v41",
+      "referencePrefix": "v42"
+    },
+    "contactEmail": "v58",
+    "orderProcessingEmail": "v59",
+    "googleAnalyticsId": "v70",
+    "analytics": {
+      "provider": "plausible"
+    },
+    "mailerlite": {
+      "groupId": "v96",
+      "apiToken": "v97"
+    },
+    "braveApiKey": "v98"
+  },
+  "footer": {
+    "columns": [
+      {
+        "heading": "v20",
+        "links": []
+      }
+    ],
+    "contentMaxWidth": "max-w-full",
+    "backgroundColor": "v16",
+    "textColor": "v18",
+    "brandText": "v19"
+  },
+  "footerLinks": [
+    {
+      "label": "v49",
+      "href": "v50"
+    }
+  ],
+  "navLinks": [
+    {
+      "label": "v60",
+      "href": "v61"
+    }
+  ],
+  "header": {
+    "showLogo": false,
+    "showTitle": false,
+    "tagline": "v8",
+    "backgroundColor": "v11",
+    "textColor": "v13"
+  },
+  "description": "v4",
+  "hideSocialSharing": true,
+  "homePageSlug": "v7",
+  "commerceEnabled": true,
+  "schedulingEnabled": true,
+  "scheduling": {
+    "timezone": "v23"
+  },
+  "commerceBar": {
+    "enabled": true,
+    "height": "h-14",
+    "fontSize": "text-lg",
+    "iconSize": "h-7 w-7",
+    "phone": "v30",
+    "whatsappNumber": "v31",
+    "ctaButton": {
+      "text": "v32",
+      "url": "v33"
+    }
+  },
+  "searchBar": {
+    "enabled": true,
+    "placeholder": "v35"
+  },
+  "enabledPaymentMethods": [
+    "cash_on_delivery",
+    "bank_transfer"
+  ],
+  "companyDetails": {
+    "legalName": "v43",
+    "cui": "v44",
+    "tradeRegister": "v45",
+    "phone": "v46",
+    "address": "v47",
+    "email": "v48"
+  },
+  "legalLinks": {
+    "termsUrl": "v51",
+    "privacyUrl": "v52",
+    "anpcUrl": "v53",
+    "anpcSalUrl": "v54"
+  },
+  "contactChannels": {
+    "phone": "v55",
+    "whatsapp": "v56",
+    "email": "v57"
+  },
+  "urlPrefixes": {
+    "product": "v62",
+    "category": "v63",
+    "cart": "v64",
+    "checkout": "v65",
+    "checkoutConfirmation": "v66",
+    "shop": "v67",
+    "account": "v68",
+    "search": "v69"
+  },
+  "pageEffect": {
+    "type": "bubbles",
+    "colors": [
+      "#04f0ed",
+      "#0500f0",
+      "#0510f3"
+    ],
+    "speed": 0.3,
+    "timeOffset": 0.3,
+    "intensity": 0.3,
+    "invertY": true,
+    "bgColor": "#056102",
+    "overlayOpacity": 0.85
+  },
+  "celebrationEnabled": true,
+  "locale": "v88",
+  "currency": "v89",
+  "gdpr": {
+    "enabled": false,
+    "position": "top"
+  },
+  "theme": {
+    "fontHeading": "v126",
+    "fontBody": "v127",
+    "fontNav": "v101",
+    "fontWeights": [
+      100,
+      200,
+      300,
+      500,
+      600,
+      800,
+      900
+    ],
+    "headingWeight": 900,
+    "backgroundColor": "v111",
+    "textColor": "v113",
+    "primaryColor": "v115",
+    "primaryForeground": "v117",
+    "secondaryColor": "v119",
+    "surfaceColor": "v121",
+    "mutedColor": "v123",
+    "borderColor": "v125",
+    "shape": "editorial",
+    "cardImage": "landscape",
+    "cardCategoryLine": true,
+    "radius": "v131",
+    "mode": "dark"
+  }
+}

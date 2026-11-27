@@ -1,0 +1,216 @@
+{
+  "id": "t-shop",
+  "name": "Shop",
+  "domain": "shop.test",
+  "description": "Floors since 1998",
+  "schemaType": "LocalBusiness",
+  "logo": "https://cdn.test/logo.png",
+  "commerceEnabled": true,
+  "currency": "RON",
+  "countryCode": "RO",
+  "locale": "ro-RO",
+  "homePageSlug": "/home",
+  "hideSocialSharing": true,
+  "celebrationEnabled": true,
+  "schedulingEnabled": true,
+  "scheduling": {
+    "timezone": "Europe/Bucharest"
+  },
+  "header": {
+    "showLogo": false,
+    "showTitle": true,
+    "contentMaxWidth": "max-w-[1440px]",
+    "contentPageMaxWidth": "max-w-5xl",
+    "navHeight": "h-20",
+    "navHeightScrolled": "h-14",
+    "logoHeight": "h-16",
+    "logoHeightScrolled": "h-10",
+    "titleSize": "text-2xl",
+    "titleSizeScrolled": "text-xl",
+    "backgroundColor": "#f5f1ea",
+    "textColor": "#1f2937",
+    "tagline": "Since 1998",
+    "categoryBarIds": [
+      "c2",
+      "c1",
+      "gone",
+      "c3"
+    ]
+  },
+  "footer": {
+    "contentMaxWidth": "max-w-[1600px]",
+    "backgroundColor": "#111111",
+    "textColor": "#fafafa",
+    "brandText": "Floors since 1998.",
+    "columns": [
+      {
+        "heading": "Explore",
+        "links": [
+          {
+            "label": "Guides",
+            "href": "/guides"
+          },
+          {
+            "label": "Blog",
+            "href": "/blog"
+          }
+        ]
+      }
+    ]
+  },
+  "theme": {
+    "fontHeading": "Prata",
+    "fontBody": "Lato",
+    "fontNav": "Inter",
+    "fontWeights": [
+      300,
+      500
+    ],
+    "headingWeight": 600,
+    "backgroundColor": "#ffffff",
+    "textColor": "#111111",
+    "primaryColor": "#aa3300",
+    "primaryForeground": "#ffffff",
+    "secondaryColor": "#eeeeee",
+    "surfaceColor": "#fafafa",
+    "mutedColor": "#6b6b6b",
+    "borderColor": "#d4d4d4",
+    "shape": "editorial",
+    "cardImage": "landscape",
+    "cardCategoryLine": true,
+    "radius": "0.75rem",
+    "mode": "light"
+  },
+  "darkTheme": {
+    "fontHeading": "DarkHead",
+    "fontBody": "DarkBody",
+    "backgroundColor": "#000000",
+    "textColor": "#eeeeee",
+    "primaryColor": "#ff8800"
+  },
+  "urlPrefixes": {
+    "product": "/produs",
+    "category": "/categorie",
+    "cart": "/cos",
+    "checkout": "/comanda",
+    "checkoutConfirmation": "/multumim",
+    "shop": "/magazin",
+    "account": "/cont",
+    "search": "/cauta"
+  },
+  "commerceBar": {
+    "enabled": true,
+    "height": "h-12",
+    "fontSize": "text-base",
+    "iconSize": "h-6 w-6",
+    "phone": "0762 000 111",
+    "whatsappNumber": "+40762000111",
+    "socialLinks": [
+      {
+        "platform": "instagram",
+        "url": "https://instagram.com/shop"
+      },
+      {
+        "platform": "facebook",
+        "url": "https://facebook.com/shop"
+      }
+    ],
+    "ctaButton": {
+      "text": "Winter sale",
+      "url": "/sale"
+    }
+  },
+  "searchBar": {
+    "enabled": true,
+    "placeholder": "Caută"
+  },
+  "enabledPaymentMethods": [
+    "cash_on_delivery",
+    "bank_transfer"
+  ],
+  "companyDetails": {
+    "legalName": "SC Shop SRL",
+    "cui": "RO1",
+    "tradeRegister": "J40/1/2020",
+    "phone": "+40 700",
+    "address": "Str. 1",
+    "email": "office@shop.test"
+  },
+  "legalLinks": {
+    "termsUrl": "/termeni",
+    "privacyUrl": "/confidentialitate",
+    "anpcUrl": "https://anpc.ro/x",
+    "anpcSalUrl": "https://ec.europa.eu/odr"
+  },
+  "contactChannels": {
+    "phone": "0721 000 111",
+    "email": "office@shop.test"
+  },
+  "navLinks": [
+    {
+      "label": "Home",
+      "href": "/"
+    },
+    {
+      "label": "Shop",
+      "href": "/magazin",
+      "children": [
+        {
+          "label": "Carpet",
+          "href": "/categorie/carpet"
+        },
+        {
+          "label": "Vinyl",
+          "href": "/categorie/vinyl"
+        }
+      ]
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "About",
+      "href": "/about"
+    }
+  ],
+  "gdpr": {
+    "enabled": false,
+    "position": "top"
+  },
+  "recaptcha": {
+    "threshold": 0.7,
+    "siteKey": "site-key",
+    "secretKey": "secret-key"
+  },
+  "pageEffect": {
+    "type": "none"
+  },
+  "integrations": {
+    "contactEmail": "owner@shop.test",
+    "orderProcessingEmail": "orders@shop.test",
+    "googleAnalyticsId": "G-SHOP",
+    "analytics": {
+      "provider": "umami",
+      "url": "https://stats.test/script.js",
+      "websiteId": "uuid-1"
+    },
+    "paddle": {
+      "environment": "production",
+      "clientToken": "live_123"
+    },
+    "bankTransfer": {
+      "bankName": "ING",
+      "accountHolder": "SC Shop SRL",
+      "iban": "RO49AAAA",
+      "swift": "INGBROBU",
+      "referencePrefix": "PPB"
+    },
+    "mailerlite": {
+      "groupId": "112233"
+    },
+    "braveApiKey": "brave-1",
+    "google": {
+      "clientId": "id.apps.googleusercontent.com",
+      "clientSecret": "GOCSPX-1"
+    }
+  }
+}

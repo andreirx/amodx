@@ -1,0 +1,8 @@
+[
+  "GET /service-keys",
+  "GET /settings",
+  "GET /categories",
+  "GET /service-keys",
+  "GET /settings/secrets",
+  "PUT /settings"
+]

@@ -27,8 +27,9 @@ real provider, sidebar and pages with local HTTP/auth replacements: save on/off,
 Scheduling off/save bodies, and a fresh-browser planner link. The existing planner/login suite retains E18–E20.
 Settings' existing markup captures are not re-taken: the preservation tests remove only the added off-state
 scheduling card before their existing exclusions. Commerce/Catalog and the new card share one fragment slot so
-the other controls retain their React `useId` paths. The page-local SettingsDraft accepts a partial scheduling
-object for the initial explicit zone; the backend's existing schema supplies missing numeric defaults.
+the other controls retain their React `useId` paths. The page's SettingsDraft (`pages/settings/draft.ts` since
+REFACTOR-SETTINGS-1) accepts a partial scheduling object for the initial explicit zone; the backend's existing schema
+supplies missing numeric defaults.
 
 ## Internal Structure
 
@@ -89,7 +90,14 @@ src/
     ├── Comments.tsx            # Moderation queue with status control
     ├── Resources.tsx           # Private file manager for gated downloads
     ├── Users.tsx               # Team management with invite dialog and role assignment
-    ├── Settings.tsx            # Site config: identity, theme, analytics, OAuth, Paddle, GDPR on/off + position, nav;
+    ├── Settings.tsx            # REFACTOR-SETTINGS-1: the Settings PAGE only — state, the load and secrets effects, load,
+    │                           #   save, the custom-theme load/save/delete, the closures used by sections in two files
+    │                           #   (updateHeader, updateIntegration, updateTheme, handleLogoUpload) and the composition
+    │                           #   of the cards of settings/ (below), with each card's display condition at its call
+    │                           #   site. It re-exports every name it exported before the split. RULE: a new setting goes
+    │                           #   in its section file under settings/, not here; a new card is a component there and
+    │                           #   one call here. The notes below describe the cards, now in settings/ (map below).
+    │                           #   Site config: identity, theme, analytics, OAuth, Paddle, GDPR on/off + position, nav;
     │                           #   "Language & Country" (locale-1a): Site language (LANGUAGE_PACKS → locale), Locale
     │                           #   (advanced) with its normalised value and a warning when a present value falls back
     │                           #   to en-US, Country apply = countryCode + currency only; the rules are the exported
@@ -140,6 +148,33 @@ src/
     │                           #   Links headers: Default edits navLinks / footerLinks as before; a language edits
     │                           #   navLinksByLang[l] / footerLinksByLang[l]; "Use the default menu" removes that list.
     │                           #   Compared minus exactly this one group (withoutLang1a); captures not re-taken.
+    ├── settings/               # REFACTOR-SETTINGS-1 (docs/slices/refactor-settings-1.md): the sections of the Settings
+    │   │                       #   page, moved unchanged; each card receives what it reads as props (config,
+    │   │                       #   setConfig, …). No section file imports Settings.tsx.
+    │   ├── draft.ts            # SettingsDraft, the page's config state type (every section file uses it)
+    │   ├── ColorInput.tsx      # the colour field (theme palette; header and footer colours)
+    │   ├── Identity.tsx        # Site Identity (logo, name, description, schema type, domain, preview link), Company
+    │   │                       #   Details, Legal Links
+    │   ├── NavbarLayout.tsx    # Navbar & Layout card; HEADER_/PAGE_WIDTH_OPTIONS, withHeaderKey / withFooterKey, the
+    │   │                       #   header and footer control groups (tagline, category bar, colours, footer width,
+    │   │                       #   brand text, columns), CategoryOption
+    │   ├── SchedulingSwitch.tsx # Scheduling card (switch + time zone)
+    │   ├── Commerce.tsx        # Catalog card, Commerce card, Commerce Bar (+ its description texts), Product Search,
+    │   │                       #   Order Celebration
+    │   ├── Payments.tsx        # Digital Sales (Paddle), Payment Methods, Bank Transfer Details
+    │   ├── UrlPrefixes.tsx     # URL Prefixes
+    │   ├── Contact.tsx         # Contact channels, Notifications; withContactForSave (the save rule)
+    │   ├── Menus.tsx           # Footer Links, Navigation Menu; linksFor / withLinksFor, MenuLanguageSelect, the
+    │   │                       #   link-list edits shared by the two cards
+    │   ├── Languages.tsx       # Language & Country card, the Country apply dialog; localeStatus, withSiteLanguage,
+    │   │                       #   withCountry, languageName, the extra-language rules, LanguageListControls
+    │   ├── Integrations.tsx    # Analytics, Identity (Google OAuth), Newsletter (MailerLite) + mailerLiteDraft, Research
+    │   ├── Privacy.tsx         # Cookie Consent (GDPR), Bot Protection (reCAPTCHA v3)
+    │   └── Theme.tsx           # Typography, the light/dark switch, the theme card (presets, custom themes, palette,
+    │                           #   shape), Interface, Page Background Effect; withThemeKey and the theme detail groups
+    ├── Settings.markup.test.ts # REFACTOR-SETTINGS-1 acceptance oracle (jsdom; real page, @/lib/api answered per state):
+    │                           #   DOM after load and listed interactions, the PUT /settings body, a sweep of every
+    │                           #   field; files under __markup__/refactor-settings-1/ (never `vitest -u` to "fix" one)
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"
@@ -252,6 +287,8 @@ src/
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
                                 #   byte for byte (toMatchFileSnapshot; never run `vitest -u` to "fix" a difference)
+                                #   refactor-settings-1/: the jsdom DOM and Save bodies of Settings.markup.test.ts
+                                #   (5 site states), taken before the REFACTOR-SETTINGS-1 move
 ```
 
 ## Routing

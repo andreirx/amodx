@@ -1,0 +1,256 @@
+{
+  "id": "t-shop",
+  "name": "v2",
+  "domain": "v5",
+  "description": "v4",
+  "schemaType": "LocalBusiness",
+  "logo": "https://cdn.test/logo.png",
+  "commerceEnabled": false,
+  "currency": "v89",
+  "countryCode": "RO",
+  "locale": "v88",
+  "homePageSlug": "v7",
+  "hideSocialSharing": false,
+  "celebrationEnabled": true,
+  "schedulingEnabled": false,
+  "scheduling": {
+    "timezone": "Europe/Bucharest"
+  },
+  "header": {
+    "showLogo": true,
+    "showTitle": false,
+    "contentMaxWidth": "max-w-[1440px]",
+    "contentPageMaxWidth": "max-w-5xl",
+    "navHeight": "h-20",
+    "navHeightScrolled": "h-14",
+    "logoHeight": "h-16",
+    "logoHeightScrolled": "h-10",
+    "titleSize": "text-2xl",
+    "titleSizeScrolled": "text-xl",
+    "backgroundColor": "v11",
+    "textColor": "v13",
+    "tagline": "v8",
+    "categoryBarIds": [
+      "c2",
+      "c1",
+      "gone",
+      "c3",
+      "c4"
+    ]
+  },
+  "footer": {
+    "contentMaxWidth": "max-w-full",
+    "backgroundColor": "v16",
+    "textColor": "v18",
+    "brandText": "v19",
+    "columns": [
+      {
+        "heading": "v20",
+        "links": [
+          {
+            "label": "v21",
+            "href": "v22"
+          },
+          {
+            "label": "v23",
+            "href": "v24"
+          },
+          {
+            "label": "v25",
+            "href": "v26"
+          }
+        ]
+      },
+      {
+        "heading": "v27",
+        "links": []
+      }
+    ]
+  },
+  "theme": {
+    "fontHeading": "v126",
+    "fontBody": "v127",
+    "fontNav": "v101",
+    "fontWeights": [
+      100,
+      200,
+      600,
+      800,
+      900
+    ],
+    "headingWeight": 900,
+    "backgroundColor": "v111",
+    "textColor": "v113",
+    "primaryColor": "v115",
+    "primaryForeground": "v117",
+    "secondaryColor": "v119",
+    "surfaceColor": "v121",
+    "mutedColor": "v123",
+    "borderColor": "v125",
+    "shape": "editorial",
+    "cardImage": "landscape",
+    "radius": "v131",
+    "mode": "dark"
+  },
+  "darkTheme": {
+    "fontHeading": "DarkHead",
+    "fontBody": "DarkBody",
+    "backgroundColor": "#000000",
+    "textColor": "#eeeeee",
+    "primaryColor": "#ff8800"
+  },
+  "urlPrefixes": {
+    "product": "v63",
+    "category": "v64",
+    "cart": "v65",
+    "checkout": "v66",
+    "checkoutConfirmation": "v67",
+    "shop": "v68",
+    "account": "v69",
+    "search": "v70"
+  },
+  "commerceBar": {
+    "enabled": true,
+    "height": "h-12",
+    "fontSize": "text-base",
+    "iconSize": "h-6 w-6",
+    "phone": "0762 000 111",
+    "whatsappNumber": "+40762000111",
+    "socialLinks": [
+      {
+        "platform": "instagram",
+        "url": "https://instagram.com/shop"
+      },
+      {
+        "platform": "facebook",
+        "url": "https://facebook.com/shop"
+      },
+      {
+        "platform": "facebook",
+        "url": ""
+      }
+    ],
+    "ctaButton": {
+      "text": "Winter sale",
+      "url": "/sale"
+    }
+  },
+  "searchBar": {
+    "enabled": true,
+    "placeholder": "Caută"
+  },
+  "enabledPaymentMethods": [
+    "cash_on_delivery",
+    "bank_transfer"
+  ],
+  "companyDetails": {
+    "legalName": "v32",
+    "cui": "v33",
+    "tradeRegister": "v34",
+    "phone": "v35",
+    "address": "v36",
+    "email": "v37"
+  },
+  "legalLinks": {
+    "termsUrl": "v42",
+    "privacyUrl": "v43",
+    "anpcUrl": "v44",
+    "anpcSalUrl": "v45"
+  },
+  "contactChannels": {
+    "phone": "v46",
+    "whatsapp": "v47",
+    "email": "v48"
+  },
+  "navLinks": [
+    {
+      "label": "v51",
+      "href": "v52"
+    },
+    {
+      "label": "v53",
+      "href": "v54",
+      "children": [
+        {
+          "label": "v55",
+          "href": "v56"
+        },
+        {
+          "label": "v57",
+          "href": "v58"
+        },
+        {
+          "label": "v59",
+          "href": "v60"
+        }
+      ]
+    },
+    {
+      "label": "v61",
+      "href": "v62"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "v38",
+      "href": "v39"
+    },
+    {
+      "label": "v40",
+      "href": "v41"
+    }
+  ],
+  "gdpr": {
+    "enabled": true,
+    "position": "top"
+  },
+  "recaptcha": {
+    "threshold": 0.3,
+    "siteKey": "v94",
+    "secretKey": "v95"
+  },
+  "pageEffect": {
+    "type": "bubbles",
+    "colors": [
+      "#0500f0",
+      "#0510f3",
+      "#0520f6"
+    ],
+    "speed": 0.3,
+    "timeOffset": 0.3,
+    "intensity": 0.3,
+    "invertY": true,
+    "bgColor": "#057105",
+    "overlayOpacity": 0.85
+  },
+  "integrations": {
+    "contactEmail": "v49",
+    "orderProcessingEmail": "v50",
+    "googleAnalyticsId": "v71",
+    "analytics": {
+      "provider": "plausible",
+      "url": "https://stats.test/script.js",
+      "websiteId": "uuid-1"
+    },
+    "paddle": {
+      "environment": "production",
+      "clientToken": "v31"
+    },
+    "bankTransfer": {
+      "bankName": "ING",
+      "accountHolder": "SC Shop SRL",
+      "iban": "RO49AAAA",
+      "swift": "INGBROBU",
+      "referencePrefix": "PPB"
+    },
+    "mailerlite": {
+      "groupId": "v96",
+      "apiToken": "v97"
+    },
+    "braveApiKey": "v98",
+    "google": {
+      "clientId": "v73",
+      "clientSecret": "v74"
+    }
+  }
+}

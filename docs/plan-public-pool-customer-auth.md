@@ -413,7 +413,7 @@ options).
 
 #### D6. Admin Settings
 
-**File:** `admin/src/pages/Settings.tsx`
+**File:** a new card file under `admin/src/pages/settings/`, composed by `admin/src/pages/Settings.tsx` (one file per section since REFACTOR-SETTINGS-1)
 
 Add a "Customer Authentication" card — **independent of `commerceEnabled`** (customer
 auth is a platform capability needed by appointments on non-commerce tenants; the
@@ -544,7 +544,7 @@ built, or anonymous-order → registered-account linking forks into duplicate
 | `renderer/src/app/[siteId]/[[...slug]]/page.tsx` | Route handling for auth pages | D4 |
 | `packages/shared/src/url-prefixes.ts` | URL prefix defaults for auth pages | D4 |
 | `renderer/src/components/Navbar.tsx` | Custom sign-in link | D5 |
-| `admin/src/pages/Settings.tsx` | Customer auth toggles | D6 |
+| `admin/src/pages/settings/<new card>.tsx` + one call in `Settings.tsx` | Customer auth toggles | D6 |
 
 ## Dependencies
 
