@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { useTenant } from "@/context/TenantContext";
 
 /**
  * Persistent banner showing pending SITE-WIDE (bulk) CDN cache invalidation status.
@@ -42,6 +43,8 @@ interface InvalidationStatus {
 
 export function InvalidationBanner() {
     const { userRole } = useAuth();
+    // FINDINGS-1 Part 4: the status is per site (`x-tenant-id`); no poll before a site is selected.
+    const selectedTenantId = useTenant().currentTenant?.id;
     const [status, setStatus] = useState<InvalidationStatus | null>(null);
     const [remainingMs, setRemainingMs] = useState<number>(0);
     const [flushing, setFlushing] = useState(false);
@@ -65,15 +68,15 @@ export function InvalidationBanner() {
         }
     }, []);
 
-    // Poll loop — only for GLOBAL_ADMIN to avoid wasted API calls
+    // Poll loop — only for GLOBAL_ADMIN to avoid wasted API calls, and only once a site is selected
     useEffect(() => {
-        if (userRole !== "GLOBAL_ADMIN") return;
+        if (userRole !== "GLOBAL_ADMIN" || !selectedTenantId) return;
         fetchStatus();
         pollRef.current = setInterval(fetchStatus, POLL_INTERVAL_MS);
         return () => {
             if (pollRef.current) clearInterval(pollRef.current);
         };
-    }, [fetchStatus, userRole]);
+    }, [fetchStatus, userRole, selectedTenantId]);
 
     // Client-side countdown (ticks every second)
     useEffect(() => {

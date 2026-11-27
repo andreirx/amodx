@@ -3,6 +3,19 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { isProductAvailable } from "../lib/availability.js";
 
+/**
+ * FINDINGS-1 Part 1 (docs/slices/findings-1.md § Part 1 has the reason for each field): the only product fields this
+ * public route answers. The union of the fields `public-list.ts` answers and the `ProductSchema` fields the renderer's
+ * product pages, their JSON-LD and the product feed show to a visitor. A field not named here is never answered.
+ */
+const PUBLIC_PRODUCT_FIELDS = [
+    "id", "status", "title", "slug", "sku", "description", "longDescription",
+    "price", "currency", "salePrice", "volumePricing", "availability", "availableFrom", "availableUntil",
+    "brand", "condition", "categoryIds", "tags", "attributes", "personalizations", "variants",
+    "ingredients", "nutritionalValues", "imageLink", "additionalImageLinks", "paymentLinkId",
+    "seoTitle", "seoDescription", "sortOrder",
+] as const;
+
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
@@ -37,9 +50,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             return { statusCode: 404, body: JSON.stringify({ error: "Product not found" }) };
         }
 
-        // DIGITAL-FILE-GUARD-1: `resourceId` names the product's private file; it never leaves on this public route.
-        // The rest of the stored item is answered as before (docs/slices/digital-file-guard-1.md § G2 lists it).
-        const { resourceId: _privateFile, ...publicProduct } = product;
+        // FINDINGS-1 Part 1: the answer holds only the named public fields that the item has; every other stored
+        // attribute (resourceId, storage keys, importer bookkeeping, anything a later write adds) stays private.
+        const publicProduct: Record<string, unknown> = {};
+        for (const field of PUBLIC_PRODUCT_FIELDS) {
+            if (Object.hasOwn(product, field)) publicProduct[field] = product[field];
+        }
 
         return {
             statusCode: 200,

@@ -224,7 +224,7 @@ describe("productIdsReferencingResource — the shared lookup", () => {
 });
 
 describe("G2 — GET /public/products/{slug} never answers resourceId", () => {
-    it("a stored product WITH resourceId → the answer has none; the other stored fields are unchanged", async () => {
+    it("a stored product WITH resourceId → the answer has none; its public fields are unchanged", async () => {
         const stored = {
             PK: "TENANT#t1", SK: "PRODUCT#p9", TenantSlug: "t1#course", Type: "Product", id: "p9", tenantId: T,
             status: "active", slug: "course", title: "Course", price: "49", productType: "digital",
@@ -238,7 +238,8 @@ describe("G2 — GET /public/products/{slug} never answers resourceId", () => {
         const body = JSON.parse(res.body);
         expect("resourceId" in body).toBe(false);
         expect(res.body).not.toContain("r-paid");
-        const { resourceId: _r, ...rest } = stored;
-        expect(body).toEqual(rest);
+        // FINDINGS-1 Part 1: the answer is the named public fields only (storage keys, tenantId and productType are
+        // not among them; docs/slices/findings-1.md § Part 1).
+        expect(body).toEqual({ id: "p9", status: "active", slug: "course", title: "Course", price: "49", paymentLinkId: "pri_1" });
     });
 });

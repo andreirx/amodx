@@ -27,7 +27,12 @@ export default function AdminLayout() {
     const [links, setLinks] = useState<LinkSuggestion[]>([]);
 
     // Define fetch function - fetches pages, and products/categories on a commerce or a catalog site (CAT-ADMIN-2)
+    // FINDINGS-1 Part 4: the API takes the site from `x-tenant-id` (lib/api.ts, from localStorage); before a site is
+    // selected (new browser, `/tenants` not yet answered) nothing is sent. The selected id is a dependency, so the
+    // links load once the site is selected.
+    const selectedTenantId = currentTenant?.id;
     const fetchLinks = useCallback(async () => {
+        if (!selectedTenantId) return;
         try {
             const allLinks: LinkSuggestion[] = [];
 
@@ -79,7 +84,7 @@ export default function AdminLayout() {
         } catch (e) {
             console.warn("Autolink fetch failed", e);
         }
-    }, [currentTenant?.commerceEnabled, currentTenant?.catalogMode]);
+    }, [selectedTenantId, currentTenant?.commerceEnabled, currentTenant?.catalogMode]);
 
     // Initial Load + Event Listener
     useEffect(() => {

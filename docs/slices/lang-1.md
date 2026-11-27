@@ -2118,7 +2118,8 @@ membership-query volume but cause no per-item GetItem; the join runs in memory. 
   - **F-PREVIEW-SITEMAP-EDGE.** `/_site/<id>/sitemap.xml` and `/tenant/<id>/sitemap.xml` are kept at the edge for one
     hour (`s-maxage=3600`) and the fast-lane purge names `/sitemap.xml` only, so the sitemap of a tenant WITHOUT a
     domain stays up to one hour behind a page change. A tenant on its own domain is not affected. (The first form of
-    the operator's sitemap check read a stale edge copy for this reason.)
+    the operator's sitemap check read a stale edge copy for this reason.) Closed by `findings-1` Part 5
+    (`docs/slices/findings-1.md`): the by-id sitemap answers `private, no-store`.
 - Next: `lang-1d` (German and French texts).
 
 ## Appendix H. Build record — `lang-1d` (builder, 2026-11-22, base `2009207`)

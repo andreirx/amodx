@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { hostVerdict } from '@/lib/tenant-directory';
 import { bookingInternalPath, bookingRoute } from '@/lib/booking-path';
 import { pageLanguageOf, type PageLanguage } from '@amodx/shared/dist/languages.js';
-import { carriesSiteSegmentSeparator, firstPageSegmentOf, isLanguageShaped, parseSiteSegment, siteSegmentFor } from '@/lib/site-segment';
+import { carriesSiteSegmentSeparator, firstPageSegmentOf, isLanguageShaped, parseSiteSegment, siteSegmentFor, SITEMAP_BY_ID_HEADER } from '@/lib/site-segment';
 
 // Phase 6.1: Origin verification secret (injected by CloudFront, verified here)
 const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
@@ -210,6 +210,19 @@ function byIdTarget(tenantId: string, restOfPath: string, isSiteRouteHandler: bo
     }
 }
 
+/**
+ * FINDINGS-1 Part 5: the request headers a rewrite forwards to the route — with `SITEMAP_BY_ID_HEADER: "1"` when
+ * `byIdSitemap` (a by-id request for the root `/sitemap.xml`), without a viewer-sent copy otherwise. `undefined` when
+ * neither applies: the request is forwarded exactly as before (every request today but these two cases).
+ */
+function sitemapFormHeaders(request: NextRequest, byIdSitemap: boolean): Headers | undefined {
+    if (!byIdSitemap && !request.headers.has(SITEMAP_BY_ID_HEADER)) return undefined;
+    const headers = new Headers(request.headers);
+    if (byIdSitemap) headers.set(SITEMAP_BY_ID_HEADER, '1');
+    else headers.delete(SITEMAP_BY_ID_HEADER);
+    return headers;
+}
+
 /** Non-cacheable 404. The only response shape that must never enter either cache layer. */
 function notFoundResponse() {
     return new NextResponse('Not found', {
@@ -237,6 +250,8 @@ export async function middleware(request: NextRequest) {
 
     // Default: Don't rewrite (pass through)
     let rewriteUrl = null;
+    // FINDINGS-1 Part 5: request headers for the rewrite below (`sitemapFormHeaders`); undefined = unchanged request.
+    let rewriteHeaders: Headers | undefined;
 
     // A. Skip Internals (Assets, API, Next.js hydration)
     //
@@ -364,6 +379,7 @@ export async function middleware(request: NextRequest) {
             const url = request.nextUrl.clone();
             url.pathname = byIdTarget(tenantId, restOfPath, isSiteRouteHandler);
             rewriteUrl = url;
+            rewriteHeaders = sitemapFormHeaders(request, restOfPath === '/sitemap.xml');
         }
     } else if (path.startsWith('/_site/')) {
         // PREVIEW MODE: /_site/[id]/...
@@ -385,7 +401,8 @@ export async function middleware(request: NextRequest) {
             url.pathname = byIdTarget(tenantId, restOfPath, isSiteRouteHandler);
 
             // Set cookie with preview base path for link generation
-            const response = NextResponse.rewrite(url);
+            const headers = sitemapFormHeaders(request, restOfPath === '/sitemap.xml');
+            const response = NextResponse.rewrite(url, headers ? { request: { headers } } : undefined);
             response.cookies.set('amodx_preview_base', `/_site/${tenantId}`, {
                 httpOnly: false, // Needs to be readable client-side
                 secure: false,
@@ -447,6 +464,7 @@ export async function middleware(request: NextRequest) {
             ? dynamicPath(siteSegment, path)
             : `/${siteSegment}${path}`;
         rewriteUrl = url;
+        rewriteHeaders = sitemapFormHeaders(request, false);
     }
 
     // --- 2. CONSTRUCT RESPONSE ---
@@ -454,7 +472,7 @@ export async function middleware(request: NextRequest) {
     // If we determined a rewrite, create a rewrite response. Otherwise, 'next'.
     // No Set-Cookie is attached here — see the note below.
     return rewriteUrl
-        ? NextResponse.rewrite(rewriteUrl)
+        ? NextResponse.rewrite(rewriteUrl, rewriteHeaders ? { request: { headers: rewriteHeaders } } : undefined)
         : NextResponse.next();
 }
 

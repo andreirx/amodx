@@ -175,10 +175,10 @@ src/
 │                          #   before (no key copied; condition attribute_not_exists(translationKey))
 ├── products/
 │   ├── create.ts          # POST /products
-│   ├── list.ts            # GET /products
-│   ├── get.ts             # GET /products/{id}
-│   ├── public-get.ts      # GET /public/products/{slug} (no auth): the stored item WITHOUT resourceId
-│   │                      #   (DIGITAL-FILE-GUARD-1); public-list.ts projects a field list
+│   ├── list.ts            # GET /products — a SERVICE key (catalog:read) gets no resourceId (FINDINGS-1 Part 2)
+│   ├── get.ts             # GET /products/{id} — admin sessions only (no service scope)
+│   ├── public-get.ts      # GET /public/products/{slug} (no auth): only the fields of PUBLIC_PRODUCT_FIELDS
+│   │                      #   (FINDINGS-1 Part 1; table in docs/slices/findings-1.md); public-list.ts projects a field list
 │   ├── update.ts          # PUT /products/{id}
 │   └── delete.ts          # DELETE /products/{id}
 ├── categories/

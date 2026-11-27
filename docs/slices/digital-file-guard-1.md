@@ -168,6 +168,9 @@ F-DFG1-PUBLIC-GET-DENYLIST):
 
 ## 5. Findings (not built)
 
+Closed by `findings-1` (`docs/slices/findings-1.md`): F-DFG1-SERVICE-KEY (Part 2), F-DFG1-PUBLIC-GET-DENYLIST (Part 1),
+F-DFG1-RENDERER-WHOLE-ITEM (Part 3). The text below is the record as written on 2026-11-26.
+
 - **F-CMRC1-PRESIGN-ENTITLEMENT** (already named in `docs/slices/cmrc-1.md`; ROADMAP `presign-entitlement-1`):
   `hasUserPurchasedProduct` (`backend/src/resources/presign.ts:21-58`) reads `CUSTORDER#` with projection `items`,
   which those items do not hold (`backend/src/orders/create.ts:439-448` writes `orderNumber, total, status,

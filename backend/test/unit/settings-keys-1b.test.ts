@@ -171,7 +171,8 @@ describe("SETTINGS-KEYS-1B — GET /public/products/{slug} accepts only the tena
         mockDb("GSI_Slug", [POISONED, PRODUCT]);
         const res = await callPublic(productPublicGet, publicEvent("t2", "probe"));
         expect(res.statusCode).toBe(200);
-        expect(JSON.parse(res.body)).toEqual(PRODUCT);
+        // FINDINGS-1 Part 1: the public fields of the product; its storage keys (PK, SK, Type) are not answered.
+        expect(JSON.parse(res.body)).toEqual({ id: "p1", status: "active", slug: "probe", price: "10" });
     });
 });
 

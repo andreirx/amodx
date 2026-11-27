@@ -26,6 +26,15 @@ import type { LocaleStringsInput, TenantConfig } from "@amodx/shared";
 /** The separator between the host (or tenant id) and the page language in the internal first segment. */
 export const SITE_SEGMENT_SEPARATOR = "~";
 
+/**
+ * FINDINGS-1 Part 5 (F-PREVIEW-SITEMAP-EDGE, docs/slices/findings-1.md): the request header by which the middleware
+ * tells `app/[siteId]/sitemap.xml/route.ts` that the request addressed the tenant BY ID (`/_site/<id>/sitemap.xml`,
+ * `/tenant/<id>/sitemap.xml`). Only the middleware knows the address form: the segment is the same string for both forms
+ * when a tenant's id equals its domain. Set to "1" only on the by-id sitemap rewrite; a copy sent by the viewer is
+ * removed on every other rewrite, so on the tenant's own domain the route never sees it.
+ */
+export const SITEMAP_BY_ID_HEADER = "x-amodx-sitemap-by-id";
+
 /** The internal first segment, read: the host (or tenant id) and, when the segment carries one, the page language. */
 export type SiteSegment = { host: string; language?: string };
 

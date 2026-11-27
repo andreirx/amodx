@@ -184,4 +184,5 @@ shipping; BUILT is not a claim of deployment, mailbox delivery, or a fully passi
   (its control row failed, so no result was taken from it); requests are now selected by their API key header.
 - Finding, present before this slice (F-ADMIN-FIRST-LOAD-400): in a new browser, right after sign-in and before a
   site is selected, the admin sends `GET /content` and `GET /system/invalidation` without `x-tenant-id`; both answer
-  400 "Missing x-tenant-id header". No visible effect was seen; the requests are wasted. Not fixed here.
+  400 "Missing x-tenant-id header". No visible effect was seen; the requests are wasted. Not fixed here. Closed by
+  `findings-1` Part 4 (`docs/slices/findings-1.md`).

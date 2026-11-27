@@ -101,6 +101,8 @@ const BUNDLE_EXPECTATIONS = {
     m3: { "3,4": SAME },
     p1: { "3,4": SAME },
     p2: { "3,4": SAME },
+    // FINDINGS-1 Part 5: added with open-next 4 built (docs/slices/findings-1.md); never run on a 3.x bundle, so no "3".
+    "findings1-preview-sitemap": { "4": SAME },
     t1: { "3,4": SAME },
     t2: { "3,4": SAME },
     h1b: { "3": DOUBLED_LOCATION, "4": SAME },
@@ -818,6 +820,33 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const res = await get(`/_site/${TENANT_ID}`);
         assert.equal(res.status, 403);
         assert.doesNotMatch(res.body, /Fixture Home/);
+    });
+
+    // FINDINGS-1 Part 5 (F-PREVIEW-SITEMAP-EDGE, docs/slices/findings-1.md): the by-id sitemap is not kept at the edge —
+    // the fast-lane purge names `/sitemap.xml` only, which does not match these paths. Its bytes are the domain's; the
+    // domain answer keeps its header (rows lang1c-sitemap / lang1c-sitemap-identity pin it for every fixture tenant).
+    // Rule (review-0 R1): both by-id forms and the domain form, for a tenant whose id differs from its domain AND for one
+    // whose id equals its domain (the segment `[siteId]` is then the same string for all three requests). A viewer-sent
+    // copy of the middleware's header changes nothing on the domain.
+    test("(findings1-preview-sitemap) /_site/<id>/sitemap.xml and /tenant/<id>/sitemap.xml: private, no-store, the domain's bytes; the domain keeps s-maxage=3600 — id ≠ domain and id = domain", async () => {
+        const EQUAL = "findings1-equal.serving-contract.test";
+        stub.putItem({ ...ITEMS.find((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${TENANT_ID}`), SK: `TENANT#${EQUAL}`, id: EQUAL, Domain: EQUAL, domain: EQUAL, name: "FINDINGS-1 equal id and domain" });
+        for (const [id, host] of [[TENANT_ID, FIXTURE_HOST], [EQUAL, EQUAL]]) {
+            const domain = await request({ port: server.port, path: "/sitemap.xml", host });
+            assert.equal(domain.status, 200, `${id}: domain 200`);
+            assert.equal(domain.header("cache-control"), "public, s-maxage=3600, stale-while-revalidate=59", `${id}: domain header as before`);
+            assert.match(domain.body, /<urlset/, `${id}: control, the domain answers a sitemap`);
+            const forged = await request({ port: server.port, path: "/sitemap.xml", host, headers: { "x-amodx-sitemap-by-id": "1" } });
+            assert.equal(forged.header("cache-control"), domain.header("cache-control"), `${id}: a viewer-sent header changes nothing on the domain`);
+            assert.equal(forged.body, domain.body, `${id}: forged-header bytes`);
+            for (const p of [`/_site/${id}/sitemap.xml`, `/tenant/${id}/sitemap.xml`]) {
+                const res = await request({ port: server.port, path: p, host: PREVIEW_HOST });
+                assert.equal(res.status, 200, `${p}: 200`);
+                assert.equal(res.header("cache-control"), "private, no-store", `${p}: not kept at the edge`);
+                assert.equal(res.header("content-type"), domain.header("content-type"), `${p}: content-type`);
+                assert.equal(res.body, domain.body, `${p}: the domain's bytes`);
+            }
+        }
     });
 
     // ── ROW (t) ─────────────────────────────────────────────────────────────────────────

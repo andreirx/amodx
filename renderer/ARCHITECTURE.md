@@ -70,7 +70,7 @@ src/
 └── lib/
     ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
     ├── tenant-directory.ts                    # EDGE runtime: the host verdict for middleware — unknown / unwired / wired + languages (own client — see file header)
-    ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input
+    ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input; FINDINGS-1: `SITEMAP_BY_ID_HEADER` (middleware → sitemap route)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── document-shell.ts                      # BODY_CLASS_NAME — the one <body> class of [siteId]/layout.tsx and not-found.tsx (locale-1e)
     ├── widths.ts                              # WIDTH_CLASSES (cat-theme-1): max-w-[1440px] / [1600px] / [1920px] written literally so Tailwind 4 compiles them; read by no runtime code
@@ -293,7 +293,9 @@ Other cache surfaces, unchanged by the slice:
   deletes every S3 ISR object of `domain` — the S3 key layout is known only here. See
   `docs/caching-architecture.md` § 5.
 - **SEO routes:** of the four `[siteId]` Route Handlers, only two set `Cache-Control` on the
-  `Response` — `sitemap.xml` (`public, s-maxage=3600, stale-while-revalidate=59`) and
+  `Response` — `sitemap.xml` (`public, s-maxage=3600, stale-while-revalidate=59` on the tenant's domain;
+  `private, no-store` on `/_site/<id>/` and `/tenant/<id>/`, FINDINGS-1 Part 5 — the middleware tells the route the
+  form by the request header `SITEMAP_BY_ID_HEADER`, `lib/site-segment.ts`) and
   `openai-feed` (`public, s-maxage=900`). `llms.txt` and `robots.txt` set **none** and are
   therefore not cached. None of the four depends on the App Router rendering mode. Those two
   cacheable ones are why the D4 rule has to cover `getPublishedContent()` and
@@ -368,7 +370,8 @@ The renderer reads directly from DynamoDB for performance (bypasses backend API)
     `docs/slices/sched-1.md` § 9.1, finding G8): the condition under which the backend verifies with the tenant's secret,
     so every page's site key pairs with the secret the backend uses. The secret and the threshold are never mapped.
 - `getContentBySlug(tenantId, slug)` — route lookup → content fetch, handles redirects
-- `getProductById(tenantId, productId)` — direct get
+- `getProductById(tenantId, productId)` — direct get. It and `getProductBySlug` return the item WITHOUT `resourceId`
+  (`withoutPrivateFile`); `getProductBySlug` accepts only an item with `PK = TENANT#<tenantId>` (FINDINGS-1 Part 3)
 - `getPosts(tenantId, tag?, limit)` — query all published LATEST content, filter/sort in-memory
 - `getProductReviews(tenantId, productId)` — approved reviews for one SKU (`REVIEW#<productId>#`)
 - `getSiteReviews(tenantId)` — approved SITE-scope reviews (`SITEREVIEW#`), business-level "about us"

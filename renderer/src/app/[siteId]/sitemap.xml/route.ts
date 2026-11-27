@@ -1,5 +1,6 @@
 import { getTenantConfig, getPublishedContent, getAllCategories, getActiveProducts, getTranslationItems, sitemapAlternates, type TranslationAlternates } from "@/lib/dynamo";
 import { isCatalogMode } from "@amodx/shared";
+import { SITEMAP_BY_ID_HEADER } from "@/lib/site-segment";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic'; // Ensure fresh data
@@ -94,11 +95,16 @@ export async function GET(
 ${allNodes}
 </urlset>`.trim();
 
+    // FINDINGS-1 Part 5 (F-PREVIEW-SITEMAP-EDGE): the fast-lane purge names `/sitemap.xml` only, which does not match
+    // `/_site/<id>/sitemap.xml` or `/tenant/<id>/sitemap.xml`, so a by-id answer is not kept at the edge (CloudFront
+    // `minTtl: 0` stores no `no-store` answer). The address form comes from the middleware (`SITEMAP_BY_ID_HEADER`), not
+    // from `siteId`: when a tenant's id equals its domain, `siteId` is the same string for both forms.
+    const addressedById = request.headers.get(SITEMAP_BY_ID_HEADER) === "1";
     return new NextResponse(xml, {
         headers: {
             "Content-Type": "application/xml",
             // Cache at edge for 1 hour to reduce Lambda costs
-            "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=59"
+            "Cache-Control": addressedById ? "private, no-store" : "public, s-maxage=3600, stale-while-revalidate=59"
         },
     });
 }

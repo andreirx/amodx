@@ -64,7 +64,14 @@ export const handler: Handler = async (event) => {
             items = items.filter((p: any) => (p.productType || "physical") === typeFilter);
         }
 
-        return { statusCode: 200, body: JSON.stringify({ items }) };
+        // FINDINGS-1 Part 2: `resourceId` names the product's private file. A service key (`role: "SERVICE"`, set only by
+        // the authorizer's service-key branch) is an integration credential, not an admin session: it never receives it.
+        // Admin sessions keep it (admin/src/pages/DigitalProducts.tsx reads it from this list).
+        const answer = auth.role === "SERVICE"
+            ? items.map(({ resourceId: _privateFile, ...rest }) => rest)
+            : items;
+
+        return { statusCode: 200, body: JSON.stringify({ items: answer }) };
     } catch (e: any) {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }

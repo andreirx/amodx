@@ -248,6 +248,16 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
     } as ContentItem;
 }
 
+/**
+ * FINDINGS-1 Part 3 (docs/slices/findings-1.md): a product item as the renderer's server components receive it —
+ * without `resourceId`, which names the product's private file. No renderer code reads it; dropping it here means
+ * a later `product={product}` on a client component cannot serialise it into the page.
+ */
+function withoutPrivateFile(item: Record<string, any>): Product {
+    const { resourceId: _privateFile, ...rest } = item;
+    return rest as Product;
+}
+
 // 3. Fetch Product
 export async function getProductById(tenantId: string, productId: string): Promise<Product | null> {
     const tableName = requireTableName();
@@ -262,7 +272,7 @@ export async function getProductById(tenantId: string, productId: string): Promi
 
     if (!result.Item) return null;
 
-    return result.Item as Product;
+    return withoutPrivateFile(result.Item);
 }
 
 // 4. Fetch Product by Slug (via GSI_Slug)
@@ -276,10 +286,12 @@ export async function getProductBySlug(tenantId: string, slug: string): Promise<
         ExpressionAttributeValues: { ":ts": `${tenantId}#${slug}` },
     }));
 
-    const product = result.Items?.find((item: any) => item.SK?.startsWith("PRODUCT#"));
+    // FINDINGS-1 Part 3: only this tenant's product item, the check of `backend/src/products/public-get.ts`
+    // (SETTINGS-KEYS-1B). Index key attributes are data, not proof of ownership.
+    const product = result.Items?.find((item: any) => item.PK === `TENANT#${tenantId}` && item.SK?.startsWith("PRODUCT#"));
     if (!product) return null;
     if (!isProductAvailable(product as any)) return null;
-    return product as Product;
+    return withoutPrivateFile(product);
 }
 
 // 5. Fetch Category by Slug (via GSI_Slug)

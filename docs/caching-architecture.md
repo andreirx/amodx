@@ -184,7 +184,13 @@ What a page and the sitemap serve for a tenant that lists extra languages. Execu
 
 - **Cached like every other page.** The `hreflang` links are part of the stored render of a content page (the head),
   under the same keys as `lang-1b` (`<host>/<path>` or `<host>~<l>/<path>`); the sitemap stays `force-dynamic` with
-  `public, s-maxage=3600, stale-while-revalidate=59` at the edge. No new cache key, no request API.
+  `public, s-maxage=3600, stale-while-revalidate=59` at the edge. No new cache key, no request API. Since `findings-1`
+  (Part 5, F-PREVIEW-SITEMAP-EDGE) the by-id forms `/_site/<id>/sitemap.xml` and `/tenant/<id>/sitemap.xml` answer
+  `private, no-store` (the fast lane names `/sitemap.xml` only, which does not match them; `minTtl: 0` stores no
+  `no-store` answer); same bytes; the domain form is unchanged (row `findings1-preview-sitemap`, for an id that differs
+  from the domain and for one equal to it). The middleware states the form: it sets the request header
+  `x-amodx-sitemap-by-id: 1` only on the by-id `/sitemap.xml` rewrite and removes a viewer-sent copy on the domain
+  rewrite; every other request is forwarded as before.
 - **One-language tenants are unchanged.** No membership read, no `<link hreflang>`, no switch, the same menu and footer
   values, the same sitemap bytes (row `lang1c-sitemap-identity`: every fixture tenant's `/sitemap.xml` equals the
   `d940fc1` capture), and every byte-identity row passes unchanged.
