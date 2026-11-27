@@ -345,4 +345,3 @@ stated; `tsc --noUnusedLocals` 0; the gates of § *Build record* step 6 rerun, a
 - Reviewer's non-blocking note, not corrected (the script is slice-trail evidence, not repository code): the
   supplemental script `oracle3b-exact-blocks.mjs` omitted the last line of the helper block from its comparison; the
   reviewer compared all 43 helper lines by hand and the mandatory oracle 3 covers that line.
-

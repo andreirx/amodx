@@ -490,4 +490,3 @@ The full gate set is the operator's this round (ruling after review-0).
 - NOT proven on staging: the order confirmation and order tracking pages with a real order, and the account pages
   (they need an order with its e-mail or a signed-in customer). Basis for these: the moved code is byte-identical
   (the moves check), the unit suite and the one-time capture proof (`track-full`, the confirmation states).
-

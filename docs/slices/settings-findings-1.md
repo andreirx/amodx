@@ -394,4 +394,3 @@ the secrets rule forbids).
   operator applies its recommendation and records it; the human may overrule): saving a theme for `TENANT_ADMIN` and
   `GLOBAL_ADMIN`, deleting for `GLOBAL_ADMIN` only. Not built here: ROADMAP row `theme-roles-1`.
 - Put to the human, not decided: F-SF1-DARK-THEME-UNREAD (the dark tab stores values the site never renders).
-

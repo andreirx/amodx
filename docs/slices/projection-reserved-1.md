@@ -721,4 +721,3 @@ removed. "Reserved" is the bare reserved names that remain (none).
   failures are expected there until the human's production deploy.
 - Finding, not fixed (recorded in `docs/TECH-DEBT.md` by the build): the stored `CUSTORDER#` row holds no `items`,
   so the download check cannot find a purchase even with the corrected query. It needs its own slice.
-

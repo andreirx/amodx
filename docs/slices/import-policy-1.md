@@ -207,4 +207,3 @@ URL does not follow the site's slug rules (whatever its origin) and what a renam
   the Migration Step 3 note ("stored exactly as WordPress had it"); `config.json` keys unchanged, `VITE_API_URL=https://api.amodx.net/`.
 - **Does not prove:** the 403 for a foreign-tenant EDITOR on prod itself (would need a prod EDITOR account). The policy line is the
   same `requireRole(auth, ["TENANT_ADMIN", "EDITOR"], tenantId)` in both handlers, exercised by `import-key-ownership.test.ts`.
-

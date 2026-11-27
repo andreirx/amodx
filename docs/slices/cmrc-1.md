@@ -1005,4 +1005,3 @@ orders" (`docs/ROADMAP.md`, 2026-11-20) no longer applies. Consequences recorded
 - CMRC-CLIENT is asked with the Clients page (the one screen that shows shop customers and booking persons together).
 - Finding F-CMRC1-PRESIGN-ENTITLEMENT (the digital download check reads the shop's order index and cannot find a
   purchase) is independent of this track and stays open for the digital products work.
-

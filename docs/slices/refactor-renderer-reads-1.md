@@ -416,4 +416,3 @@ under `renderer/test/` changed. Logs: `.agent-manager/slices/REFACTOR-RENDERER-R
   the reviewer), the serving suites and the unit suite.
 - Finding, not fixed (wording moved byte for byte): the comment above `requireTableName` in `dynamo-client.ts` says
   "every helper in this file reads"; the helpers are in `dynamo.ts` and `dynamo-customer-reads.ts` now.
-

@@ -344,3 +344,18 @@ files. Corrected (section → change):
 No change to the workflows, the configuration or any other file except `CURRENT_SLICE.md` (its proof sentence names the
 commit that contains revision 2). The workflow files are byte-identical to revision 2 (`shasum` before and after this
 round). Gate: `git diff --check`, exit 0.
+
+## Closeout (operator, 2026-11-28)
+
+- Relay: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol`, four cycles; review-3 `approved`.
+- First push, commit `4d485af`: GitHub run 46076252585 of "Playwright Tests" — `npm ci` succeeded ("added 1475
+  packages"); "Install Playwright Browsers" failed (Ubuntu 26.04 not supported by Playwright 1.57.0): finding
+  CL1-RUNNER-OS, corrected in this slice.
+- Second push, commit `77d82e9`: GitHub run 46077301749 of "Playwright Tests" — success. Steps: Install dependencies
+  (`npm ci`, "added 1475 packages") success; Install Playwright Browsers success; Run Backend Integration Tests
+  success (102 files passed, 3 skipped; 2,501 tests passed, 31 skipped — the guard test among them, which failed in
+  run 46068752166); Run Playwright E2E Tests success (9 passed, 9 skipped).
+- Operator gates before the first push: `npm run typecheck` exit 0; `npm --prefix backend run test:unit` exit 0
+  (2,454 passed, 2 skipped); `git diff --check` exit 0; no manifest, lockfile, `infra`, `renderer`, `admin`,
+  `packages`, `tools` or `backend/src` change. Nothing is deployed by this slice.
+- `staging-e2e.yml` carries the same three changes; it has not run since (its trigger is not a push). NOT RUN.

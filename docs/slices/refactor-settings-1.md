@@ -337,4 +337,3 @@ a73b8d4236e1cfe5cb01ab08c949d399b9f74bdd18527f5692e3a4253e3f9886  shop.requests.
   `integrations` and `recaptcha` of the test site; a second complete run left the stored settings equal to the
   ones before it (except `updatedAt`). The Save bodies of the old and the new page are identical (the captures),
   so this is what Save did before this slice too. What a first Save writes there is not examined here.
-
