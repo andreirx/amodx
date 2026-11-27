@@ -1,4 +1,5 @@
-import type { CatalogStrings, CommerceStrings, CountText, ImportLabels, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./index.js";
+import type { CatalogStrings, CommerceStrings, CountText, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./locale-table.js";
+import type { ImportLabels } from "./glam-import-profile.js";
 import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
 import { LANGUAGE_PACKS } from "./language-packs/index.js";
 import type { BookingStrings, CompletePart, LanguagePack } from "./language-packs/types.js";

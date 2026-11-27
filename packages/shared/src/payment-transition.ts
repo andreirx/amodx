@@ -1,4 +1,4 @@
-import type { PaymentStatus } from "./index.js";
+import type { PaymentStatus } from "./orders-and-customers.js";
 
 /**
  * PAY-1 (docs/slices/pay-1.md): THE payment-state rule. User: `backend/src/orders/update.ts` (PUT /orders/{id} with

@@ -695,7 +695,7 @@ The new price is written in machine form (`toFixed(2)`): after a bulk change a c
 ## Price texts and the locale (PRICE-LOCALE-1)
 
 Money on a product (`price`, `salePrice`, tier `price`, option `priceOverride`, personalization `addedCost`) is stored
-as free TEXT. One shared parser reads it: `parseMoney(text, locale)` (`packages/shared/src/index.ts`, used by
+as free TEXT. One shared parser reads it: `parseMoney(text, locale)` (`packages/shared/src/order-price.ts`, used by
 `linePrice`). Every locale reads machine form (digits and an optional decimal point: `12.50`, `1.250` = 1.25). A locale
 whose own number format writes a decimal comma (`Intl.NumberFormat(locale)`, the `decimal` part — `ro-RO`, `de-DE`,
 `fr-FR`; not `en-US`, `en-GB`, `de-CH`) also reads a text WITH a comma: comma = decimal separator, points = group

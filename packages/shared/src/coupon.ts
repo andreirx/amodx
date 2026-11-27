@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Coupon } from "./index.js";
+import type { Coupon } from "./coupon-schema.js";
 
 /**
  * COUPON-FIX-1 (docs/slices/coupon-fix-1.md § 2 rules 1-2, § 6): THE coupon rule. Users: the order handler

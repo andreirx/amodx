@@ -1168,7 +1168,8 @@ Constraints, not aspirations. Each is drawn from an existing binding document.
    logic and belongs in a pure, unit-testable function over a DTO, in `test-3`'s layer.
    Keeping the two apart is what makes the health check testable without AWS credentials.
 4. **Shared-first types (Critical Rule 4).** A DNS-record DTO shared by admin and backend
-   goes in `packages/shared/src/index.ts` first — **and only if both actually consume it.**
+   goes in its domain file in `packages/shared/src/` first (re-exported by `index.ts`; the email-2 DTO is in
+   `email-dns.ts`) — **and only if both actually consume it.**
    If only admin renders the recipes, they stay in admin. One caller is not two.
 5. **No new abstraction without demonstrated variation.** Explicitly: **do not** build a
    `MailboxProviderGateway`, a `DnsProviderAdapter`, or a `DeliverabilityCheck` registry.

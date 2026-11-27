@@ -109,7 +109,7 @@ alternative — never expose the secret to the browser.)
 
 #### A2. Per-tenant toggle for email/password auth
 
-**File:** `packages/shared/src/index.ts` → `IntegrationsSchema`
+**File:** `packages/shared/src/tenant-config-parts.ts` → `IntegrationsSchema`
 
 ```typescript
 customerAuth: z.object({
@@ -527,7 +527,7 @@ built, or anonymous-order → registered-account linking forks into duplicate
 | File | Change | Phase |
 |------|--------|-------|
 | `infra/lib/renderer-hosting.ts` | Pass `COGNITO_PUBLIC_*` env + client-secret ARN to renderer; grant `secretsmanager:GetSecretValue` | A1 |
-| `packages/shared/src/index.ts` | Add `customerAuth` to IntegrationsSchema | A2 |
+| `packages/shared/src/tenant-config-parts.ts` | Add `customerAuth` to IntegrationsSchema | A2 |
 | `packages/shared/src/normalizeEmail.ts` | **DONE — `fnd-1`, 2026-07-28.** `normalizeEmail` (portable, pure); re-exported from `src/index.ts`. Call-site migration is `fnd-2`, not done | A3 |
 | `renderer/src/lib/server/customer-auth.ts` | **NEW** — server-only `cognitoUsername()` + `secretHashFor()` (Node `crypto`) | A3, A4 |
 | `infra/lib/auth.ts` | **Pool replacement**: `signInAliases: { username: true }`, `userPassword: true`, `preventUserExistenceErrors: true`, `generateSecret: true` (confidential client), branded email templates; keep `RETAIN`, manually delete the orphaned dormant pool after zero-user verification | A4, E3 |
@@ -542,7 +542,7 @@ built, or anonymous-order → registered-account linking forks into duplicate
 | `renderer/src/components/RegisterPageView.tsx` | **NEW** — registration + verification | D2 |
 | `renderer/src/components/ForgotPasswordView.tsx` | **NEW** — password reset flow | D3 |
 | `renderer/src/app/[siteId]/[[...slug]]/page.tsx` | Route handling for auth pages | D4 |
-| `packages/shared/src/index.ts` | URL prefix defaults for auth pages | D4 |
+| `packages/shared/src/url-prefixes.ts` | URL prefix defaults for auth pages | D4 |
 | `renderer/src/components/Navbar.tsx` | Custom sign-in link | D5 |
 | `admin/src/pages/Settings.tsx` | Customer auth toggles | D6 |
 

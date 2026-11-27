@@ -1,4 +1,4 @@
-import type { CatalogStrings, CommerceStrings, PluralTexts, SiteStrings } from "../index.js";
+import type { CatalogStrings, CommerceStrings, PluralTexts, SiteStrings } from "../locale-table.js";
 
 /**
  * LOCALE-1 (docs/slices/locale-1.md § 2.3, § 3.2) — the texts of one language, per part of the locale table.

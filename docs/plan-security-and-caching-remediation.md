@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
 **File:** `backend/src/orders/create.ts`
 
 ```typescript
-// In packages/shared/src/index.ts
+// In packages/shared/src/orders-and-customers.ts
 export const OrderInputSchema = z.object({
   items: z.array(z.object({
     productId: z.string().uuid(),

@@ -105,6 +105,7 @@ Prefixes:
 - `test-` — test estate characterization & gap-filling (Track TEST)
 - `redirect-` — redirects from old addresses (content-site gaps; first slice `redirect-1`)
 - `stay-` — booking requests for a stay by a stored form (content-site gaps; first slice `stay-1`, part A)
+- `refactor-` — pure-move refactors of one large file each (order of work 2026-11-27; first slice `refactor-shared-1`)
 
 Sub-slices use a letter suffix when one slice splits: `auth-2a-...`, `auth-2b-...`.
 

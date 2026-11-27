@@ -4,8 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. `lead-normalize-1` is on staging since 2026-11-27 (`docs/slices/lead-normalize-1.md` § "Closeout") and
-waits for the human's production deploy. Next in the order of work: `refactor-shared-1`.
+Nothing. `refactor-shared-1` is on staging since 2026-11-27 (`docs/slices/refactor-shared-1.md` § "Closeout"): the
+schemas of `packages/shared/src/index.ts` live in 24 domain files; `index.ts` re-exports only. Next: `projection-reserved-1` (hotfix), then `refactor-settings-1`.
+`packages/shared/src/index.ts` moved into 24 domain files; `index.ts` re-exports only. Next in the order of work:
+`refactor-settings-1`.
+`lead-normalize-1` is on staging since 2026-11-27 (`docs/slices/lead-normalize-1.md` § "Closeout") and
+waits for the human's production deploy.
 `stay-1` part A is on staging since 2026-11-27 (`docs/slices/stay-1.md` § "Closeout (STAY-1A)") and waits
 for the human's production deploy.
 `redirect-1` is on staging since 2026-11-27 (`docs/slices/redirect-1.md` § "Closeout") and waits for the

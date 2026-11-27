@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FormField } from "./index.js";
+import type { FormField } from "./forms-and-interest-list.js";
 import { normalizeLocale } from "./locale-strings.js";
 import { instantToLocal, isTimeZone, type Instant, type LocalDate } from "./zoned-time.js";
 

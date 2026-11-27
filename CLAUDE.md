@@ -69,7 +69,7 @@ These invariants, if broken, cause crashes or data corruption:
 1. **Plugin split entry.** `admin.ts` (browser) vs `render.ts` (server). No cross-imports between plugins and admin/renderer. See `docs/plugin-architecture.md`.
 2. **No DynamoDB scans.** Always `QueryCommand` with `PK`+`SK`. List handlers must use `ProjectionExpression`.
 3. **Tenant isolation.** Every DB operation validates `x-tenant-id`. Never query across tenants.
-4. **Shared-first types.** Schema changes go to `packages/shared/src/index.ts` first, then rebuild dependents.
+4. **Shared-first types.** Schema changes go to `packages/shared/src/` first — the schema's domain file (map in `packages/shared/ARCHITECTURE.md`; `index.ts` only re-exports) — then rebuild dependents.
 5. **Backend ESM imports.** Always use `.js` extension for local imports (e.g., `from "../lib/db.js"`).
 6. **No hardcoded colors.** Use CSS variables (`bg-primary`, `text-muted-foreground`) for multi-tenant theming.
 7. **Audit context.** `publishAudit` calls must include `actor.email` and `target.title`, not just UUIDs.

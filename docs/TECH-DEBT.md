@@ -403,7 +403,7 @@ Record: `docs/slices/redirect-1.md` § "Build record".
 - **Target mark is route presence only** (operator ruling after review-0): a redirect to a built-in page (`/cart`,
   `/shop`, `/product/<slug>`) has no route and shows "target not found (no page at this address yet)" even when that
   page answers. The list cannot know whether a product exists or commerce is on.
-- **`RouteSchema` name mismatch** (`packages/shared/src/index.ts:280-288`): camelCase `isRedirect` / `redirectTo` /
+- **`RouteSchema` name mismatch** (`packages/shared/src/content.ts`, `RouteSchema`): camelCase `isRedirect` / `redirectTo` /
   `targetNodeId`; the stored item is `IsRedirect` / `RedirectTo` / `TargetNode`. No reader uses the schema. Align or
   remove in a shared-schema change.
 
@@ -710,7 +710,7 @@ a new write in the content handlers, with its own condition on the key, to be sp
 ## Low Priority
 
 ### RecaptchaConfigSchema.enabled field is deprecated
-The `enabled` boolean in `RecaptchaConfigSchema` (shared/index.ts) is no longer used by the resolver. Deployment-level keys make reCAPTCHA mandatory. The field is retained for backward compatibility with existing DynamoDB records. Can be removed in a future schema migration if all tenants are re-saved (the field would simply be ignored on read).
+The `enabled` boolean in `RecaptchaConfigSchema` (`packages/shared/src/tenant-config-parts.ts`) is no longer used by the resolver. Deployment-level keys make reCAPTCHA mandatory. The field is retained for backward compatibility with existing DynamoDB records. Can be removed in a future schema migration if all tenants are re-saved (the field would simply be ignored on read).
 
 ### WGSL shader build-time validation
 The `@amodx/effects` package contains WGSL shaders as TypeScript string constants. These are only validated at runtime when `device.createShaderModule()` is called in the user's browser. A reserved keyword (`ptr`) shipped to production and caused silent render failure — no console output, no visual indication, just a blank canvas.
@@ -1667,3 +1667,20 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   navigation) keeps the previous form's name, slug and fields; a save creates a copy. The pair-rule state is reset.
 - **`zoned-time.ts` `isLocalDate` refuses years 0000-0099** (`Date.UTC` reads 0-99 as 19xx); scheduling only, no known
   effect. Forms use `isFormDate` (no such limit).
+
+## refactor-shared-1 residuals (2026-11-27)
+
+`docs/slices/refactor-shared-1.md` § *Findings, not fixed*:
+- **F-RS1-TYPE-CYCLES (accepted by ruling RS1-DAG-SCOPE = A).** No file of `packages/shared/src` imports the barrel any
+  more, and the run-time import graph is a DAG, but 14 type-only cycles remain in the source graph: `form-date.ts` ⇄
+  `forms-and-interest-list.ts` (type `FormField` one way, value import the other), `locale-strings.ts` ⇄
+  `locale-table.ts`, and 12 longer cycles through `locale-table.ts` and `language-packs/` (`types.ts` reads the
+  locale-table types; `locale-table.ts` reads `BOOKING_TEXT_KEYS` of `locale-strings.ts` and `BookingStrings` of
+  `language-packs/`). TypeScript erases the type edges, so they decide no evaluation order. Fix = move a type (e.g.
+  `FormField` next to the date rule, or the resolved locale types out of `locale-table.ts`): not a move-only change.
+  The trail script `graph.mjs` lists the 14 and fails on any other.
+- **F-RS1-USERROLE-DOC.** `packages/shared/ARCHITECTURE.md` § *Enums* lists `CLIENT_ADMIN`; the code has `TENANT_ADMIN`.
+- **F-RS1-ENUM-KEY-ORDER.** After the split, the emitted `.d.ts` writes the key objects of four `z.enum([...])` types
+  in a different order (e.g. `ZodEnum<{ never: "never"; always: "always" }>` was `{ always; never }`). Same types
+  (bidirectional assignability, 0 failures); the bounded oracle of this slice counts the 8 affected lines as defects.
+  DECISION_REQUIRED `RS1-ENUM-KEY-ORDER` in the spec.

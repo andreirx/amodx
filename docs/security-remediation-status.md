@@ -23,7 +23,7 @@ Updated: 2026-03-23
 
 | Task | Status | File |
 |------|--------|------|
-| 1.1 Zod validation for orders | ✅ | `packages/shared/src/index.ts` (OrderInputSchema), `backend/src/orders/create.ts` |
+| 1.1 Zod validation for orders | ✅ | `packages/shared/src/orders-and-customers.ts` (OrderInputSchema), `backend/src/orders/create.ts` |
 | 1.2 Customer profile protection | ✅ | `backend/src/orders/create.ts` (if_not_exists) |
 | 1.3 reCAPTCHA on checkout | ✅ | `backend/src/orders/create.ts` — deployment-level mandatory via `resolveRecaptchaConfig()` |
 | 1.4 Email rate limiting | ✅ | `backend/src/orders/create.ts` |
@@ -356,7 +356,7 @@ Static code review identified 5 findings. 4 fixed, 1 deferred. Post-review ident
 - `renderer/package.json` - sanitize-html (replaced isomorphic-dompurify for Lambda compat)
 
 ### Shared
-- `packages/shared/src/index.ts` - OrderInputSchema
+- `packages/shared/src/orders-and-customers.ts` - OrderInputSchema
 
 ### Infrastructure
 - `infra/lib/renderer-hosting.ts` - Full Phase 4 caching infrastructure + RECAPTCHA_SITE_KEY env var

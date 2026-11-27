@@ -68,7 +68,7 @@ AMODX has **six authentication mechanisms** serving different audiences. Two Cog
 - Do NOT treat `custom:tenant_id` alone as sufficient proof of tenant access. Public users are lower-trust identities. Consumer routes must still perform host/tenant consistency checks or server-controlled membership verification so a token for tenant A cannot be replayed against tenant B routes.
 
 **Design intent:**
-- `TenantMemberSchema` in `packages/shared/src/index.ts` has `id` field commented as "Cognito SUB from the End User Pool"
+- `TenantMemberSchema` in `packages/shared/src/users-and-keys.ts` has `id` field commented as "Cognito SUB from the End User Pool"
 - `TenantMemberRole` enum: `["Member", "Subscriber", "VIP"]` -- distinct from admin roles
 - Future use: commerce customer accounts (subscribers, member tiers), appointments/scheduling
 
