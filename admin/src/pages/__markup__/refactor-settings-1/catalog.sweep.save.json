@@ -109,8 +109,8 @@
     "threshold": 0.3
   },
   "theme": {
-    "fontHeading": "v96",
-    "fontBody": "v97",
+    "fontHeading": "v69",
+    "fontBody": "v70",
     "fontNav": "v71",
     "fontWeights": [
       100,
@@ -133,7 +133,6 @@
     "shape": "editorial",
     "cardImage": "landscape",
     "cardCategoryLine": true,
-    "radius": "v101",
-    "mode": "dark"
+    "radius": "v99"
   }
 }

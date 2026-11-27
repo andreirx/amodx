@@ -7,8 +7,11 @@ import { MemoryRouter } from "react-router-dom";
 /**
  * REFACTOR-SETTINGS-1 (docs/slices/refactor-settings-1.md § Proofs) — the acceptance oracle of the move of
  * `Settings.tsx` into `settings/*`. The snapshot files under `__markup__/refactor-settings-1/` were written by this
- * test on the UNTOUCHED page (before any move); after the move they must be byte-identical. Never run `vitest -u`
- * to "fix" a difference: a difference is a changed screen or a changed save.
+ * test on the UNTOUCHED page (before any move); after the move they must be byte-identical. A difference is a changed
+ * screen or a changed save. Re-capture (`vitest -u`) only for a slice that changes the screen on purpose, and only with
+ * a listed, reviewed diff: the slice lists, BEFORE its change, which captures change and why; AFTER, it shows for every
+ * changed capture a diff that holds only the listed lines (first used by SETTINGS-FINDINGS-1,
+ * docs/slices/settings-findings-1.md § Expected capture changes). Never re-capture to "fix" an unexplained difference.
  *
  * Means (ruling 3): the page loads its data in effects, so the server render of Settings.test.ts (no effects) cannot
  * reach every state (the MailerLite "stored" flag, the merged secrets, the loaded categories, the custom themes). This
@@ -31,7 +34,8 @@ type State = {
     settings: Answer;
     secrets?: Answer;
     categories?: unknown[] | "fail";
-    themes?: Answer[];
+    /** The stored custom themes `GET /themes` answers; "fail" = the request is refused (SETTINGS-FINDINGS-1). */
+    themes?: Answer[] | "fail";
 };
 
 const api = vi.hoisted(() => ({
@@ -55,7 +59,10 @@ vi.mock("@/lib/api", async (original) => ({
         }
         if (path === "/service-keys") return { items: [] };
         if (path === "/themes" && method === "POST") { api.themes.push({ id: `theme-${api.themes.length + 1}`, ...body }); return {}; }
-        if (path === "/themes") return { items: structuredClone(api.themes) };
+        if (path === "/themes") {
+            if (s.themes === "fail") throw new Error("themes refused");
+            return { items: structuredClone(api.themes) };
+        }
         throw new Error(`Unexpected local test request: ${method} ${path}`);
     },
 }));
@@ -68,6 +75,7 @@ vi.mock("@/context/TenantContext", () => ({
 vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn() }));
 
 import SettingsPage from "./Settings";
+import { TenantConfigSchema } from "@amodx/shared";
 
 // ── The states (ruling 3). Every card that renders under a condition is on in one state and off in another. ─────────
 
@@ -234,7 +242,7 @@ async function choose(element: HTMLSelectElement, value: string) {
 }
 async function mount(state: State) {
     api.state = state;
-    api.themes = structuredClone(state.themes ?? []);
+    api.themes = state.themes === "fail" ? [] : structuredClone(state.themes ?? []);
     auth.role = state.role;
     await act(async () => root.render(createElement(MemoryRouter, null, createElement(SettingsPage))));
     await settle();
@@ -320,4 +328,90 @@ describe("Settings — markup and Save body per state (REFACTOR-SETTINGS-1 accep
             await expect(JSON.stringify(body, null, 2) + "\n").toMatchFileSnapshot(file(`${name}.sweep.save.json`));
         });
     }
+});
+
+// ── SETTINGS-FINDINGS-1 (docs/slices/settings-findings-1.md) — one regression test per finding, same harness ─────────
+
+const inputsShowing = (value: string) => [...host.querySelectorAll("input")].filter((i) => i.value === value);
+const STORED_THEME = { id: "stored-1", name: "Stored Autumn", theme: { primaryColor: "#123456" } };
+
+/**
+ * Item 7: the record `backend/src/tenant/create.ts` writes for `{ name: "First Save", domain: "first.test" }` (the same
+ * `TenantConfigSchema.parse` of the same object, then the transaction's PK, SK and Domain), at a fixed time and creator.
+ * Never saved through the screen. The backend test `backend/test/unit/settings-findings-1.test.ts` checks that the real
+ * GET handlers answer exactly these two answers for the record the real create handler writes.
+ */
+const CREATED = TenantConfigSchema.parse({
+    id: "first-save", domain: "first.test", name: "First Save", status: "LIVE", plan: "Pro",
+    theme: { primaryColor: "#000000", fontHeading: "Inter", fontBody: "Inter" },
+    integrations: {}, catalogMode: false, createdAt: "2026-11-27T00:00:00.000Z", ownerId: "u1", createdBy: "u1",
+});
+const FIRST_SAVE: State = {
+    role: "TENANT_ADMIN",
+    settings: { PK: "SYSTEM", SK: "TENANT#first-save", ...CREATED, Domain: CREATED.domain },
+    // GET /settings/secrets for a record without a stored secret (settings-secrets.ts: `|| ""` for each field).
+    secrets: { recaptcha: { secretKey: "" }, integrations: { google: { clientSecret: "" }, braveApiKey: "" } },
+    categories: [],
+};
+const findingsFile = (name: string) => `./__markup__/settings-findings-1/${name}`;
+
+describe("Settings — SETTINGS-FINDINGS-1 regression tests", () => {
+    it("item 1 (F-RS1-THEMES-NOT-LOADED): the saved themes are listed when the page opens, for an admin and for an editor", async () => {
+        for (const state of [SHOP, CATALOG]) {
+            await mount({ ...state, themes: [STORED_THEME] });
+            expect(buttonByText("Stored Autumn"), `${state.role}: the stored theme is listed on open`).toBeTruthy();
+            expect(api.calls.filter((c) => c.path === "/themes" && c.method === "GET"), `${state.role}: one load`).toHaveLength(1);
+            await act(async () => root.unmount());
+            root = createRoot(host);
+            api.calls = [];
+        }
+    });
+
+    it("item 1: a refused theme load leaves the page working — a warning, an empty list, no error on the page", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            await mount({ ...EMPTY, themes: "fail" });
+            expect(warn.mock.calls.some((c) => c[0] === "Failed to load themes"), "the warning").toBe(true);
+            expect(host.textContent).not.toContain("themes refused");
+            expect(buttonByText("Stored Autumn")).toBeUndefined();
+            expect(await saveBody(), "Save still works").toBeTruthy();
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it("item 2 (F-RS1-INTERFACE-READS-LIGHT): on the dark tab the Border Radius field shows and writes theme.radius, the value the renderer reads", async () => {
+        await mount(SHOP);
+        await click(buttonByText("Dark Mode"));
+        const radius = [...host.querySelectorAll("label")].find((l) => l.textContent?.trim() === "Border Radius")!.parentElement!.querySelector("input")!;
+        expect(radius.value, "the dark tab shows theme.radius").toBe("0.75rem");
+        await type(radius, "1rem");
+        expect(radius.value, "the field shows the value it wrote").toBe("1rem");
+        const body = await saveBody() as { theme: Record<string, unknown>; darkTheme: Record<string, unknown> };
+        expect(body.theme.radius).toBe("1rem");
+        expect(body.darkTheme.radius, "no dark-theme radius is stored (nothing reads it)").toBeUndefined();
+    });
+
+    it("item 3 (F-RS1-MODE-TODO): no Mode control and no TODO text; a stored theme.mode is sent back unchanged", async () => {
+        await mount(SHOP);
+        expect(host.textContent).not.toContain("TODO");
+        expect([...host.querySelectorAll("label")].some((l) => /^Mode\b/.test(l.textContent?.trim() ?? ""))).toBe(false);
+        expect((await saveBody() as { theme: Record<string, unknown> }).theme.mode).toBe("light");
+    });
+
+    it("item 4 (F-RS1-DUP-FONT-FIELDS): one Heading and one Body font field, on each tab", async () => {
+        await mount(SHOP);
+        expect(inputsShowing("Prata"), "light: heading font fields").toHaveLength(1);
+        expect(inputsShowing("Lato"), "light: body font fields").toHaveLength(1);
+        await click(buttonByText("Dark Mode"));
+        expect(inputsShowing("DarkHead"), "dark: heading font fields").toHaveLength(1);
+        expect(inputsShowing("DarkBody"), "dark: body font fields").toHaveLength(1);
+    });
+
+    it("item 7: the first Save of a site never saved through the screen — the answers served and the Save body (unchanged draft)", async () => {
+        await mount(FIRST_SAVE);
+        const body = await saveBody();
+        await expect(JSON.stringify({ settings: FIRST_SAVE.settings, secrets: FIRST_SAVE.secrets }, null, 2) + "\n").toMatchFileSnapshot(findingsFile("first-save.answers.json"));
+        await expect(JSON.stringify(body, null, 2) + "\n").toMatchFileSnapshot(findingsFile("first-save.save.json"));
+    });
 });

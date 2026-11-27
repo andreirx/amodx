@@ -4,8 +4,12 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in the order of work: `settings-findings-1`, then `ci-lockfile-1` (the human, 2026-11-27), then `cmrc-1`.
+Nothing. Next in the order of work: `ci-lockfile-1` (the human, 2026-11-27), `theme-roles-1`, then `cmrc-1`.
 
+`settings-findings-1` is on staging since 2026-11-28 (`docs/slices/settings-findings-1.md` § "Closeout") and waits
+for the human's production deploy: the Settings screen lists the saved themes on open, the Interface card shows the
+radius the site renders, the "Mode (TODO)" control and the repeated font fields are gone; what a first Save writes
+is characterised (three empty secret fields; harmless).
 `refactor-renderer-reads-1` is on staging since 2026-11-27 (`docs/slices/refactor-renderer-reads-1.md` § "Closeout")
 and waits for the human's production deploy: the three reads of personal commerce data (`getOrderForCustomer`,
 `getCustomerOrders`, `getCustomerProfile`) live in `renderer/src/lib/dynamo-customer-reads.ts`, the client in

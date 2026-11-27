@@ -244,22 +244,23 @@ export function ThemeCard({ activeTab, activeConfig, updateTheme, setConfig, cus
                     <ThemeColorDetails theme={activeConfig} onChange={updateTheme} />
                 </div>
 
-                {/* FONTS (Only show on Light tab to avoid confusion, or allow override?) */}
-                {activeTab === 'light' && (
-                    <div className="space-y-2 pt-2">
-                        <Label className="text-xs font-semibold text-muted-foreground uppercase">Typography</Label>
-                        <Input className="h-8 text-xs" placeholder="Headings (Google Font)" value={activeConfig?.fontHeading} onChange={e => updateTheme("fontHeading", e.target.value)} />
-                        <Input className="h-8 text-xs" placeholder="Body (Google Font)" value={activeConfig?.fontBody} onChange={e => updateTheme("fontBody", e.target.value)} />
-                    </div>
-                )}
+                {/* SETTINGS-FINDINGS-1 (F-RS1-DUP-FONT-FIELDS): the heading and body fonts are edited in the Typography card
+                    only (this card repeated the two fields: same value, same setter). */}
                 {activeTab === 'light' && <ShapeAndCards theme={activeConfig} onChange={updateTheme} />}
             </CardContent>
         </Card>
     );
 }
 
-/** The "Interface" card. */
-export function InterfaceCard({ config, updateTheme }: { config: SettingsDraft; updateTheme: ThemeKeySetter }) {
+/**
+ * The "Interface" card. SETTINGS-FINDINGS-1 (F-RS1-INTERFACE-READS-LIGHT): the renderer reads the radius from `theme`
+ * only and reads no `darkTheme` (renderer/src/components/ThemeInjector.tsx, `theme.radius`), so the field reads and
+ * writes `theme.radius` on both tabs: it shows the value it writes, and it never stores a dark-theme radius.
+ * F-RS1-MODE-TODO: the card had a "Mode" select (`theme.mode`); nothing reads `theme.mode` (no renderer, backend, MCP
+ * or plugin read), so the control is removed. A stored `theme.mode` stays in the draft and Save sends it back; the
+ * schema keeps the field.
+ */
+export function InterfaceCard({ config, setConfig }: { config: SettingsDraft; setConfig: Dispatch<SetStateAction<SettingsDraft>> }) {
     return (
         <Card className="space-y-6">
             <CardHeader className="pb-4">
@@ -273,20 +274,9 @@ export function InterfaceCard({ config, updateTheme }: { config: SettingsDraft; 
                     <div className="space-y-2">
                         <Label>Border Radius</Label>
                         <div className="flex items-center gap-4">
-                            <Input className="max-w-[100px]" value={config.theme?.radius || "0.5rem"} onChange={e => updateTheme("radius", e.target.value)} />
+                            <Input className="max-w-[100px]" value={config.theme?.radius || "0.5rem"} onChange={e => setConfig(prev => withThemeKey(prev, "light", "radius", e.target.value))} />
                             <div className="h-8 w-16 border-2 border-primary bg-secondary" style={{ borderRadius: config.theme?.radius }} />
                         </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Mode (TODO: implement it)</Label>
-                        <select
-                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                            value={config.theme?.mode || "light"}
-                            onChange={e => updateTheme("mode", e.target.value)}
-                        >
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                        </select>
                     </div>
                 </div>
             </CardContent>

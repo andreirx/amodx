@@ -563,7 +563,12 @@ Update 2026-11-27 (REFACTOR-SETTINGS-1, `docs/slices/refactor-settings-1.md`): t
 is unchanged: still one long page, no tabs. Tabbed sections are an owner-visible change and need their own slice.
 Left by the move (moves only): the theme card takes 11 props, because the theme-tab state (`activeTab`, the custom
 themes, the Save Theme dialog) stays in the page, which unmounts its sections while `loading` (a state moved into the
-card would reset after a logo upload). The findings recorded by that slice (§ *Findings, not fixed*) are open.
+card would reset after a logo upload). The findings recorded by that slice (§ *Findings, not fixed*): CLOSED by
+SETTINGS-FINDINGS-1 (`docs/slices/settings-findings-1.md`, 2026-11-27) — F-RS1-THEMES-NOT-LOADED,
+F-RS1-INTERFACE-READS-LIGHT, F-RS1-MODE-TODO, F-RS1-DUP-FONT-FIELDS, F-RS1-SETLINKLANGUAGE-NAME, F-RS1-STALE-MARKER,
+and the first-Save observation of its closeout (characterised: harmless, not changed). Still open: F-RS1-RENDERER-COMMENT
+(a comment in `renderer/test/unit/cat-variant-gallery-1-header-clearance.test.ts:151`; `renderer/` was out of scope)
+and the stale git-ignored `Settings_tsx_MAP.md`. New findings: § *settings-findings-1 residuals* below.
 
 ### Extract commerce views from catch-all page
 `renderer/src/app/[siteId]/[[...slug]]/page.tsx` is ~900 lines containing ProductPageView, CategoryPageView, CartPageView, CheckoutPageView, ConfirmationPageView, OrderTrackingView, and ShopPageView all inline. Extract each to its own file under `renderer/src/components/commerce/`.
@@ -1753,3 +1758,27 @@ The group shape of scheduling was removed from `main` (code on branch `archive/g
   in a different order (e.g. `ZodEnum<{ never: "never"; always: "always" }>` was `{ always; never }`). Same types
   (bidirectional assignability, 0 failures); the bounded oracle of this slice counts the 8 affected lines as defects.
   DECISION_REQUIRED `RS1-ENUM-KEY-ORDER` in the spec.
+
+## settings-findings-1 residuals (2026-11-27)
+
+`docs/slices/settings-findings-1.md` § *Build record* → *Findings*:
+- **F-SF1-DARK-THEME-UNREAD.** The renderer reads no `darkTheme` (no hit in `renderer/src`; `ThemeInjector` gets
+  `config.theme`). Every control of the Settings dark tab ("Dark Mode Overrides", "Applied when user system preference
+  is Dark.") stores values nothing renders. The description is false. Options: implement a dark theme in the renderer
+  (a feature), or remove the tab; an owner decision.
+- **F-SF1-THEME-WRITE-ROLES.** The saved custom themes are one library shared by all tenants (`PK: "SYSTEM"`) — a
+  documented contract (`tools/mcp-server/ARCHITECTURE.md:193`, `docs/slices/mcp-sync-1.md:157-158`, the `delete_theme`
+  tool description). Open: its write policy is not documented, and `POST` / `DELETE /themes` check no role, so any
+  staff role may add an entry or delete one another site saved. Since SETTINGS-FINDINGS-1 the library shows on page
+  open. DECISION_REQUIRED `SF1-THEME-WRITE-ROLES` in the spec.
+- **F-SF1-FIRST-SAVE-EMPTY-SECRETS (harmless, not changed).** The first Save through the screen stores `""` for
+  `recaptcha.secretKey`, `integrations.braveApiKey` and (in `integrations.google`) `clientSecret` when they are absent,
+  and the redacted read then answers `integrations.google: {}`. Every reader treats `""` and `{}` as absent. Pinned by
+  `backend/test/unit/settings-findings-1.test.ts`.
+- **F-SF1-PAGE-MODE (pre-existing).** The page editor (`admin/src/pages/ContentEditor.tsx:630-647`) has its own "Mode"
+  select for `themeOverride.mode` with the help text "Applies CSS class `.dark` if selected." Nothing reads it (the
+  renderer merges `themeOverride` into the theme for `ThemeInjector`, which reads no `mode`). Not the Settings screen.
+- **F-SF1-DARK-SAVE-THEME (pre-existing, INFERRED).** "Save Theme" on the dark tab of a site without `darkTheme` posts
+  `{ name }` without `theme` (`saveCurrentTheme`), which `POST /themes` refuses (400) → an alert.
+- **F-SF1-DELETE-THEME-UNCAUGHT (pre-existing).** `deleteTheme` has no `try`: a refused `DELETE /themes/{id}` is an
+  unhandled promise rejection, and the list is not reloaded.

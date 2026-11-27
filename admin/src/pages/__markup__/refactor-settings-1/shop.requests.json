@@ -2,6 +2,7 @@
   "GET /service-keys",
   "GET /settings",
   "GET /categories",
+  "GET /themes",
   "GET /service-keys",
   "GET /settings/secrets",
   "POST /themes",

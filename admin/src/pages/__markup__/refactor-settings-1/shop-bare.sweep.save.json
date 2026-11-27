@@ -123,8 +123,8 @@
     "position": "top"
   },
   "theme": {
-    "fontHeading": "v108",
-    "fontBody": "v109",
+    "fontHeading": "v81",
+    "fontBody": "v82",
     "fontNav": "v83",
     "fontWeights": [
       100,
@@ -147,7 +147,6 @@
     "shape": "editorial",
     "cardImage": "landscape",
     "cardCategoryLine": true,
-    "radius": "v113",
-    "mode": "dark"
+    "radius": "v111"
   }
 }

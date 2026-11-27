@@ -248,10 +248,22 @@ const ENGLISH_EXAMPLES: [from: string, to: string, count: number][] = [
     ['placeholder="/comanda"', 'placeholder="/checkout"', 1],
     ['placeholder="/magazin"', 'placeholder="/shop"', 1],
 ];
-/** The capture `settings.<name>.html` as stored, with the ENGLISH_EXAMPLES replacements applied (each count asserted). */
-function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES): string {
+/**
+ * SETTINGS-FINDINGS-1 (docs/slices/settings-findings-1.md § Expected capture changes) — the screen lost two groups on
+ * purpose: the Interface card's "Mode (TODO: implement it)" select (F-RS1-MODE-TODO) and the theme card's repeated
+ * font fields (F-RS1-DUP-FONT-FIELDS). The captures are NOT re-taken: the comparison removes, from the CAPTURE text,
+ * exactly these two groups; each must occur exactly once in each capture, so every other byte stays pinned.
+ */
+const SF1_MODE_GROUP = '<div class="space-y-2"><label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Mode (TODO: implement it)</label><select class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"><option value="light" selected="">Light</option><option value="dark">Dark</option></select></div>';
+const SF1_FONT_INPUT_CLASS = "flex w-full rounded-md border border-input bg-transparent px-3 py-1 shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm h-8 text-xs";
+const SF1_FONT_GROUP = `<div class="space-y-2 pt-2"><label class="peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-xs font-semibold text-muted-foreground uppercase">Typography</label><input class="${SF1_FONT_INPUT_CLASS}" placeholder="Headings (Google Font)"/><input class="${SF1_FONT_INPUT_CLASS}" placeholder="Body (Google Font)"/></div>`;
+const SETTINGS_FINDINGS_1_REMOVED: [from: string, to: string, count: number][] = [[SF1_MODE_GROUP, "", 1], [SF1_FONT_GROUP, "", 1]];
+
+/** The capture `settings.<name>.html` as stored, with the ENGLISH_EXAMPLES replacements and the SETTINGS-FINDINGS-1
+ *  removals applied (each count asserted). */
+function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES, removals = SETTINGS_FINDINGS_1_REMOVED): string {
     let out = readFileSync(new URL(`./__markup__/settings.${name}.html`, import.meta.url), "utf8");
-    for (const [from, to, count] of replacements) {
+    for (const [from, to, count] of [...replacements, ...removals]) {
         expect(out.split(from).length - 1, `${name} capture: ${from}`).toBe(count);
         out = out.split(from).join(to);
     }
@@ -310,6 +322,15 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
             expect(() => withoutLang1a(html.replace(group, group + group), config), `${name} doubled`).toThrow();
             expect(() => withoutLang1a(html.replace(CURRENCY_END, `${CURRENCY_END}<i></i>`), config), `${name} byte before`).toThrow();
             expect(withoutCatTheme(withoutCdl2(withoutLang1a(html.replace(group, `${group} `), config), config), config), `${name} byte after`).not.toBe(capture(name));
+        }
+    });
+    it("control (SETTINGS-FINDINGS-1): with either listed removal left out, the comparison fails", () => {
+        for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
+            const html = withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutLaterCards(config), config), config), config);
+            expect(html, `${name}: positive control`).toBe(capture(name));
+            for (let i = 0; i < SETTINGS_FINDINGS_1_REMOVED.length; i++) {
+                expect(html, `${name} without removal ${i}`).not.toBe(capture(name, ENGLISH_EXAMPLES, SETTINGS_FINDINGS_1_REMOVED.filter((_, j) => j !== i)));
+            }
         }
     });
     it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {

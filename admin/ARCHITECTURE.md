@@ -97,6 +97,11 @@ src/
     │                           #   site. It re-exports every name it exported before the split. RULE: a new setting goes
     │                           #   in its section file under settings/, not here; a new card is a component there and
     │                           #   one call here. The notes below describe the cards, now in settings/ (map below).
+    │                           #   SETTINGS-FINDINGS-1 (docs/slices/settings-findings-1.md): the load effect also loads
+    │                           #   the saved custom themes (GET /themes, every staff role; a failure is a warning and
+    │                           #   an empty list). The first Save of a site never saved through the screen adds three
+    │                           #   empty-string secret fields (from GET /settings/secrets; harmless, pinned by the
+    │                           #   item-7 tests, admin markup test + backend/test/unit/settings-findings-1.test.ts).
     │                           #   Site config: identity, theme, analytics, OAuth, Paddle, GDPR on/off + position, nav;
     │                           #   "Language & Country" (locale-1a): Site language (LANGUAGE_PACKS → locale), Locale
     │                           #   (advanced) with its normalised value and a warning when a present value falls back
@@ -171,10 +176,16 @@ src/
     │   ├── Integrations.tsx    # Analytics, Identity (Google OAuth), Newsletter (MailerLite) + mailerLiteDraft, Research
     │   ├── Privacy.tsx         # Cookie Consent (GDPR), Bot Protection (reCAPTCHA v3)
     │   └── Theme.tsx           # Typography, the light/dark switch, the theme card (presets, custom themes, palette,
-    │                           #   shape), Interface, Page Background Effect; withThemeKey and the theme detail groups
+    │                           #   shape), Interface, Page Background Effect; withThemeKey and the theme detail groups.
+    │                           #   SETTINGS-FINDINGS-1: the heading/body font fields are in the Typography card only;
+    │                           #   Interface has Border Radius only (no Mode control: nothing reads theme.mode) and it
+    │                           #   reads and writes theme.radius on both tabs (the renderer reads no darkTheme)
     ├── Settings.markup.test.ts # REFACTOR-SETTINGS-1 acceptance oracle (jsdom; real page, @/lib/api answered per state):
     │                           #   DOM after load and listed interactions, the PUT /settings body, a sweep of every
-    │                           #   field; files under __markup__/refactor-settings-1/ (never `vitest -u` to "fix" one)
+    │                           #   field; files under __markup__/refactor-settings-1/ (re-capture only for a slice that
+    │                           #   changes the screen on purpose, with a listed, reviewed diff — never `vitest -u` to
+    │                           #   "fix" a difference). SETTINGS-FINDINGS-1: one regression test per finding, and the
+    │                           #   first-Save capture under __markup__/settings-findings-1/ (read by the backend test)
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"
@@ -288,7 +299,12 @@ src/
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
                                 #   byte for byte (toMatchFileSnapshot; never run `vitest -u` to "fix" a difference)
                                 #   refactor-settings-1/: the jsdom DOM and Save bodies of Settings.markup.test.ts
-                                #   (5 site states), taken before the REFACTOR-SETTINGS-1 move
+                                #   (5 site states), taken before the REFACTOR-SETTINGS-1 move; re-taken once by
+                                #   SETTINGS-FINDINGS-1 with the listed diff (spec § Expected capture changes)
+                                #   settings-findings-1/: the GET answers and the unchanged-draft Save body of a
+                                #   just-created site (input of backend/test/unit/settings-findings-1.test.ts)
+                                #   settings.content/commerce.html: not re-taken; Settings.test.ts removes the two
+                                #   groups SETTINGS-FINDINGS-1 deleted from the CAPTURE text (each once)
 ```
 
 ## Routing

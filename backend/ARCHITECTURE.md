@@ -368,6 +368,8 @@ src/
 │                          #   rule: a booking key's value is a text; a non-empty one keeps exactly the {placeholders}
 │                          #   of the key's English standard text (400 names the key and the missing/unknown one);
 │                          #   "" and unknown keys pass (test/unit/sched-labels-1-settings.test.ts)
+│                          #   SETTINGS-FINDINGS-1: what the admin screen's first Save stores in a just-created
+│                          #   record — three empty-string secret fields, harmless (test/unit/settings-findings-1.test.ts)
 │                          #   CAT-QUOTE-1: `contactChannels` (shared ContactChannelsSchema) and `interestListEmail`
 │                          #   (an e-mail, or null) checked as sent, same place → 400 naming the field before any
 │                          #   read (test/unit/cat-quote-settings.test.ts). BOUNDARY CONVENTION, this request field

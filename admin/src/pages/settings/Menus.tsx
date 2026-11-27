@@ -118,7 +118,7 @@ function linkEdits(config: SettingsDraft, setConfig: (c: SettingsDraft) => void,
 }
 
 /** The "Footer Links" card. */
-export function FooterLinksCard({ config, setConfig, extraLanguages, linkLanguage, setLinkLanguage }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void; extraLanguages: string[]; linkLanguage: string | null; setLinkLanguage: (l: string | null) => void }) {
+export function FooterLinksCard({ config, setConfig, extraLanguages, linkLanguage, setLinkLanguageChoice }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void; extraLanguages: string[]; linkLanguage: string | null; setLinkLanguageChoice: (l: string | null) => void }) {
     const { addLink, updateLink, removeLink } = linkEdits(config, setConfig, linkLanguage);
     return (
         <Card>
@@ -129,7 +129,7 @@ export function FooterLinksCard({ config, setConfig, extraLanguages, linkLanguag
                         <Plus className="h-4 w-4 mr-2"/> Add Link
                     </Button>
                 </div>
-                {extraLanguages.length > 0 && <MenuLanguageSelect config={config} setConfig={setConfig} field="footerLinks" language={linkLanguage} setLanguage={setLinkLanguage} />}
+                {extraLanguages.length > 0 && <MenuLanguageSelect config={config} setConfig={setConfig} field="footerLinks" language={linkLanguage} setLanguage={setLinkLanguageChoice} />}
             </CardHeader>
             <CardContent className="space-y-3">
                 {(linksFor(config, 'footerLinks', linkLanguage) || []).map((link, i) => (
@@ -158,7 +158,7 @@ export function FooterLinksCard({ config, setConfig, extraLanguages, linkLanguag
 }
 
 /** The "Navigation Menu" card. */
-export function NavigationMenuCard({ config, setConfig, extraLanguages, linkLanguage, setLinkLanguage }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void; extraLanguages: string[]; linkLanguage: string | null; setLinkLanguage: (l: string | null) => void }) {
+export function NavigationMenuCard({ config, setConfig, extraLanguages, linkLanguage, setLinkLanguageChoice }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void; extraLanguages: string[]; linkLanguage: string | null; setLinkLanguageChoice: (l: string | null) => void }) {
     const { addLink, updateLink, removeLink, toggleLinkDropdown, addChildLink, updateChildLink, removeChildLink } = linkEdits(config, setConfig, linkLanguage);
     return (
         <Card>
@@ -172,7 +172,7 @@ export function NavigationMenuCard({ config, setConfig, extraLanguages, linkLang
                 <CardDescription>
                     Create simple links or dropdown menus. Dropdown menus show sub-links on hover/click.
                 </CardDescription>
-                {extraLanguages.length > 0 && <MenuLanguageSelect config={config} setConfig={setConfig} field="navLinks" language={linkLanguage} setLanguage={setLinkLanguage} />}
+                {extraLanguages.length > 0 && <MenuLanguageSelect config={config} setConfig={setConfig} field="navLinks" language={linkLanguage} setLanguage={setLinkLanguageChoice} />}
             </CardHeader>
             <CardContent className="space-y-4">
                 {(linksFor(config, 'navLinks', linkLanguage) || []).map((link, i) => {

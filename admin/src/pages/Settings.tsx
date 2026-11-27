@@ -64,15 +64,18 @@ export default function SettingsPage() {
     const [categories, setCategories] = useState<CategoryOption[] | null>(null);
     // LANG-1A: the language whose menu and footer lists the two link editors edit; null = the default lists (today).
     // A language no longer in the list falls back to the default lists.
-    const [linkLanguageChoice, setLinkLanguage] = useState<string | null>(null);
+    const [linkLanguageChoice, setLinkLanguageChoice] = useState<string | null>(null);
     const extraLanguages = readLanguageSettings(config).languages;
     const linkLanguage = linkLanguageChoice !== null && extraLanguages.includes(linkLanguageChoice) ? linkLanguageChoice : null;
 
     // Load settings (redacted — no secrets)
+    // SETTINGS-FINDINGS-1 (F-RS1-THEMES-NOT-LOADED): the saved custom themes too, so the theme card lists them on open.
+    // Every staff role may call GET /themes and sees the theme card; a failed load is a warning and an empty list.
     useEffect(() => {
         if (currentTenant) {
             loadSettings();
             loadCategories();
+            loadCustomThemes();
         }
     }, [currentTenant?.id]);
 
@@ -283,8 +286,6 @@ export default function SettingsPage() {
                     <ProductSearchCard config={config} setConfig={setConfig} />
                     )}
 
-                    {/* COUNTRY, LOCALE & CURRENCY — moved to general section (before GDPR) */}
-
                     {/* PAYMENT METHODS */}
                     {config.commerceEnabled && (
                     <PaymentMethodsCard config={config} setConfig={setConfig} />
@@ -299,7 +300,7 @@ export default function SettingsPage() {
                     <CompanyDetailsCard config={config} setConfig={setConfig} />
 
                     {/* FOOTER LINKS */}
-                    <FooterLinksCard config={config} setConfig={setConfig} extraLanguages={extraLanguages} linkLanguage={linkLanguage} setLinkLanguage={setLinkLanguage} />
+                    <FooterLinksCard config={config} setConfig={setConfig} extraLanguages={extraLanguages} linkLanguage={linkLanguage} setLinkLanguageChoice={setLinkLanguageChoice} />
 
                     {/* LEGAL LINKS */}
                     <LegalLinksCard config={config} setConfig={setConfig} />
@@ -313,7 +314,7 @@ export default function SettingsPage() {
                     </>
 
                     {/* NAVIGATION */}
-                    <NavigationMenuCard config={config} setConfig={setConfig} extraLanguages={extraLanguages} linkLanguage={linkLanguage} setLinkLanguage={setLinkLanguage} />
+                    <NavigationMenuCard config={config} setConfig={setConfig} extraLanguages={extraLanguages} linkLanguage={linkLanguage} setLinkLanguageChoice={setLinkLanguageChoice} />
 
                     {/* URL PREFIXES (Commerce Routing) — CAT-ADMIN-1 (§ 4.5, CA-D2): a catalog has no cart, checkout or account
                         pages; it has the interest-list page (`urlPrefixes.interest`, finding F-CA-1). A non-catalog site: unchanged.
@@ -372,7 +373,7 @@ export default function SettingsPage() {
 
 
                     {/* INTERFACE */}
-                    <InterfaceCard config={config} updateTheme={updateTheme} />
+                    <InterfaceCard config={config} setConfig={setConfig} />
                 </div>
             </div>
 
