@@ -323,6 +323,31 @@ export class CommerceApi extends NestedStack {
         // SECURITY: Requires auth (renderer sends x-api-key). Was previously noAuth — see Finding 2 remediation.
         addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc);
 
+        // Customer self-service READS for the renderer (CMRC-1B; docs/slices/cmrc-1.md § 5.8): the account pages'
+        // order history and profile. The renderer no longer reads these items from DynamoDB; it calls these routes
+        // with its key. The functions only read the main table: `TABLE_NAME` alone (no event bus, no revalidation
+        // variables — they publish nothing and purge nothing), `grantReadData` alone (no write, no SES, no secret).
+        // Behind the authorizer (never `noAuth`); the HANDLER admits the RENDERER role only (PD-002).
+        const selfServiceReadProps = {
+            ...nodeProps,
+            environment: { TABLE_NAME: table.tableName },
+            entry: path.join(__dirname, '../../backend/src/customers/self-service.ts'),
+        };
+        const customerOrderHistoryFunc = new nodejs.NodejsFunction(this, 'CustomerOrderHistoryFunc', {
+            ...selfServiceReadProps,
+            handler: 'orderHistoryHandler',
+        });
+        table.grantReadData(customerOrderHistoryFunc);
+
+        const customerProfileReadFunc = new nodejs.NodejsFunction(this, 'CustomerProfileReadFunc', {
+            ...selfServiceReadProps,
+            handler: 'profileReadHandler',
+        });
+        table.grantReadData(customerProfileReadFunc);
+
+        addRoute('CustomerOrderHistory', 'POST /customer/order-history', customerOrderHistoryFunc);
+        addRoute('CustomerProfileRead', 'POST /customer/profile-read', customerProfileReadFunc);
+
         // ===================== DELIVERY =====================
         const getDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'GetDeliveryConfigFunc', {
             ...nodeProps,
@@ -528,9 +553,12 @@ export class CommerceApi extends NestedStack {
 
         addRoute('WooImport', 'POST /import/woocommerce', wooImportFunc);
 
-        // Grant EventBus permissions to all Lambdas in this stack
+        // Grant EventBus permissions to all Lambdas in this stack — except the two customer read functions of
+        // CMRC-1B: they publish no audit event (they have no EVENT_BUS_NAME), so they get no `events:PutEvents`
+        // (docs/slices/cmrc-1.md § 5.8: main-table read and nothing else).
+        const publishNoEvent: Construct[] = [customerOrderHistoryFunc, customerProfileReadFunc];
         this.node.children.forEach(child => {
-            if (child instanceof nodejs.NodejsFunction) {
+            if (child instanceof nodejs.NodejsFunction && !publishNoEvent.includes(child)) {
                 eventBus.grantPutEventsTo(child);
             }
         });

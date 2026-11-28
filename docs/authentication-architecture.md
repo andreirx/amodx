@@ -126,6 +126,8 @@ google: z.object({
 **Scope -- routes that accept RENDERER role:**
 - `POST /comments`, `DELETE /comments` -- comment moderation
 - `POST /public/customers/profile` -- customer profile update (via session-validated proxy)
+- `POST /customer/order-history`, `POST /customer/profile-read` -- the account page's reads (CMRC-1B; body `{ email }` = the session's email; `backend/src/customers/self-service.ts` refuses every role but RENDERER and GLOBAL_ADMIN)
+- the scheduling visitor routes `/scheduling/visitor/*` (booking pages; `docs/slices/sched-1.md` § 10.2)
 - `POST /contact`, `POST /leads`, `POST /consent` -- public form proxies (tenant derived from host)
 
 **Authorizer order:**
@@ -230,8 +232,8 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 
 **Account page (requires Google sign-in):**
 1. Customer signs in via NextAuth/Google on the tenant site
-2. Session-validated API route (`/api/account/orders`) reads orders from DynamoDB
-3. Session-validated API route (`/api/profile`) reads/updates customer profile
+2. Session-validated API route (`/api/account/orders`) asks the backend for the orders (`POST /customer/order-history`, renderer key; CMRC-1B) -- the renderer reads no customer item from DynamoDB here
+3. Session-validated API route (`/api/profile`) reads the profile the same way (`POST /customer/profile-read`) and updates it through `POST /public/customers/profile`
 4. Renderer derives tenant from host, uses session email -- never trusts client-supplied values
 
 **Identity linking is purely email-based.** If a customer checks out as `john@example.com` without signing in, then later signs in with Google as `john@example.com`, they will see all their previous orders. No Cognito SUB or user pool involved.
@@ -243,7 +245,7 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 | Browse products | No | Public routes |
 | Place an order | No | `POST /public/orders` (reCAPTCHA + Origin verification) |
 | Track a specific order | No | `GET /public/orders/{id}?email=` (email verification) |
-| View account + all orders | Google sign-in | NextAuth session -> email -> DynamoDB lookup (via `/api/account/orders`) |
+| View account + all orders | Google sign-in | NextAuth session -> email -> backend via renderer proxy (RENDERER key; `/api/account/orders` -> `POST /customer/order-history`) |
 | Update profile | Google sign-in | NextAuth session -> email -> backend via renderer proxy (RENDERER key) |
 | Manage orders (admin) | Admin Cognito JWT | API Gateway authorizer |
 

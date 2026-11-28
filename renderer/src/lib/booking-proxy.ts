@@ -30,7 +30,7 @@
 import { HoldRequestSchema, KeyPart, LocalDateSchema, MoveBodySchema } from "@amodx/shared";
 import { getTenantConfig } from "@/lib/dynamo";
 import { getBookingTenant } from "@/lib/booking-tenant";
-import { getRendererKey } from "@/lib/api-client";
+import { callBackend as forward } from "@/lib/api-client";   // CMRC-1B: `forward` is `callBackend` of api-client.ts (moved there, unchanged)
 
 /** § 10.1: a request body larger than this is refused (413) before it is parsed. */
 export const MAX_BODY_BYTES = 8 * 1024;
@@ -188,39 +188,6 @@ async function readBoundedText(req: Request): Promise<{ ok: true; text: string }
     let at = 0;
     for (const c of chunks) { all.set(c, at); at += c.byteLength; }
     return { ok: true, text: new TextDecoder().decode(all) };
-}
-
-/**
- * One backend call: `POST` when `body` is given, else `GET`; exactly the headers written here — the renderer key,
- * `x-tenant-id` and, for a POST, `content-type`. Never `x-viewer-address` (ruling SCHED-ADDR-INFRA = A) and never a
- * header of the browser's request. `null` → the renderer cannot call the backend (no `API_URL`, no key, or the call
- * failed): the caller answers 503. The failure is logged with the route only.
- */
-export async function forward(route: string, tenantId: string, body?: Record<string, unknown>)
-    : Promise<globalThis.Response | null> {
-    const apiUrl = process.env.API_URL?.replace(/\/$/, "");
-    if (!apiUrl) {
-        console.error("[booking-proxy] API_URL is not set");
-        return null;
-    }
-    const key = await getRendererKey();
-    if (!key) {
-        console.error("[booking-proxy] no renderer key");
-        return null;
-    }
-    const headers: Record<string, string> = { "x-api-key": key, "x-tenant-id": tenantId };
-    if (body !== undefined) headers["content-type"] = "application/json";
-    try {
-        return await fetch(`${apiUrl}${route}`, {
-            method: body !== undefined ? "POST" : "GET",
-            headers,
-            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-            cache: "no-store",
-        });
-    } catch (e) {
-        console.error(`[booking-proxy] backend call failed: ${route.split("?")[0]}`, e instanceof Error ? e.name : "unknown");
-        return null;
-    }
 }
 
 /**

@@ -14,6 +14,14 @@ export class AmodxDatabase extends Construct {
      * `sched-1c`/`1d` wire it into the scheduling functions only.
      */
     public readonly schedulingTable: dynamodb.Table;
+    /**
+     * Commerce-private table (CMRC-1B; docs/slices/cmrc-1.md § 5.8, decision CMRC-TABLE = B). The destination of the
+     * order and customer items that Track B moves out of the main table, which the renderer's role can read. EMPTY
+     * AND UNUSED since `cmrc-1b`: it is passed to no construct, no function has its name, no role has a statement on
+     * it — so it protects nothing yet. `cmrc-2` proves the copy tool against it; `cmrc-4` wires it into the commerce
+     * functions only.
+     */
+    public readonly commerceTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string, props?: AmodxDatabaseProps) {
         super(scope, id);
@@ -69,6 +77,20 @@ export class AmodxDatabase extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
             pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
             timeToLiveAttribute: 'ttl',
+        });
+
+        // Commerce-private table (cmrc-1.md § 5.8). The settings of the scheduling table, without TTL: no commerce
+        // item needs an expiry, and a TTL attribute would delete any item that ever carries it. No GSI (the four
+        // moved key families take part in no index, cmrc-1.md § 2.4) and no stream. RETAIN: neither a stack delete
+        // nor a revert of this declaration deletes orders — so after a rollback the empty table stays and must be
+        // deleted by hand before the next deploy of this declaration (docs/slices/cmrc-1b.md § Rollback).
+        this.commerceTable = new dynamodb.Table(scope, 'CommerceTable', {
+            tableName: `AmodxCommerceTable${suffix}`,
+            partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+            pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
         });
     }
 }

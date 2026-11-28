@@ -757,6 +757,13 @@ NextAuth.js 4 with per-tenant Google OAuth. Client ID/secret stored in `TenantCo
 - **Profile card**: Name, email, phone, birthday, loyalty points, default address. Edit mode for phone + birthday
 - **Order history table**: Order #, date, status badge (color-coded), total. Click → order tracking page
 - Profile updates via `/api/profile` proxy (validates NextAuth session server-side)
+- **Where the data comes from (CMRC-1B, `docs/slices/cmrc-1b.md`):** the page calls the renderer routes
+  `GET /api/account/orders` and `GET /api/profile`. Each validates the session, takes the tenant from the host and the
+  email from the session, and asks the backend with the renderer key: `POST /customer/order-history` → `{ orders }`
+  (the `CUSTORDER#` rows: order number, total, status, date, order id; newest first) and `POST /customer/profile-read`
+  → `{ profile }` (`email, name, phone, birthday, defaultAddress`, or `null`). The renderer reads no customer item
+  from DynamoDB for this page. The answers of the two renderer routes are unchanged. Known and unchanged: the status
+  in the list is the `CUSTORDER#` row's, written once as `placed` (F-CMRC1-CUSTORDER-STATUS).
 
 ### Loyalty Points
 
@@ -876,6 +883,8 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 | PUT | `/orders/{id}/status` | orders/update-status |
 | GET | `/customers` | customers/list |
 | GET/PUT | `/customers/{email}` | customers/get, update |
+| POST | `/public/customers/profile` | customers/public-update (renderer key only: the account page's profile save) |
+| POST | `/customer/order-history`, `/customer/profile-read` | customers/self-service (renderer key only, CMRC-1B: the account page's reads; body `{ email }`) |
 | GET/PUT | `/delivery` | delivery/get, update |
 | GET/POST | `/coupons` | coupons/list, create |
 | GET/PUT/DELETE | `/coupons/{id}` | coupons/get, update, delete |

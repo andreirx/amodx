@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { getTenantConfig, getCustomerProfile } from "@/lib/dynamo";
+import { getTenantConfig } from "@/lib/dynamo";
+import { getCustomerProfile } from "@/lib/customer-api";
 import { getRendererKey } from "@/lib/api-client";
 import GoogleProvider from "next-auth/providers/google";
 
@@ -12,14 +13,14 @@ import GoogleProvider from "next-auth/providers/google";
  * 2. The email comes from the session, NOT from the request
  * 3. The tenant ID is derived from host header (not caller-supplied)
  *
- * GET: reads directly from DynamoDB (renderer has table read access).
- *      No backend route exists for GET /public/customers/profile.
+ * GET: asks the backend, POST /customer/profile-read, with the renderer API key and the session
+ *      email (CMRC-1B, lib/customer-api.ts). It reads no customer item from DynamoDB.
  *
  * POST: proxies to backend POST /public/customers/profile via renderer API key.
  *       Backend enforces requireRole(["GLOBAL_ADMIN", "RENDERER"]).
  *
  * Env vars (set by CDK in renderer-hosting.ts):
- *   - API_URL: backend API Gateway URL (POST only)
+ *   - API_URL: backend API Gateway URL
  *   - AMODX_API_KEY_SECRET: Secrets Manager name for renderer API key
  *     (resolved by getRendererKey() from api-client.ts)
  */
@@ -144,10 +145,9 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized - please sign in" }, { status: 401 });
         }
 
-        // 4. Read profile directly from DynamoDB using session email.
-        // No backend GET route exists for /public/customers/profile.
-        // The renderer has table read access; session validation above
-        // guarantees the email is the authenticated user's own.
+        // 4. Read the profile through the backend (CMRC-1B) using the session email.
+        // Session validation above guarantees the email is the authenticated
+        // user's own; no value of the request selects the customer.
         const profile = await getCustomerProfile(config.id, session.user.email);
 
         return NextResponse.json(profile || { email: session.user.email });

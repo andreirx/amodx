@@ -13,7 +13,7 @@ vi.mock("../../src/lib/db.js", () => ({ db: {}, TABLE_NAME: "main-table-of-the-t
 
 import {
     COMMERCE_PRIVATE_PREFIXES, orderRef, customerRef, customerOrderRef, orderCounterRef,
-    ordersQuery, customersQuery, customerOrdersQuery,
+    ordersQuery, customersQuery, customerOrdersQuery, orderIdOfCustomerOrder,
 } from "../../src/lib/commerce-db.js";
 
 const TABLE = "main-table-of-the-test";
@@ -80,5 +80,22 @@ describe("CMRC-1A T2 — the prefix list", () => {
             customerOrdersQuery("t", "x").ExpressionAttributeValues[":sk"],
         ];
         for (const sk of sortKeys) expect(COMMERCE_PRIVATE_PREFIXES.some((prefix) => sk.startsWith(prefix))).toBe(true);
+    });
+});
+
+describe("CMRC-1B T2 — orderIdOfCustomerOrder: the order id of a stored index row", () => {
+    it("is the inverse of customerOrderRef for the order id", () => {
+        expect(orderIdOfCustomerOrder(customerOrderRef("t1", "buyer@example.com", "0b1c-uuid").Key.SK)).toBe("0b1c-uuid");
+    });
+
+    // The rule the renderer's getCustomerOrders applied before CMRC-1B: `item.SK.split("#").pop()`.
+    it.each([
+        "CUSTORDER#buyer@example.com#o-1",
+        "CUSTORDER#a#b@example.com#o-1",    // an email that holds '#': still the last segment
+        "CUSTORDER#buyer@example.com#",     // nothing after the last '#'
+        "no-separator",
+        "",
+    ])("equals the last '#' segment for %j", (sk) => {
+        expect(orderIdOfCustomerOrder(sk)).toBe(sk.split("#").pop());
     });
 });

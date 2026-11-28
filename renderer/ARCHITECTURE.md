@@ -34,14 +34,14 @@ src/
 │   │   ├── [...rest]/page.tsx                 # not-found of the tree (force-dynamic 404)
 │   │   └── _components/                       # BookFlow, ManageView, Pickers, operation.ts (browser); PageShell, BookingTheme (server); api.ts
 │   └── api/                                   # 10 routes; all behind the CachingDisabled `api/*` behavior
-│       ├── account/orders/route.ts            # Signed-in customer's order history → backend proxy
+│       ├── account/orders/route.ts            # Signed-in customer's order history → backend POST /customer/order-history (lib/customer-api.ts, CMRC-1B); no DynamoDB read of a customer item
 │       ├── auth/[...nextauth]/route.ts        # Per-tenant Google OAuth via NextAuth
 │       ├── comments/route.ts                  # GET (public) / POST (auth required) → backend proxy
 │       ├── consent/route.ts                   # GDPR consent logging → backend proxy
 │       ├── contact/route.ts                   # Contact form → backend proxy
 │       ├── leads/route.ts                     # Lead capture with referral cookie injection → backend
 │       ├── posts/route.ts                     # Blog post listing (direct DynamoDB, tag filter)
-│       ├── profile/route.ts                   # Signed-in customer's profile → backend proxy
+│       ├── profile/route.ts                   # Signed-in customer's profile: GET → backend POST /customer/profile-read (lib/customer-api.ts, CMRC-1B); POST → backend POST /public/customers/profile
 │       ├── ref/route.ts                       # Attribution beacon: sets amodx_ref (cache-3) — 204, no-store
 │       └── revalidate/route.ts                # ISR cache purge (called by admin after edits)
 ├── components/
@@ -78,16 +78,17 @@ src/
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
-    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing; re-exports the customer reads
+    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing; re-exports getOrderForCustomer
     ├── dynamo-client.ts                       # The read layer's one DynamoDB document client (`docClient`) and `requireTableName()` (refactor-renderer-reads-1)
-    ├── dynamo-customer-reads.ts               # Reads of one customer's own commerce data: getOrderForCustomer, getCustomerOrders, getCustomerProfile — cmrc-1 changes this file
+    ├── dynamo-customer-reads.ts               # The ONE direct read of a customer's commerce data that is left: getOrderForCustomer (order confirmation and tracking pages) — part L of cmrc-1 removes it and this file
+    ├── customer-api.ts                        # CMRC-1B: getCustomerOrders, getCustomerProfile OVER HTTP — one callBackend call each (POST /customer/order-history, /customer/profile-read); anything but the route's 200 answer → CustomerApiError
     ├── tenant-directory.ts                    # EDGE runtime: the host verdict for middleware — unknown / unwired / wired + languages (own client — see file header)
     ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input; FINDINGS-1: `SITEMAP_BY_ID_HEADER` (middleware → sitemap route)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── document-shell.ts                      # BODY_CLASS_NAME — the one <body> class of [siteId]/layout.tsx and not-found.tsx (locale-1e)
     ├── widths.ts                              # WIDTH_CLASSES (cat-theme-1): max-w-[1440px] / [1600px] / [1920px] written literally so Tailwind 4 compiles them; read by no runtime code
     ├── sanitize.ts                            # sanitizeHtml / sanitizeCssColor (injection-safety filter, also applied to the new colours) / sanitizeFontFamily / sanitizeCssLength
-    ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
+    ├── api-client.ts                          # getRendererKey() (alias getMasterKey) from env or Secrets Manager (cached); callBackend() — the one backend call with the renderer key (CMRC-1B: moved from booking-proxy.ts `forward`)
     ├── routing.ts                             # useTenantUrl() client hook for preview-mode URLs; pathname first, cookie fallback after mount (hydration-1)
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
 test/
@@ -397,11 +398,27 @@ and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 | File | Holds | Imports from the tree |
 |---|---|---|
 | `lib/dynamo-client.ts` | the one `DynamoDBClient` + `DynamoDBDocumentClient` (`docClient`, created at import) and `requireTableName()` | none |
-| `lib/dynamo-customer-reads.ts` | `getOrderForCustomer`, `getCustomerOrders`, `getCustomerProfile` — the reads of `ORDER#`, `CUSTORDER#`, `CUSTOMER#` | `dynamo-client.ts` |
-| `lib/dynamo.ts` | every other read; re-exports the three customer reads, so importers keep `from "@/lib/dynamo"` | `dynamo-client.ts`, `dynamo-customer-reads.ts` |
+| `lib/dynamo-customer-reads.ts` | `getOrderForCustomer` — the read of `ORDER#` for the order confirmation and tracking pages. Since CMRC-1B the account reads (`getCustomerOrders`, `getCustomerProfile`) are NOT here: they are in `lib/customer-api.ts` and go through the backend | `dynamo-client.ts` |
+| `lib/dynamo.ts` | every other read; re-exports `getOrderForCustomer`, so `SitePage` keeps `from "@/lib/dynamo"` | `dynamo-client.ts`, `dynamo-customer-reads.ts` |
 
-- **Rule:** reads of orders and customers go in `lib/dynamo-customer-reads.ts`; Track B (`cmrc-1`, the commerce
-  private table) changes that file. No other file of the renderer reads those items.
+- **Rule (CMRC-1B, `docs/slices/cmrc-1b.md`):** the renderer adds NO direct read of an order or a customer item. A
+  customer read goes through the backend: a function in `lib/customer-api.ts` that calls `callBackend`
+  (`lib/api-client.ts`) with the tenant of the host's record and the email of the validated session (PD-002). One
+  direct read is left, `getOrderForCustomer` in `lib/dynamo-customer-reads.ts`; part L of `cmrc-1` moves it to
+  `customer-api.ts` and deletes the file. The guard is `backend/test/unit/cmrc-1-key-ownership.test.ts` (it permits
+  exactly that one read). `customer-api.ts` maps an answer: the route's 200 body → the value; any other status, a
+  200 body that is not the route's answer, or no call possible → `CustomerApiError` (route + status, never the
+  email) — so a failed dependency never looks like "no orders" or "no profile". The two account routes catch it and
+  answer their fixed 500 text.
+  **Tests.** `test/unit/cmrc-1-customer-api.test.ts` (the transport through the real `callBackend`: one POST, exactly
+  three headers, the body from the arguments; the answer mapping; the identity rule at the two routes — no session →
+  no backend call; nothing of the browser request is forwarded). `test/unit/cmrc-1-account-answers.test.ts` (what the
+  two routes answer per input class, from stored items and a session; the file passed on the commit before CMRC-1B
+  and passes unchanged after it). **That second file crosses into the backend workspace, in the test only:** its
+  `fetch` stub passes the call to the REAL handlers of `backend/src/customers/self-service.ts`, and its table is
+  `backend/test/unit/memory-table.ts`. No file under `renderer/src` imports backend code; the edge is renderer TEST →
+  backend, one direction (no backend file imports the renderer). The handler file is loaded by an absolute path built
+  from `import.meta.url`: the test runner resolves a computed relative import against the project root.
 - **Direction:** `dynamo.ts` → `dynamo-customer-reads.ts` → `dynamo-client.ts`, and `dynamo.ts` → `dynamo-client.ts`.
   Nothing imports `dynamo.ts` back (that would be a cycle); a new read file imports the client from
   `dynamo-client.ts`, never from `dynamo.ts`.
@@ -410,8 +427,8 @@ and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 - **The error rule below covers all three files.** The `dynamo.ts` file header and the `requireTableName` comment
   say "this file"; the moves-only rule kept their text, so this section is where the rule is stated for the customer
   reads too (finding F-RRR1-HEADER-SCOPE in `docs/slices/refactor-renderer-reads-1.md`).
-- **Server only:** the callers are server code (`components/SitePage.tsx`, `app/api/account/orders/route.ts`,
-  `app/api/profile/route.ts`); no `"use client"` module reaches these files. None of the three files has an
+- **Server only:** the callers are server code (`components/SitePage.tsx`; until CMRC-1B also the two account
+  routes, which now import `lib/customer-api.ts`); no `"use client"` module reaches these files. None of the three files has an
   `import "server-only"` marker (finding F-RRR1-NO-SERVER-ONLY).
 
 The renderer reads directly from DynamoDB for performance (bypasses backend API):
@@ -463,6 +480,9 @@ Two read paths outside this file keep different internals on purpose: `lib/tenan
 whole estate on a blip — the render repeats the lookup and throws anyway; and
 `lib/api-client.ts` (Secrets Manager) returns `""`, which its callers forward to the backend,
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
+One caller does not forward an empty key: `callBackend` in the same file (CMRC-1B; users `lib/customer-api.ts` and
+`lib/booking-proxy.ts`) makes no call and returns `null`; the two account GET routes then answer 500 and the booking
+proxy 503. The property is the same: no 200 with empty data.
 
 ## Category page content (CATEGORY-CONTENT-1, PROTOTYPE)
 
@@ -949,7 +969,7 @@ LANG1-OVERRIDES = A); `lib/booking-text.ts` `bookingTexts(language, config)`, us
 Texts are rendered as React text (escaped). Times in the tenant's zone with the zone named. `?frame=1`: no
 header, transparent background (the frame chrome is `sched-frame-1`).
 
-**Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`): op table `BOOKING_OPS` (offer, slots:
+**Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`; its backend call `forward` is `callBackend` of `lib/api-client.ts` since CMRC-1B — the same function, moved, shared with `lib/customer-api.ts`): op table `BOOKING_OPS` (offer, slots:
 GET; hold, view, confirm, cancel, move: POST) → exactly one backend route each; method (405 + `Allow`), body
 ≤ 8 KB (413), JSON (400), input check with the backend route's OWN schema, imported from `@amodx/shared` (`HoldRequestSchema`, `MoveBodySchema`,
 `KeyPart`, `LocalDateSchema`; moved there from the backend handlers by ruling SCHED-1G2-ZOD-DEP = C; the renderer

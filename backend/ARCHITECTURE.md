@@ -16,21 +16,24 @@ src/
 │   ├── commerce-db.ts     # CMRC-1A (docs/slices/cmrc-1a.md; docs/slices/cmrc-1.md § 5.5; PROTOTYPE): WITHIN
 │   │                      #   backend/src, the only code that writes the commerce-private key prefixes (ORDER#,
 │   │                      #   CUSTORDER#, CUSTOMER#, COUNTER#ORDER) and that chooses their table (handler sites
-│   │                      #   S1-S15). NOT repository-wide yet: three reads of the public renderer
-│   │                      #   (renderer/src/lib/dynamo-customer-reads.ts, S16-S18) still build these keys and choose
-│   │                      #   their table, until cmrc-1b and part L; the operational copy tool
-│   │                      #   scripts/migrate-commerce-private-table.ts (S19) keeps its own prefix list, until
+│   │                      #   S1-S15, and the two read handlers of customers/self-service.ts, CMRC-1B). NOT
+│   │                      #   repository-wide yet: ONE read of the public renderer (getOrderForCustomer in
+│   │                      #   renderer/src/lib/dynamo-customer-reads.ts, S16) still builds an ORDER# key and chooses
+│   │                      #   its table, until part L of cmrc-1 (CMRC-1B removed S17 and S18); the operational copy
+│   │                      #   tool scripts/migrate-commerce-private-table.ts (S19) keeps its own prefix list, until
 │   │                      #   cmrc-2. Pure, no I/O: seven functions return a
 │   │                      #   LOCATED REFERENCE — { TableName, Key } (orderRef, customerRef, customerOrderRef,
 │   │                      #   orderCounterRef) or { TableName, KeyConditionExpression, ExpressionAttributeValues }
 │   │                      #   (ordersQuery, customersQuery, customerOrdersQuery) — which the handler spreads into its
 │   │                      #   own command. Commands, reads, writes and error handling stay in the handlers.
 │   │                      #   ONE binding, COMMERCE_TABLE = TABLE_NAME (the main table today); cmrc-4 changes that
-│   │                      #   binding to move the backend's storage — only after the renderer reads S16-S18 are
+│   │                      #   binding to move the backend's storage — only after the renderer read S16 is
 │   │                      #   gone (cutover gate, cmrc-1.md § 6). COMMERCE_PRIVATE_PREFIXES is the list of prefixes.
+│   │                      #   orderIdOfCustomerOrder(sk) (CMRC-1B): the order id of an index row, the text after the
+│   │                      #   last '#' of its sort key.
 │   │                      #   Emails are used as given: the caller passes normalizeEmail() output. Users: orders/*
 │   │                      #   (create, get, list, public-get, update, update-status), customers/* (get, list, update,
-│   │                      #   public-update), reports/summary.ts, resources/presign.ts. Does not import
+│   │                      #   public-update, self-service), reports/summary.ts, resources/presign.ts. Does not import
 │   │                      #   scheduling-db.ts, and is not imported by it. Tests: test/unit/cmrc-1-commerce-db.test.ts,
 │   │                      #   cmrc-1-key-ownership.test.ts, cmrc-1-command-trace.test.ts (§ Testing)
 │   ├── dynamo-reserved-words.ts # PROJECTION-RESERVED-1: DYNAMO_RESERVED_WORDS, the 573 official reserved words
@@ -863,8 +866,12 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 | Order-number counter (commerce-private) | `TENANT#<id>` | `COUNTER#ORDER` |
 
 The four commerce-private rows are in the main table today. Track B moves them to a table the public renderer cannot
-read (`docs/slices/cmrc-1.md`). In the backend, their key text and their table are written in `lib/commerce-db.ts`
-only; the public renderer still reads three of them with its own keys and table (§ Key Patterns).
+read (`docs/slices/cmrc-1.md`); that table, `AmodxCommerceTable<suffix>`, exists since CMRC-1B, empty and wired to
+nothing (`infra/ARCHITECTURE.md` § *Commerce-private table*). In the backend, their key text and their table are
+written in `lib/commerce-db.ts` only. The public renderer still reads ONE of them with its own key and table: `ORDER#`,
+for the order confirmation and tracking pages (`getOrderForCustomer`). Since CMRC-1B it reads the other two through
+the backend (`customers/self-service.ts`), and it never read the counter (§ Key Patterns). Its role can still read
+all four: the main-table read grant is not changed.
 
 **GSIs:** GSI_Domain (lookup tenant by domain), GSI_Type (list by entity type), GSI_Status (workflow queries)
 
@@ -882,25 +889,43 @@ only; the public renderer still reads three of them with its own keys and table 
   write through `createOrFillLead` (`lib/lead-write.ts`): created when absent, an existing lead keeps every stored value
   (first `createdAt` and `source`, the owner's `status`); the newsletter never writes an existing lead. These three
   capture writers never modify `NEWSLETTER#` items
+- **Customer self-service reads for the renderer (CMRC-1B, record `docs/slices/cmrc-1b.md`; PD-002):**
+  `customers/self-service.ts` holds two handlers: `orderHistoryHandler` (`POST /customer/order-history` → `{ orders }`)
+  and `profileReadHandler` (`POST /customer/profile-read` → `{ profile }`, `null` when there is no record). The
+  request body is exactly `{ email }` (`CustomerSelfRequestSchema`, shared). They are the reads the renderer's account
+  routes made from DynamoDB before; the commands are the same and are built from `lib/commerce-db.ts`
+  (`customerOrdersQuery`, `customerRef`). **Who may call:** `requireRole(auth, ["RENDERER"])` with no target tenant —
+  the renderer key (and `GLOBAL_ADMIN`, which `requireRole` always admits); every other role → 403 and nothing is
+  read. The handler trusts the body's email and the `x-tenant-id` header because the caller is the renderer, which
+  takes the email from the validated session and the tenant from the host's record. **Input rule:** structure check
+  only; no email format rule; an email that matches nothing is `{ orders: [] }` / `{ profile: null }`, never an error.
+  **Value rule:** stored attributes pass through unchanged (types `StoredValue`, `OrderHistoryEntry`,
+  `CustomerProfileView`, shared) — no parse against `OrderSchema` / `CustomerSchema`, which do not describe the stored
+  data. Refusals are the closed sum `SelfServiceRefusal` (`forbidden` 403, `missingTenant` 400, `malformedRequest`
+  400) with one exhaustive `switch`; a DynamoDB failure is 500 `{ code: "internal" }`, logged with the route and the
+  error's name only. Answers carry `Cache-Control: no-store`. The functions have `TABLE_NAME` only and main-table read
+  only (no event bus: the commerce stack's event-bus grant skips these two; `infra/lib/api-commerce.ts`).
 - **Commerce-private keys (CMRC-1A, record `docs/slices/cmrc-1a.md`):** **in `backend/src`, a commerce-private key
   or its table is written only in `lib/commerce-db.ts`.** The four families are `ORDER#`, `CUSTORDER#`, `CUSTOMER#`,
-  `COUNTER#ORDER`. Scope of this rule today: the 15 backend handler sites S1-S15. Retained outside it: three reads of
-  the public renderer, `getOrderForCustomer`, `getCustomerOrders`, `getCustomerProfile` in
-  `renderer/src/lib/dynamo-customer-reads.ts` (S16-S18), which build these keys and take the table from the
-  renderer's own `TABLE_NAME` — `cmrc-1b` removes the last two, part L of `cmrc-1` the first; and the operational copy
-  tool `scripts/migrate-commerce-private-table.ts` (S19), which has its own prefix list and takes table names as
-  arguments — `cmrc-2` changes it. So the guarantee "customer-private data is out of the renderer's reach" is NOT
-  true yet; this slice only makes the backend ready for the move.
+  `COUNTER#ORDER`. Scope of this rule today: the 15 backend handler sites S1-S15 and the two read handlers of
+  `customers/self-service.ts` (CMRC-1B). Retained outside it: ONE read of the public renderer, `getOrderForCustomer`
+  in `renderer/src/lib/dynamo-customer-reads.ts` (S16, the order confirmation and tracking pages), which builds an
+  `ORDER#` key and takes the table from the renderer's own `TABLE_NAME` — part L of `cmrc-1` removes it (CMRC-1B
+  removed `getCustomerOrders` and `getCustomerProfile`, S17 and S18: the account routes now call the backend); and the
+  operational copy tool `scripts/migrate-commerce-private-table.ts` (S19), which has its own prefix list and takes
+  table names as arguments — `cmrc-2` changes it. So the guarantee "customer-private data is out of the renderer's
+  reach" is NOT true yet: the renderer's role can still read the whole main table, where every order and customer
+  item still is. An empty table `AmodxCommerceTable<suffix>` exists since CMRC-1B; no function has its name or a grant.
   A handler takes a located reference from the module and spreads it into the command it builds itself:
   `new GetCommand(orderRef(tenantId, id))`, `new UpdateCommand({ ...customerRef(tenantId, email), UpdateExpression, … })`,
   `new QueryCommand({ ...ordersQuery(tenantId), ProjectionExpression, … })`; a transaction Put uses
   `{ TableName: ref.TableName, Item: { ...ref.Key, … } }`. A handler builds one reference per command (no reference
   object is given to two commands). Do not write one of the four prefixes, or `TABLE_NAME` for one of these items, in
   another file: `test/unit/cmrc-1-key-ownership.test.ts` fails on a prefix in a string of any other file under
-  `backend/src`, `renderer/src` or `packages/*/src`, except the three renderer reads above (it does not read
+  `backend/src`, `renderer/src` or `packages/*/src`, except the one renderer read above (it does not read
   `scripts/`, tests, `admin/`, `tools/`, `infra/`). Reason: `cmrc-4` moves the storage by changing the one binding
   `COMMERCE_TABLE` in the module; a site that names the key or the table itself would keep reading the old copy —
-  which is why `cmrc-4` cannot start while S16-S18 exist (cutover gate, `docs/slices/cmrc-1.md` § 6). In `orders/create.ts` the three commerce-private transaction items take their table from the
+  which is why `cmrc-4` cannot start while S16 exists (cutover gate, `docs/slices/cmrc-1.md` § 6). In `orders/create.ts` the three commerce-private transaction items take their table from the
   references and the two coupon items keep `TABLE_NAME`. `COUPONUSE#` is not in the module yet (the operator's ruling
   CMRC-MAIN-KEYS = revised B moves it in `cmrc-4`); the order-mail counter `EMAILLIMIT#` stays a main-table key
   written in `orders/create.ts`
@@ -1080,10 +1105,13 @@ that was also run against the handler before the slice.
 `products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
 price text is read.
 
-**The commerce-private key tests (CMRC-1A, `docs/slices/cmrc-1a.md` § Proofs).** Three files, all credential-free:
+**The commerce-private tests (CMRC-1A, `docs/slices/cmrc-1a.md` § Proofs: the first three files; CMRC-1B,
+`docs/slices/cmrc-1b.md` § Proofs: the last two).** Five files, all credential-free:
 
 - `test/unit/cmrc-1-command-trace.test.ts` — the preservation proof of the re-pointing. `cmrc-1-command-trace.ts`
-  holds a recorder and 83 scenarios; a scenario calls one real handler (the twelve files that use `lib/commerce-db.ts`)
+  holds a recorder and 83 scenarios; a scenario calls one real handler (the twelve handler files that CMRC-1A
+  re-pointed to `lib/commerce-db.ts`; the module's thirteenth user since CMRC-1B, `customers/self-service.ts`, is
+  NOT in the trace — its commands are pinned by `cmrc-1-self-service.test.ts` below)
   with `db.js`, `publishAudit`, SES, the S3 presigner, the origin check and reCAPTCHA replaced, the clock and
   `crypto.randomUUID` fixed. Recorded per scenario, in order: every DynamoDB command (class name and full input, each
   `TransactItems` entry), every audit event, every mail, and the HTTP answer with its body as the exact string. The
@@ -1097,10 +1125,18 @@ price text is read.
   (written in the test as literals) and the bound table; the prefix list.
 - `test/unit/cmrc-1-key-ownership.test.ts` — parses every source file under `backend/src`, `renderer/src` and
   `packages/*/src` (TypeScript compiler API; string literals and template text, not comments) and fails when a file
-  other than `lib/commerce-db.ts` holds one of `COMMERCE_PRIVATE_PREFIXES`. Permitted, by an exact list: the three
-  reads of `renderer/src/lib/dynamo-customer-reads.ts` (S16-S18), which `cmrc-1b` and part L of `cmrc-1` delete — so
-  a passing run proves "backend: one file", not "renderer: none". Not scanned: `scripts/` (the copy tool S19), tests,
-  `admin/`, `tools/`, `infra/`. It cannot see a prefix that is joined from parts at run time.
+  other than `lib/commerce-db.ts` holds one of `COMMERCE_PRIVATE_PREFIXES`. Permitted, by an exact list compared for
+  equality: the ONE read `getOrderForCustomer` of `renderer/src/lib/dynamo-customer-reads.ts` (S16), which part L of
+  `cmrc-1` deletes (CMRC-1B removed the other two from the code and from the list) — so a passing run proves
+  "backend: one file; renderer: exactly that one read", not "renderer: none". Not scanned: `scripts/` (the copy tool
+  S19), tests, `admin/`, `tools/`, `infra/`. It cannot see a prefix that is joined from parts at run time.
+- `test/unit/cmrc-1-self-service.test.ts` (CMRC-1B, T4) — the two handlers of `customers/self-service.ts` over the
+  in-memory table: `RENDERER` and `GLOBAL_ADMIN` pass, every other caller gets 403 and no DynamoDB command; the
+  tenant of every command is `x-tenant-id`; a body that is not exactly `{ email }` → 400 with no request text; the
+  commands equal the ones the renderer sent before (literals in the test); stored values pass unchanged; a DynamoDB
+  failure → 500 with the route and the error's name in the log, nothing else.
+  `test/unit/cmrc-1-self-service-auth.test.ts` — the real authorizer on the two route keys: no credential → refused;
+  the renderer key → `RENDERER`; an admin token → admitted by the authorizer, refused by the handler.
 
 **The reserved-word guard (PROJECTION-RESERVED-1, `docs/slices/projection-reserved-1.md`).** The test doubles do not
 evaluate expressions, so a bare DynamoDB reserved word (`total`, `source`, `items`, `status`, `name`, `data`, …) in an

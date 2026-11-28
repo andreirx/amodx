@@ -48,7 +48,7 @@ import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings, pageLanguageOf, languageTagOf, localeLanguageSubtag } from "@amodx/shared";
 import { docClient, requireTableName } from "./dynamo-client";
-export { getOrderForCustomer, getCustomerOrders, getCustomerProfile } from "./dynamo-customer-reads";
+export { getOrderForCustomer } from "./dynamo-customer-reads";
 
 /** Check if a product is within its availability date window today (UTC day). The rule is `@amodx/shared`'s
  *  `isProductAvailable` (CAT-IMPORT-PROFILE-1B moved it there for the admin preview); this binds it to the clock. */

@@ -7,15 +7,17 @@ import ts from "typescript";
  * CMRC-1A, test T3 — the backend part of requirement C1 (docs/slices/cmrc-1a.md § Proofs; docs/slices/cmrc-1.md
  * § 5.2, § 5.9): within `backend/src`, `lib/commerce-db.ts` is the only code that writes a commerce-private key
  * prefix. What the test proves in full: in the scanned directories, the prefixes are written in that file and in
- * exactly three named reads of the public renderer (`RENDERER_READS`, sites S16-S18), and nowhere else. It does NOT
- * prove that the renderer is free of these keys: the three reads are still there, and C1 is complete only when
- * `cmrc-1b` (S17, S18) and part L of `cmrc-1` (S16) have removed them and this list is empty.
+ * exactly ONE named read of the public renderer (`RENDERER_READS`, site S16), and nowhere else. It does NOT prove
+ * that the renderer is free of these keys: that one read is still there, and C1 is complete only when part L of
+ * `cmrc-1` has removed it and this list is empty. CMRC-1B (docs/slices/cmrc-1b.md) removed S17 `getCustomerOrders`
+ * and S18 `getCustomerProfile` from the renderer and from this list; the list is compared for EQUALITY, so a removed
+ * read that comes back fails the test, and so does an entry for a read that no longer exists.
  *
  * How: every source file of the two runtimes that can reach DynamoDB (`backend/src`, `renderer/src`) and of the
  * workspace packages they bundle (`packages/<name>/src`) is parsed with the TypeScript compiler API. The walk looks at
  * string literals and at the text parts of template literals — by syntax tree, so a prefix in a comment is not a hit.
- * A hit outside `commerce-db.ts` fails the test, except the named, counted entries of `RENDERER_READS` (the three
- * renderer reads that CMRC-1A does not touch; `cmrc-1b` and part L delete them, and this list with them).
+ * A hit outside `commerce-db.ts` fails the test, except the named, counted entries of `RENDERER_READS` (the one
+ * renderer read that is left; part L of `cmrc-1` deletes it, and this list with it).
  *
  * The prefixes come from `COMMERCE_PRIVATE_PREFIXES` of the module: one list. A kind added there is guarded here with
  * no edit. `cmrc-1-commerce-db.test.ts` pins that list to its literal values.
@@ -39,8 +41,6 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs",
 
 /** The reads of the public renderer that still name a commerce-private key: file, enclosing function, prefix. */
 const RENDERER_READS = [
-    ["renderer/src/lib/dynamo-customer-reads.ts", "getCustomerOrders", "CUSTORDER#"],   // S17 — cmrc-1b deletes it
-    ["renderer/src/lib/dynamo-customer-reads.ts", "getCustomerProfile", "CUSTOMER#"],   // S18 — cmrc-1b deletes it
     ["renderer/src/lib/dynamo-customer-reads.ts", "getOrderForCustomer", "ORDER#"],     // S16 — part L deletes it
 ] as const;
 
@@ -138,11 +138,11 @@ describe("CMRC-1A T3 — the scanner (self-test)", () => {
     });
 });
 
-describe("CMRC-1A T3 — in backend/src, renderer/src and packages/*/src the commerce-private key prefixes are written in lib/commerce-db.ts and in three named renderer reads (C1, backend part)", () => {
+describe("CMRC-1A T3 — in backend/src, renderer/src and packages/*/src the commerce-private key prefixes are written in lib/commerce-db.ts and in one named renderer read (C1; since CMRC-1B)", () => {
     it("the walk reads the runtime sources (it cannot pass on an empty file list)", () => {
         expect(SCANNED_DIRECTORIES).toEqual(expect.arrayContaining(["backend/src", "renderer/src", "packages/shared/src"]));
         expect(FILES.length).toBeGreaterThan(300);
-        for (const known of [OWNER, "backend/src/orders/create.ts", "backend/src/resources/presign.ts", "renderer/src/lib/dynamo-customer-reads.ts", "packages/shared/src/normalizeEmail.ts"]) {
+        for (const known of [OWNER, "backend/src/orders/create.ts", "backend/src/resources/presign.ts", "backend/src/customers/self-service.ts", "renderer/src/lib/dynamo-customer-reads.ts", "renderer/src/lib/customer-api.ts", "packages/shared/src/normalizeEmail.ts"]) {
             expect(FILES).toContain(known);
         }
     });
@@ -151,7 +151,7 @@ describe("CMRC-1A T3 — in backend/src, renderer/src and packages/*/src the com
         expect([...new Set(hitsOf(OWNER).map((h) => h.prefix))].sort()).toEqual([...COMMERCE_PRIVATE_PREFIXES].sort());
     });
 
-    it("no other scanned file holds one: backend/src and packages/*/src hold none; renderer/src holds exactly the three named reads (S16-S18)", () => {
+    it("no other scanned file holds one: backend/src and packages/*/src hold none; renderer/src holds exactly the one named read (S16)", () => {
         const outside = FILES.filter((file) => file !== OWNER)
             .flatMap((file) => hitsOf(file).map((h) => [file, h.functionName, h.prefix, h.line] as const));
         // The message of a failure lists file, function, prefix and line of every hit.

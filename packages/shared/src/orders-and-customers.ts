@@ -1,4 +1,5 @@
-// Orders and customers: the stored order and customer records, the public checkout input and the price-changed answer.
+// Orders and customers: the stored order and customer records, the customer self-service read DTOs (CMRC-1B), the
+// public checkout input and the price-changed answer.
 // Moved out of index.ts by REFACTOR-SHARED-1 (moves only); index.ts re-exports it. Import siblings from their file, never from ./index.js.
 
 import { z } from "zod";
@@ -112,6 +113,53 @@ export const CustomerSchema = z.object({
     updatedAt: z.string(),
 });
 export type Customer = z.infer<typeof CustomerSchema>;
+
+// --- CUSTOMER SELF-SERVICE READS (CMRC-1B; docs/slices/cmrc-1b.md, docs/slices/cmrc-1.md § 5.6) ---
+// The data that crosses the renderer → backend boundary of POST /customer/order-history and POST
+// /customer/profile-read. The renderer sends the email of the validated session (PD-002); the backend answers the
+// stored attributes as they are.
+
+/**
+ * The request body of both routes: exactly one field, a non-empty string. A STRUCTURE check only — no format rule and
+ * no length bound: the backend applies `normalizeEmail()` and reads; an email that matches no stored record is
+ * "nothing found", never an error (the input rule). The renderer always builds this shape, so a body that fails here
+ * is a renderer defect.
+ */
+export const CustomerSelfRequestSchema = z.object({ email: z.string().min(1) }).strict();
+
+/**
+ * A stored attribute value exactly as the DynamoDB document client returns it and JSON carries it. The answers below
+ * are typed with it ON PURPOSE instead of `OrderSchema` / `CustomerSchema`: those schemas do not describe the stored
+ * data (for example `OrderSchema.total` is a string, the order handler stores a number), and the routes pass every
+ * value through unchanged (the value rule): no parse, no default, no `null` removed.
+ */
+export type StoredValue = string | number | boolean | null | StoredValue[] | { [key: string]: StoredValue };
+
+/**
+ * One row of the answer `{ orders }` of POST /customer/order-history: one item of the email → order index. A field is
+ * absent exactly when the stored item lacks the attribute. `orderId` is the text after the last `#` of the item's
+ * sort key.
+ */
+export type OrderHistoryEntry = {
+    orderNumber?: StoredValue;
+    total?: StoredValue;
+    status?: StoredValue;
+    createdAt?: StoredValue;
+    orderId: string;
+};
+
+/**
+ * The answer `{ profile }` of POST /customer/profile-read (`null` when no record is stored): the stored customer item
+ * reduced to these five attributes. Each is absent when the item lacks it — a record the checkout created has no
+ * `email` attribute, so `{}` is a possible profile.
+ */
+export type CustomerProfileView = {
+    email?: StoredValue;
+    name?: StoredValue;
+    phone?: StoredValue;
+    birthday?: StoredValue;
+    defaultAddress?: StoredValue;
+};
 
 // --- ORDER INPUT VALIDATION (for public checkout API) ---
 

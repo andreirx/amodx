@@ -18,7 +18,7 @@ lib/
 ├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
 ├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 7 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1G1: the calendar feed route + the scheduled job and its one rate(15 minutes) rule; L1 routes, own authorizer)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
-├── database.ts                 # DynamoDB single table with 3 GSIs
+├── database.ts                 # The main DynamoDB table and its GSIs; + two private tables: scheduling (sched-1b) and commerce (CMRC-1B: empty, wired to nothing — § Commerce-Private Table)
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
 ├── domains.ts                  # Route53 hosted zone + ACM certificates (global + regional)
 ├── events.ts                   # EventBridge bus + audit rule + dead letter queue
@@ -40,12 +40,12 @@ before you run it.
 AmodxStack
 ├── Secrets (Master API Key + NextAuth Secret via Secrets Manager)
 ├── AmodxUploads (S3 assets + S3 private + CloudFront CDN)
-├── AmodxDatabase (DynamoDB table + 3 GSIs)
+├── AmodxDatabase (the main DynamoDB table + GSIs; the scheduling-private table; the commerce-private table — CMRC-1B: empty, passed to no construct)
 ├── AmodxAuth (Admin Cognito Pool + Public Cognito Pool)
 ├── AmodxEvents (EventBridge bus + Audit rule + SQS DLQ)
 ├── CatalogApi (NestedStack — content/redirects/products/import FUNCTIONS only; instantiated before AmodxApi and passed in; their routes live in AmodxApi)
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
-├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
+├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports; CMRC-1B: the two customer read routes for the renderer key)
 ├── EngagementApi (NestedStack — popups, forms)
 ├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1G1: calendar feed, scheduled job; after AdminHosting, which supplies `adminUrl`)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
@@ -80,6 +80,72 @@ All resources tagged with `Stage` and `Project: AMODX`.
 | GSI_Domain | Domain (STRING) | PK (STRING) | Tenant lookup by domain |
 | GSI_Type | Type (STRING) | CreatedAt (STRING) | List entities by type |
 | GSI_Status | Status (STRING) | ScheduledFor (STRING) | Workflow/inbox queries |
+
+## Commerce-Private Table and Customer Read Routes (CMRC-1B)
+
+Record `docs/slices/cmrc-1b.md`; specification `docs/slices/cmrc-1.md` § 5.8. PROTOTYPE until the operator's staging
+run. The section above describes the main table only; `database.ts` declares three tables: the main table, the
+scheduling-private table (described under `SchedulingApi` below) and this one.
+
+**What is NOT true yet — read this first.** The table protects nothing. It is empty, and every order and customer
+item is still in the main table. The renderer server function still has `grantReadData` on the whole main table
+(`renderer-hosting.ts`), so the renderer's IAM reach to that data is the same as before this slice. CMRC-1B changed
+which CODE reads the account data (the renderer's two account routes now ask the backend), not which ROLE can read
+it. The reach ends only when the items leave the main table (`cmrc-4`, `cmrc-6`).
+
+**The table (`database.ts`, property `commerceTable`).** `AmodxCommerceTable<suffix>`, construct id `CommerceTable`,
+in the parent stack: `PK`/`SK` strings, PAY_PER_REQUEST, point-in-time recovery, RETAIN on delete and on replace. No
+GSI (the four moved key families take part in no index), no stream, no TTL (a TTL attribute would delete any item
+that ever carries it). **Unused on purpose:** `amodx-stack.ts` passes it to no construct; no function has its name in
+a variable (there is no `COMMERCE_TABLE_NAME`); no role has a statement on it. Why it exists before anything uses it:
+a stateful resource is reviewed alone, in a diff that cannot break a function, and `cmrc-2` proves the copy tool
+against the empty table on staging. `cmrc-4` wires it into the commerce functions only.
+
+**The two functions and their routes (`api-commerce.ts`).** Both are built from
+`backend/src/customers/self-service.ts`:
+
+| Function (construct id) | Handler | Route |
+|---|---|---|
+| `CustomerOrderHistoryFunc` | `orderHistoryHandler` | `POST /customer/order-history` |
+| `CustomerProfileReadFunc` | `profileReadHandler` | `POST /customer/profile-read` |
+
+- **Authorization:** `addRoute` without `noAuth` → `AuthorizationType: CUSTOM` with the nested stack's authorizer
+  (`CommerceAuthorizer`), as `POST /public/customers/profile`. The authorizer admits any valid credential and passes
+  its role; the HANDLER admits the renderer key (`RENDERER`, and `GLOBAL_ADMIN`) and answers 403 to every other role.
+  So "renderer only" is a property of the handler (backend tests), and "not anonymous" is the property of the
+  infrastructure (row `(cmrc1b-3)`).
+- **Restricted variables:** `TABLE_NAME` only. They do not take the stack's `nodeProps.environment`: no
+  `EVENT_BUS_NAME`, no `RENDERER_URL`, no `REVALIDATION_SECRET_NAME` (they publish nothing and purge nothing).
+- **Restricted grants:** `table.grantReadData` only — the read actions on the main table and its indexes (CDK writes
+  it as two statements). No write, no SES, no secret, no `lambda:InvokeFunction`.
+- **No event bus:** the loop at the end of the `CommerceApi` constructor grants `events:PutEvents` to every
+  `NodejsFunction` of the nested stack. It skips exactly these two (the list `publishNoEvent`). Every other commerce
+  function keeps the grant it had; a new read-only function that must not publish joins that list.
+
+**After a rollback** the table stays (RETAIN). The next deploy that declares it fails on the existing name until the
+operator deletes the empty table (item count 0 checked first) or imports it.
+
+**Assertions** (`test/amodx-stack.test.ts`, inside the `SCHED-1B` block so that its IAM reading rule is the one used —
+every IAM value is matched as a whole against a closed list of shapes, so an absence claim cannot pass by not
+understanding a value):
+
+- `(cmrc1b-1)` the table: one, in the parent, the properties above and no other property but the stack's tags;
+- `(cmrc1b-2)` nothing uses it: no resource, output or parameter of any template mentions it (seven mention forms are
+  each detected on a probe); no function variable holds it by name or by value; every DynamoDB grant of the stack
+  tree has a table shape and denotes the main table or the renderer's OpenNext tag-cache table — never this one (a
+  probe grant on it IS resolved to it);
+- `(cmrc1b-3)` the two routes: once in the stack tree, in the commerce nested stack, `CUSTOM` with its authorizer,
+  each on its own function and handler;
+- `(cmrc1b-4)` each function: `TABLE_NAME` its only variable; its own role with the one AWS logging policy; every
+  statement an Allow of read actions on the main table, together exactly the read set; every OTHER commerce function
+  still has `events:PutEvents`. The row logs the new logical ids (listed in `docs/slices/cmrc-1b.md` § *Migration /
+  deployment notes*, for the operator's reading of the staging diff);
+- `(cmrc1b-5)` the renderer server function: no variable names the commerce table; its DynamoDB grants denote the
+  main table and its tag-cache table only.
+
+Counts (credential-free test synth, 2026-11-28): parent raw 413 / 53 functions, deployed ≈ 479 — **21 below
+CloudFormation's limit of 500**, and a stateful resource cannot move to a nested stack without replacement
+(`docs/TECH-DEBT.md`, F-CMRC1B-PARENT-HEADROOM); `CommerceApi` raw 233 / 38 functions, deployed ≈ 271.
 
 ## Lambda Configuration (`api.ts`)
 

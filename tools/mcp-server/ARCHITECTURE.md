@@ -249,6 +249,7 @@ a permission, so none changed.
 | `GET /users`, `POST /import/wordpress`, `POST /import/media` | **Deferred:** the backend route reads across tenants (`users/list.ts` returns the whole user pool to a global key; the import handlers `GetObject` any `s3Key` without a tenant-prefix check). Admit after a backend slice scopes them (`docs/TECH-DEBT.md`, BACKEND-TENANT-SCOPE-1 candidate) |
 | `/public/*`, `POST /consent`, `POST /contact`, `POST /webhooks/paddle` | Visitor / webhook surfaces, not admin surfaces |
 | `POST /comments` | Deliberately unexposed: the visitor comment route (RENDERER role) |
+| `POST /customer/order-history`, `POST /customer/profile-read` | Deliberately unexposed (CMRC-1B): the site's account-page reads for the renderer key. The body names a customer's email, which the renderer takes from a validated session; a tool would let the robot key read any customer's orders and profile by address. The coverage report lists them under `customer` |
 | `POST /assets` | Not in the ruled IN set; asset upload needs the presign flow |
 | Remaining commerce routes (categories/coupons/reviews/customers/orders by id, `/delivery/config`, `/import/woocommerce`, `/import/reviews`) | Commerce track |
 

@@ -467,7 +467,7 @@ word has these known limits:
   tests import (`lang-1a-content`, `glam-images-handler`, `scheduling-db`, `scheduling-visitor-d8`,
   `scheduling-reminders`, `scheduling-feed`) — INFERRED, not traced per site.
 - **Not under the run-time guard:** the renderer unit tests and the renderer serving stubs (renderer expressions are
-  covered by the static scan only; no renderer test reaches `getCustomerOrders`), and the staging integration suites
+  covered by the static scan only), and the staging integration suites
   (`backend/test/*.ts`, real DynamoDB). Every backend unit test is under it: the four files that replace
   `@aws-sdk/lib-dynamodb` themselves return it through `guardCommandClasses`, a rule a test row enforces (review
   finding PR1-GUARD-BYPASS). A replacement that bypasses `vi.mock` (a deep import of the SDK's `dist-*` files) is not
@@ -484,6 +484,54 @@ word has these known limits:
   of a same-file call (a parameter), a write made to it under yet another name. The "at least 290 sites" row catches a
   scan that breaks, not one that misses a new pattern.
 - **The word list is a copy** (2026-11-27). Refresh: the `curl` of the header URL; the test pins 573.
+
+### CMRC-1B residuals (2026-11-28)
+**Found / left by:** `cmrc-1b` (`docs/slices/cmrc-1b.md`). None is fixed there.
+
+- **The renderer's role still reads the whole main table** (`infra/lib/renderer-hosting.ts`, `grantReadData`), where
+  every order and customer item still is. `cmrc-1b` removed two of the three places where renderer CODE reads them;
+  the property "customer data out of the renderer's reach" (`docs/VISION.md`, guarantee 2) is true only after
+  `cmrc-4` (storage) and `cmrc-6` (removal of the old items). Deferred debt D1 of `docs/slices/cmrc-1.md` § 10.2.
+- **One renderer read of a commerce-private item is left:** `getOrderForCustomer`
+  (`renderer/src/lib/dynamo-customer-reads.ts`), the order confirmation and tracking pages. It waits for decision
+  CMRC-ORDER-LOOKUP-AUTHORITY and blocks `cmrc-4` (cutover gate). D5.
+- **`authOptions` is built three times** in `account/orders/route.ts` and `profile/route.ts`. D4; not touched.
+- **F-CMRC1B-ACCOUNT-PAGE-HIDES-FAILURE** — `AccountPageView.tsx:101-102` reads a failed answer of
+  `/api/account/orders` as `{ orders: [] }` and of `/api/profile` as `null`. A signed-in customer then sees an empty
+  order list and an empty profile, with no error. True before `cmrc-1b` for a DynamoDB failure; since `cmrc-1b` also
+  for a failed backend call (and during a deploy window in which the renderer's new code runs before the two routes
+  exist). Fix: an error state on the page (a visible change; the human's decision).
+- **F-CMRC1B-NO-TIMEOUT / latency** — `callBackend` (`renderer/src/lib/api-client.ts`) has no timeout of its own
+  (unchanged from the booking proxy). Each account read is now one API-gateway call with the authorizer function and
+  one read function, instead of one DynamoDB call from the renderer: slower, and a cold start is possible. NOT
+  measured; the operator's staging run of the account page shows it.
+- **F-CMRC1B-EVENTBUS-LOOP** — the commerce, catalog, engagement and main API stacks grant `events:PutEvents` to
+  EVERY function by a loop (`infra/lib/api-commerce.ts`, `api-catalog.ts`, `api-engagement.ts`, `api.ts`), also to
+  functions that only read. `cmrc-1b` excludes its two new read functions from the commerce loop; the existing
+  read-only functions keep the grant. A per-function switch (the scheduling stack's `wiring.audit`) would close it;
+  that changes existing roles and needs a named gain.
+- **F-CMRC1B-PARENT-HEADROOM** — the parent CloudFormation template is at about 479 of 500 resources with the new
+  table (`infra/test/amodx-stack.test.ts`, row `(sched1b-4)`): 21 left. A stateful resource cannot move to a nested
+  stack without replacement, so the next parent resources need a plan.
+- **F-CMRC1B-RENDERER-KEY-SCOPE-COMMENT** — the comment above `getRendererKey` lists the routes the renderer key
+  reaches; `cmrc-1b` added its two, but the list still omits the scheduling visitor routes and the three public form
+  proxies. `docs/authentication-architecture.md` § "routes that accept RENDERER role" is the fuller list.
+- **F-CMRC1B-SCANCOMMAND-IMPORT** — `renderer/src/lib/dynamo.ts:47` imports `ScanCommand` and no line uses it
+  (EXECUTED: `grep -n ScanCommand renderer/src/lib/dynamo.ts` → the import only). An unused import of the command that
+  Critical Rule 2 forbids; remove it in a slice that owns `dynamo.ts`.
+- **F-CMRC1B-APICLIENT-COMMENT** — the header comment of `renderer/src/lib/dynamo.ts` (lines 42-45) says that the
+  callers of `lib/api-client.ts` "forward the empty key" and that the key is reached "only from `/api/*` handlers".
+  `callBackend` (in that file since `cmrc-1b`; `forward` of the booking proxy since `sched-1g`) forwards no empty
+  key — it makes no call — and the booking routes are not under `/api/`. The outcome the comment protects (no 200
+  with empty data) holds. The two documents that state the same rule are corrected
+  (`renderer/ARCHITECTURE.md` § read layer, `docs/caching-architecture.md`); the source comment is not: `cmrc-1b`
+  may change one line of `dynamo.ts` (the re-export). Proposed text: "…its callers forward the empty key, or — the
+  `callBackend` users — make no call; either way the route answers a non-2xx".
+- **F-CMRC1B-MAP-STALE** — `renderer/src/lib/dynamo_ts_MAP.md` still lists `getOrderForCustomer`,
+  `getCustomerOrders`, `getCustomerProfile` at line numbers of `dynamo.ts` before `refactor-renderer-reads-1`. A
+  generated map; not regenerated by `cmrc-1b`.
+- **After a rollback of `cmrc-1b` the empty table stays** (`RETAIN`). The next deploy that declares it fails on the
+  existing name until the operator deletes the empty table (item count 0 checked first) or imports it.
 
 ### F-RESERVED-SCAN-LIMITS: known false-clean forms of the reserved-word lint (2026-11-27)
 **Found:** `projection-reserved-1` review 2; scope frozen by the operator ruling PR1-STATIC-SCOPE

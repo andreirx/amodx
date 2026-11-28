@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 /**
  * SCHED-1G2 (docs/slices/sched-1.md § 10.1 "Handlers", § 9.2, § 12, § 16.3) — the renderer booking proxy, driven
  * through `handleBookingApi` / `handleBookingFeed` (what the two route files call) with a recorded `fetch`. Mocked at
- * the module boundary: the tenant read (`getTenantConfig`) and the renderer key (`getRendererKey`). Proves what the
+ * the module boundary: the tenant read (`getTenantConfig`). The renderer key is NOT mocked since CMRC-1B (the backend
+ * call moved into `lib/api-client.ts` as `callBackend`, next to `getRendererKey`, so the module runs for real): each
+ * test sets `AMODX_API_KEY`, which `getRendererKey` returns without reaching Secrets Manager. Proves what the
  * serving rows cannot see (the suite has no backend): each op reaches EXACTLY ONE backend route, with the renderer key
  * and the tenant of the `[siteId]` segment (never one from the body or a browser header), a body rebuilt from checked
  * fields, NO `x-viewer-address` and no browser header ever (SCHED-1G3, ruling SCHED-ADDR-INFRA = A), the pass-through
@@ -11,9 +13,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 
 const tenants = vi.hoisted(() => ({ map: new Map<string, { id: string; schedulingEnabled?: boolean }>() }));
-const key = vi.hoisted(() => ({ value: "renderer-key" }));
 vi.mock("@/lib/dynamo", () => ({ getTenantConfig: async (id: string) => tenants.map.get(id) ?? null }));
-vi.mock("@/lib/api-client", () => ({ getRendererKey: async () => key.value }));
+/** The renderer key variables as they were before the file ran (restored after each test). */
+const keyEnvBefore = { AMODX_API_KEY: process.env.AMODX_API_KEY, AMODX_API_KEY_SECRET: process.env.AMODX_API_KEY_SECRET };
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -33,7 +35,8 @@ const WHO = { email: "Ana@Example.test", name: "Ana", phone: "+40 700 000 000", 
 
 beforeEach(() => {
     process.env.API_URL = "https://api.example.test/";
-    key.value = "renderer-key";
+    process.env.AMODX_API_KEY = "renderer-key";   // getRendererKey's environment path: no Secrets Manager call
+    delete process.env.AMODX_API_KEY_SECRET;
     tenants.map = new Map([
         ["shop.example.test", { id: "tenant-shop", schedulingEnabled: true }],
         ["tenant-nodomain", { id: "tenant-nodomain", schedulingEnabled: true }],
@@ -53,6 +56,9 @@ beforeEach(() => {
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    for (const [name, value] of Object.entries(keyEnvBefore)) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
     // No log line ever carries a link token, a feed secret, an email or an address.
     for (const line of logs) {
         expect(line).not.toContain(TOKEN);
@@ -129,10 +135,10 @@ describe("SCHED-1G2 proxy — one backend route per op, renderer key, tenant fro
         delete process.env.API_URL;
         expect((await get("offer")).status).toBe(503);
         process.env.API_URL = "https://api.example.test";
-        key.value = "";
+        process.env.AMODX_API_KEY = "";
         expect((await get("offer")).status).toBe(503);
         expect(calls).toHaveLength(0);
-        key.value = "renderer-key";
+        process.env.AMODX_API_KEY = "renderer-key";
         vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network"); }));
         const res = await get("offer");
         expect(res.status).toBe(503);

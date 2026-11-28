@@ -30,7 +30,7 @@ src/
 ├── glam-import-profile.ts # FacetModesSchema, SpecKeyRuleSchema, GlamImportProfileSchema, ImportLabelsSchema, IMPORT_LABELS_WITHOUT_MARKER
 ├── categories.ts       # CategorySchema
 ├── delivery.ts         # DeliveryConfigSchema
-├── orders-and-customers.ts # Address, billing, order item, status history, PaymentStatusSchema, OrderSchema, CustomerSchema, OrderInputSchema, PriceChangedAnswer
+├── orders-and-customers.ts # Address, billing, order item, status history, PaymentStatusSchema, OrderSchema, CustomerSchema, the customer self-service read DTOs (CustomerSelfRequestSchema, StoredValue, OrderHistoryEntry, CustomerProfileView; CMRC-1B), OrderInputSchema, PriceChangedAnswer
 ├── order-price.ts      # linePrice, parseMoney, localeUsesDecimalComma, roundToCents, sameAmountInCents, toMachineFormPriceInputs
 ├── coupon-schema.ts    # CouponSchema (the stored record; the coupon RULE is coupon.ts)
 ├── reviews.ts          # MAX_REVIEW_IMAGES, ReviewImageSchema, ReviewSchema, ImportBatchSchema, the review-import report DTOs
@@ -125,6 +125,7 @@ cycles, listed in `docs/slices/refactor-shared-1.md` § *Module graph*). Breakin
 | ContentItemSchema | ContentItem | Page/post with blocks, SEO, access policy, theme overrides |
 | CategorySchema | Category | Product category (name, slug, plain-text description, parent, image, SEO, status). CATEGORY-CONTENT-1: + `blocks?` = `ContentItemSchema.shape.blocks.unwrap().optional()` — the content page's block type and rule, WITHOUT its `[]` default (zod 4 applies a default inside `.partial()`, so a default would make every partial `PUT /categories/{id}` write `[]` over the stored content). Absent = no page content. Drawn by the renderer's category page after the title block |
 | RouteSchema | Route | URL slug mapping to content nodes, supports redirects |
+| CustomerSelfRequestSchema (+ types `StoredValue`, `OrderHistoryEntry`, `CustomerProfileView`) | — | CMRC-1B (`docs/slices/cmrc-1b.md`): the data that crosses the renderer → backend boundary of `POST /customer/order-history` and `POST /customer/profile-read`. Request: exactly `{ email: non-empty string }` (strict) — a STRUCTURE check only, no format rule and no length bound (the backend applies `normalizeEmail` and reads; an email that matches nothing is "nothing found"). Answers: `{ orders: OrderHistoryEntry[] }` and `{ profile: CustomerProfileView \| null }`, every field a `StoredValue` — the stored attribute passed through, typed so ON PURPOSE instead of `OrderSchema` / `CustomerSchema`, which do not describe the stored data (e.g. `OrderSchema.total` is a string, the order handler stores a number). Parsed by `backend/src/customers/self-service.ts`; the types are read by `renderer/src/lib/customer-api.ts` |
 | CommentSchema | Comment | User comment with moderation status |
 | ContextItemSchema | ContextItem | Strategy documents with tags and blocks |
 | WorkItemSchema | WorkItem | Automation tasks (social, email, research, audit) |

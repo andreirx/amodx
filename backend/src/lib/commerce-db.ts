@@ -6,15 +6,16 @@ import { TABLE_NAME } from "./db.js";
  * handler sites S1-S15 take both from here.
  *
  * NOT yet true for the whole repository. Still outside this module:
- *  - the public renderer: three reads of `renderer/src/lib/dynamo-customer-reads.ts` build these keys and choose
- *    their table themselves (S16 `getOrderForCustomer`, S17 `getCustomerOrders`, S18 `getCustomerProfile`).
- *    `cmrc-1b` removes S17 and S18; part L of `cmrc-1` removes S16;
+ *  - the public renderer: ONE read of `renderer/src/lib/dynamo-customer-reads.ts` builds an `ORDER#` key and chooses
+ *    its table itself (S16 `getOrderForCustomer`, the order confirmation and tracking pages). Part L of `cmrc-1`
+ *    removes it. CMRC-1B (docs/slices/cmrc-1b.md) removed the other two (S17 `getCustomerOrders`, S18
+ *    `getCustomerProfile`): the account routes now ask `customers/self-service.ts`, which reads through this module;
  *  - the operational copy tool `scripts/migrate-commerce-private-table.ts` (S19) keeps its own list of the prefixes
  *    and takes its table names from its arguments. `cmrc-2` makes it import the list below.
  *
  * Why: Track B moves these items out of the main table, which the public renderer can read (docs/VISION.md,
  * guarantee 2). For the backend, that move is now a change of ONE binding below (`COMMERCE_TABLE`), not of every
- * handler. The storage may move only when the renderer reads above are gone too (cutover gate, cmrc-1.md § 6): a
+ * handler. The storage may move only when the renderer read above is gone too (cutover gate, cmrc-1.md § 6): a
  * reader that still names the main table would keep reading the old copy.
  *
  * What it gives: LOCATED REFERENCES. A reference carries the table and the key in one value, so a caller cannot name
@@ -39,7 +40,7 @@ import { TABLE_NAME } from "./db.js";
  *
  * The guard: `test/unit/cmrc-1-key-ownership.test.ts` parses the source files under `backend/src`, `renderer/src`
  * and `packages/<name>/src` and fails when a string literal or template text of a file other than this one contains
- * one of `COMMERCE_PRIVATE_PREFIXES` — except the three renderer reads named above, which it lists and permits. It
+ * one of `COMMERCE_PRIVATE_PREFIXES` — except the one renderer read named above, which it lists and permits. It
  * does not read `scripts/`, tests, `admin/`, `tools/` or `infra/`, and it cannot see a prefix joined from parts at
  * run time. The command trace `test/unit/cmrc-1-command-trace.test.ts` pins the commands that the backend handlers
  * build from these references.
@@ -101,3 +102,11 @@ export const customersQuery = (tenantId: string): PrefixQuery => prefixQuery(ten
 /** Every index row of one customer: `CUSTORDER#<normalizedEmail>#…`. */
 export const customerOrdersQuery = (tenantId: string, normalizedEmail: string): PrefixQuery =>
     prefixQuery(tenantId, `${CUSTOMER_ORDER}${normalizedEmail}#`);
+
+/**
+ * The order id of one row of the email → order index: the text after the last `#` of its sort key
+ * (`CUSTORDER#<normalizedEmail>#<orderId>` → `<orderId>`). The inverse of `customerOrderRef` for the order id. A sort
+ * key without `#` is returned whole. (CMRC-1B: the rule the renderer's `getCustomerOrders` applied before the read
+ * moved to `customers/self-service.ts`.)
+ */
+export const orderIdOfCustomerOrder = (sk: string): string => sk.slice(sk.lastIndexOf("#") + 1);

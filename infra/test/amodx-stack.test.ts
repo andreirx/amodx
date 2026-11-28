@@ -2135,6 +2135,225 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
     });
 
     // ────────────────────────────────────────────────────────────────────────────────────────────
+    // CMRC-1B — test T7 (docs/slices/cmrc-1b.md § Proofs; docs/slices/cmrc-1.md § 5.8, § 5.9): the EMPTY commerce-private
+    // table that nothing uses, and the two renderer-key read routes of the CommerceApi nested stack. Inside the SCHED-1B
+    // block so that the IAM reading rule above (every value matched as a whole against a closed list of shapes) is the
+    // one used: "no role has a statement on the table" is an absence claim and must not pass by not understanding a value.
+    // ────────────────────────────────────────────────────────────────────────────────────────────
+    describe('CMRC-1B — the unused commerce-private table and the two customer read routes', () => {
+        const COMMERCE = 'AmodxCommerceTable-test';
+        const ROUTES = [
+            { key: 'POST /customer/order-history', construct: 'CustomerOrderHistoryFunc', handler: 'index.orderHistoryHandler' },
+            { key: 'POST /customer/profile-read', construct: 'CustomerProfileReadFunc', handler: 'index.profileReadHandler' },
+        ];
+        /** The action set of CDK's `table.grantReadData` (aws-cdk-lib `READ_DATA_ACTIONS` + DescribeTable). */
+        const READ_ACTIONS = ['dynamodb:BatchGetItem', 'dynamodb:ConditionCheckItem', 'dynamodb:DescribeTable', 'dynamodb:GetItem',
+            'dynamodb:GetRecords', 'dynamodb:GetShardIterator', 'dynamodb:Query', 'dynamodb:Scan'];
+
+        /** Every resource, output and parameter of every template that MENTIONS `table`, except the table itself. */
+        const referrers = (tree: Tree, table: TableRef): string[] =>
+            tree.flatMap((t, i) =>
+                (['Resources', 'Outputs', 'Parameters'] as const).flatMap((section) =>
+                    Object.entries(t[section] ?? {})
+                        .filter(([id, value]) => !(i === 0 && section === 'Resources' && id === table.logicalId) && namesTable(value, table))
+                        .map(([id]) => `template[${i}].${section}.${id}`),
+                ),
+            );
+        /** The index in `allTemplates` of the one template that holds the route `key` (it must not be the parent). */
+        const templateOfRoute = (key: string): number => {
+            const holding = allTemplates
+                .map((t, i) => ({ i, n: Object.values(t.findResources('AWS::ApiGatewayV2::Route')).filter((r: any) => r.Properties.RouteKey === key).length }))
+                .filter((x) => x.n > 0);
+            expect({ key, holding }).toEqual({ key, holding: [{ i: holding[0]?.i, n: 1 }] });
+            expect(holding[0].i).toBeGreaterThan(0);
+            return holding[0].i;
+        };
+
+        test('(cmrc1b-1) the table: one, in the parent, PK/SK strings, PAY_PER_REQUEST, PITR, Retain on delete and replace, no index, no stream, no TTL, no resource policy', () => {
+            const { resource } = parentTable(COMMERCE);
+            const p = resource.Properties;
+            expect(p.BillingMode).toBe('PAY_PER_REQUEST');
+            expect(p.PointInTimeRecoverySpecification).toEqual({ PointInTimeRecoveryEnabled: true });
+            expect(p.KeySchema).toEqual([
+                { AttributeName: 'PK', KeyType: 'HASH' },
+                { AttributeName: 'SK', KeyType: 'RANGE' },
+            ]);
+            expect(p.AttributeDefinitions).toEqual([
+                { AttributeName: 'PK', AttributeType: 'S' },
+                { AttributeName: 'SK', AttributeType: 'S' },
+            ]);
+            expect(p.GlobalSecondaryIndexes).toBeUndefined();
+            expect(p.LocalSecondaryIndexes).toBeUndefined();
+            expect(p.StreamSpecification).toBeUndefined();
+            expect(p.TimeToLiveSpecification).toBeUndefined();
+            expect(p.ResourcePolicy).toBeUndefined();
+            // Nothing but the properties above and the stack's tags (a new property is read by a person before it ships).
+            expect(Object.keys(p).sort()).toEqual(['AttributeDefinitions', 'BillingMode', 'KeySchema', 'PointInTimeRecoverySpecification', 'TableName', 'Tags']);
+            expect(resource.DeletionPolicy).toBe('Retain');
+            expect(resource.UpdateReplacePolicy).toBe('Retain');
+            // Control: the scheduling table differs exactly by its TTL (the detector reads the property).
+            expect(parentTable(SCHEDULING).resource.Properties.TimeToLiveSpecification).toBeDefined();
+        });
+
+        test('(cmrc1b-2) nothing uses the table: no resource, output or parameter of any template names it; no function variable holds it; no IAM grant denotes it', () => {
+            const tree = realTree();
+            const commerce = parentTable(COMMERCE);
+            const scheduling = parentTable(SCHEDULING);
+            const main = parentTable(MAIN);
+
+            // 1. Mention scan over every resource (functions and their variables, roles, policies, nested-stack
+            //    parameters), output and parameter of every template.
+            expect(referrers(tree, commerce)).toEqual([]);
+            // Positive controls: the same scan finds the main table's referrers, and each mention form of this table.
+            expect(referrers(tree, main).length).toBeGreaterThan(0);
+            const id = commerce.logicalId;
+            for (const mention of [
+                { Ref: id }, { 'Fn::GetAtt': [id, 'Arn'] }, { 'Fn::GetAtt': `${id}.Arn` }, { 'Fn::Sub': `\${${id}}` }, { 'Fn::Sub': `\${${id}.Arn}` },
+                `arn:aws:dynamodb:eu-central-1:111111111111:table/${COMMERCE}`, { DependsOn: [id] },
+            ]) {
+                const withMention: Tree = [{ Resources: { ...tree[0].Resources, Probe: { Type: 'AWS::Lambda::Function', Properties: { Environment: { Variables: { X: mention } } } } } }, ...tree.slice(1)];
+                expect({ mention, found: referrers(withMention, commerce) }).toEqual({ mention, found: ['template[0].Resources.Probe'] });
+            }
+
+            // 2. Function variables, by name and by value (the name `cmrc-4` will introduce must not exist yet).
+            const variables = allTemplates.flatMap((t) => Object.values(t.findResources('AWS::Lambda::Function')))
+                .map((fn: any) => fn.Properties.Environment?.Variables ?? {});
+            expect(variables.some((v) => Object.prototype.hasOwnProperty.call(v, 'TABLE_NAME'))).toBe(true);   // control
+            expect(variables.filter((v) => Object.keys(v).some((name) => /COMMERCE/i.test(name)))).toEqual([]);
+            expect(variables.filter((v) => JSON.stringify(v).includes('AmodxCommerceTable'))).toEqual([]);
+
+            // 3. IAM, by the reading rule of this block: every policy of the tree has a recognised shape and every DynamoDB
+            //    grant denotes a table as a whole (a wildcard grant would be a shape violation). The tables denoted: the
+            //    main table, the renderer's OpenNext tag-cache table, and (flagged by the rule as its own subject) the
+            //    scheduling table — never this one.
+            const read = readIam(tree);
+            expect(read.violations).toEqual([]);
+            const result = checkDynamodbGrants(read.located, tree, scheduling);
+            expect(result.violations.filter((v) => !v.endsWith(': denotes the scheduling table'))).toEqual([]);
+            expect(result.resolved).toContain(main.logicalId);   // control: the rule resolves grants
+            expect(result.resolved).not.toContain(commerce.logicalId);
+            const tagCache = Object.keys(tree[0].Resources).filter((x) => x.startsWith('RendererHostingTagCacheTable') && tree[0].Resources[x].Type === 'AWS::DynamoDB::Table');
+            expect(tagCache).toHaveLength(1);
+            expect(result.resolved).toEqual([main.logicalId, tagCache[0]].sort());
+            // Positive control: a grant on this table IS resolved to it (so its absence above is a finding, not blindness).
+            const granted: Tree = [{
+                Resources: {
+                    ...Object.fromEntries(Object.entries(tree[0].Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::DynamoDB::Table')),
+                    ProbePolicy: { Type: 'AWS::IAM::Policy', Properties: { Roles: [{ Ref: 'ProbeRole' }], PolicyDocument: { Statement: [{ Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: { 'Fn::GetAtt': [id, 'Arn'] } }] } } },
+                },
+            }];
+            expect(checkDynamodbGrants(readIam(granted).located, granted, scheduling).resolved).toEqual([id]);
+        });
+
+        test('(cmrc1b-3) the two routes: once in the stack tree, in the CommerceApi nested stack, behind its authorizer (never anonymous), each on its own function', () => {
+            const at = templateOfRoute(ROUTES[0].key);
+            const commerceTemplate = allTemplates[at];
+            // The template is the commerce nested stack: it holds the existing renderer-key route and the admin customer routes.
+            const keys = Object.values(commerceTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties.RouteKey);
+            for (const sibling of ['POST /public/customers/profile', 'GET /customers', 'POST /public/orders']) expect(keys).toContain(sibling);
+            const authorizers = Object.keys(commerceTemplate.findResources('AWS::ApiGatewayV2::Authorizer'));
+            expect(authorizers).toHaveLength(1);
+
+            for (const { key, construct, handler } of ROUTES) {
+                expect(templateOfRoute(key)).toBe(at);
+                const route = (Object.values(commerceTemplate.findResources('AWS::ApiGatewayV2::Route')).find((r: any) => r.Properties.RouteKey === key) as any).Properties;
+                expect(route.AuthorizationType).toBe('CUSTOM');
+                expect(route.AuthorizerId).toEqual({ Ref: authorizers[0] });
+                const integrationId = JSON.stringify(route.Target).match(/"Ref":"([^"]+)"/)![1];
+                const integration = commerceTemplate.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+                const fns = Object.entries(commerceTemplate.findResources('AWS::Lambda::Function')).filter(([fnId]) => fnId.startsWith(construct));
+                expect({ construct, found: fns.length }).toEqual({ construct, found: 1 });
+                expect(integration.Properties.IntegrationUri).toEqual({ 'Fn::GetAtt': [fns[0][0], 'Arn'] });
+                expect((fns[0][1] as any).Properties.Handler).toBe(handler);
+            }
+        });
+
+        test('(cmrc1b-4) each of the two functions: TABLE_NAME (the main table) is its only variable; its role is its own and every statement on it is a read of the main table — no write, no SES, no event bus, no secret, no invoke; every OTHER commerce function keeps the event-bus grant', () => {
+            const tree = realTree();
+            const main = parentTable(MAIN);
+            const at = templateOfRoute(ROUTES[0].key);
+            const json = tree[at];
+            const read = readIam(tree);
+            expect(read.violations).toEqual([]);
+            const logicalIds: string[] = [];
+
+            for (const { construct } of ROUTES) {
+                const fns = Object.entries(json.Resources).filter(([fnId, r]: [string, any]) => r.Type === 'AWS::Lambda::Function' && fnId.startsWith(construct)) as Array<[string, any]>;
+                expect(fns).toHaveLength(1);
+                const [fnId, fn] = fns[0];
+
+                // Variables: exactly TABLE_NAME (the main table's name, passed by the parent). No event bus, no renderer
+                // URL, no revalidation secret, no SES sender.
+                const vars = fn.Properties.Environment.Variables;
+                expect(Object.keys(vars)).toEqual(['TABLE_NAME']);
+                expect(parentParameterValues(tree).get(vars.TABLE_NAME.Ref)).toEqual({ Ref: main.logicalId });
+
+                // The role: this function's only, with the one AWS-managed logging policy.
+                const roleId = fn.Properties.Role['Fn::GetAtt'][0] as string;
+                const usersOfRole = Object.entries(json.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::Lambda::Function' && r.Properties.Role?.['Fn::GetAtt']?.[0] === roleId).map(([x]) => x);
+                expect(usersOfRole).toEqual([fnId]);
+                expect(json.Resources[roleId].Properties.ManagedPolicyArns).toEqual(KNOWN_NO_DYNAMODB);
+                expect(json.Resources[roleId].Properties.Policies).toBeUndefined();
+
+                // Every statement that reaches the role (CDK writes `grantReadData` as two: the item reads, and the two
+                // stream-read actions): each is an Allow of DynamoDB read actions on the main table (and its indexes).
+                // Together they are exactly the read set — so there is no write, no `ses:`, no `events:PutEvents`, no
+                // `secretsmanager:`, no `lambda:InvokeFunction`, no wildcard.
+                const reaching = read.located.filter((l) => l.template === at && l.roles.includes(roleId));
+                expect(reaching.length).toBeGreaterThan(0);
+                for (const { statement } of reaching) {
+                    expect(statement.Effect).toBe('Allow');
+                    expect(statement.NotAction).toBeUndefined();
+                    const tables = ([] as unknown[]).concat(statement.Resource).map((r) => tableOf(r, at, tree));
+                    expect(tables.length).toBeGreaterThan(0);
+                    expect([...new Set(tables)]).toEqual([main.logicalId]);
+                }
+                expect(reaching.flatMap(({ statement }) => actionsOf(statement, 'Action') ?? ['<not a string list>']).sort()).toEqual(READ_ACTIONS);
+
+                const policyIds = Object.entries(json.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::IAM::Policy' && (r.Properties.Roles ?? []).some((x: any) => x.Ref === roleId)).map(([x]) => x);
+                const integrationIds = Object.entries(json.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::ApiGatewayV2::Integration' && JSON.stringify(r.Properties.IntegrationUri).includes(`"${fnId}"`)).map(([x]) => x);
+                const routeIds = Object.entries(json.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::ApiGatewayV2::Route' && integrationIds.some((x) => JSON.stringify(r.Properties.Target).includes(`"${x}"`))).map(([x]) => x);
+                const permissionIds = Object.entries(json.Resources).filter(([, r]: [string, any]) => r.Type === 'AWS::Lambda::Permission' && JSON.stringify(r.Properties.FunctionName).includes(`"${fnId}"`)).map(([x]) => x);
+                for (const list of [policyIds, integrationIds, routeIds, permissionIds]) expect(list).toHaveLength(1);
+                logicalIds.push(fnId, roleId, ...policyIds, ...integrationIds, ...routeIds, ...permissionIds);
+            }
+            // The stack's event-bus grant (the loop at the end of api-commerce.ts) skips exactly these two functions: every
+            // other function of the commerce nested stack still has `events:PutEvents`.
+            const policies = Object.values(json.Resources).filter((r: any) => r.Type === 'AWS::IAM::Policy') as any[];
+            const withoutEventBus = (Object.entries(json.Resources) as Array<[string, any]>)
+                .filter(([, r]) => r.Type === 'AWS::Lambda::Function')
+                .filter(([, fn]) => {
+                    const roleId = fn.Properties.Role['Fn::GetAtt'][0];
+                    return !policies.filter((p) => (p.Properties.Roles ?? []).some((x: any) => x.Ref === roleId))
+                        .flatMap((p) => [].concat(p.Properties.PolicyDocument.Statement) as any[])
+                        .some((st) => ([] as string[]).concat(st.Action ?? []).includes('events:PutEvents'));
+                })
+                .map(([fnId]) => ROUTES.find((r) => fnId.startsWith(r.construct))?.construct ?? fnId);
+            expect(withoutEventBus.sort()).toEqual(ROUTES.map((r) => r.construct).sort());
+            expect(Object.values(json.Resources).filter((r: any) => r.Type === 'AWS::Lambda::Function').length).toBeGreaterThan(30);   // control: the siblings were read
+
+            // The logical ids the staging diff will show for this slice (docs/slices/cmrc-1b.md § Deployment), logged once.
+            console.log(`(cmrc1b-4) new logical ids — parent: ${parentTable(COMMERCE).logicalId}; CommerceApi nested stack: ${logicalIds.join(', ')}`);
+        });
+
+        test("(cmrc1b-5) the renderer server function: no variable names the commerce table, and its role's DynamoDB grants denote the main table and its own tag-cache table only", () => {
+            const tree = realTree();
+            const main = parentTable(MAIN);
+            const fns = Object.entries(template.findResources('AWS::Lambda::Function')).filter(([fnId]) => fnId.includes('RendererHostingRendererServer'));
+            expect(fns).toHaveLength(1);
+            const fn = fns[0][1] as any;
+            expect(JSON.stringify(fn.Properties.Environment.Variables)).not.toMatch(/Commerce/i);
+            const roleId = fn.Properties.Role['Fn::GetAtt'][0] as string;
+            const read = readIam(tree);
+            const result = checkDynamodbGrants(read.located.filter((l) => l.template === 0 && l.roles.includes(roleId)), tree, parentTable(SCHEDULING));
+            expect(result.violations).toEqual([]);
+            const tagCache = Object.keys(tree[0].Resources).filter((x) => x.startsWith('RendererHostingTagCacheTable') && tree[0].Resources[x].Type === 'AWS::DynamoDB::Table');
+            expect(tagCache).toHaveLength(1);
+            expect(result.resolved).toEqual([main.logicalId, tagCache[0]].sort());
+        });
+    });
+
+    // ────────────────────────────────────────────────────────────────────────────────────────────
     // SCHED-1D1 — rows I1, I2, I4, I5 of `sched-1d` (docs/slices/sched-1.md § 11.2, § 17.3) for the functions this
     // slice creates (the admin routes). The visitor functions of `sched-1d2` (and I3, the hold's reCAPTCHA secret) are
     // added to these lists by that slice. Inside the SCHED-1B block so the IAM reading rule above is the one used.

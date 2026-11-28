@@ -364,8 +364,9 @@ the old HTTP-200 "Site Not Found" shell suppressed the page's own `notFound()`.)
 Ratified 2026-07-26 (human decision **CACHE-1-D4**), after review found the rule was
 implemented for `getTenantConfig()` only.
 
-**Every read helper in `renderer/src/lib/dynamo.ts` and `renderer/src/lib/dynamo-customer-reads.ts` (the order and
-customer reads, re-exported by `dynamo.ts`) lets AWS/SDK errors propagate, and so does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
+**Every read helper in `renderer/src/lib/dynamo.ts` and `renderer/src/lib/dynamo-customer-reads.ts` (the order-page
+read `getOrderForCustomer`, re-exported by `dynamo.ts`; since CMRC-1B the account reads are `lib/customer-api.ts`, which
+asks the backend and THROWS `CustomerApiError` for anything but the route's answer — the same rule) lets AWS/SDK errors propagate, and so does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
 the record genuinely is not there. Not one of them catches an operational failure. This is
 not a `getTenantConfig()` rule, not a "`lib/dynamo.ts` only" rule and not a "cacheable routes
 only" rule — dual read semantics were explicitly rejected, so there is no render-mode
@@ -440,6 +441,14 @@ Two read paths outside `lib/dynamo.ts` keep different internals on purpose:
   `app/api/{comments,consent,contact,leads,profile}/route.ts` only — none under
   `app/[siteId]/` or `components/`. Making the empty-key case fail earlier and more loudly is
   a candidate cleanup, not a cache correctness issue.
+  Since then the file also holds `callBackend` (CMRC-1B, 2026-11-28; before it `forward` of
+  `lib/booking-proxy.ts`, `sched-1g`), which DOES fail earlier: with an empty key it makes no
+  call and returns `null`. Its users are `lib/customer-api.ts` (the GETs of
+  `app/api/account/orders` and `app/api/profile`, which then answer 500) and
+  `lib/booking-proxy.ts` (the booking routes under `app/%5Fbook/`, which answer 503) — so
+  the grep above no longer lists every caller of the key, and "only from `/api/*` handlers"
+  holds for the cacheable tree, not for the booking tree, which is never stored. The property
+  D4 is about is unchanged: no 200 carrying empty data.
 
 The hazard that gated the deploy (**H1**, the `RSC` cache key) is closed in `cache-3` — see
 **Open hazards activated by cache-1** below for the before/after. Nothing in the track is

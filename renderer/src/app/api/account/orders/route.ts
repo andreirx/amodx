@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { getTenantConfig, getCustomerOrders } from "@/lib/dynamo";
+import { getTenantConfig } from "@/lib/dynamo";
+import { getCustomerOrders } from "@/lib/customer-api";
 import GoogleProvider from "next-auth/providers/google";
 
 /**
