@@ -2222,7 +2222,12 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             const variables = allTemplates.flatMap((t) => Object.values(t.findResources('AWS::Lambda::Function')))
                 .map((fn: any) => fn.Properties.Environment?.Variables ?? {});
             expect(variables.some((v) => Object.prototype.hasOwnProperty.call(v, 'TABLE_NAME'))).toBe(true);   // control
-            expect(variables.filter((v) => Object.keys(v).some((name) => /COMMERCE/i.test(name)))).toEqual([]);
+            // A variable NAMED for a commerce table (CMRC-2B: the rule was `/COMMERCE/i`, which also refused
+            // COMMERCE_WRITE_FREEZE_TENANTS — a tenant list on the five writers, `(cmrc2b-1)` — that names no table).
+            const namesCommerceTable = (name: string) => /COMMERCE.*TABLE|TABLE.*COMMERCE/i.test(name);
+            expect(['COMMERCE_TABLE_NAME', 'COMMERCE_TABLE', 'TABLE_NAME_COMMERCE'].every(namesCommerceTable)).toBe(true);   // control
+            expect(['COMMERCE_WRITE_FREEZE_TENANTS', 'TABLE_NAME'].some(namesCommerceTable)).toBe(false);                    // control
+            expect(variables.filter((v) => Object.keys(v).some(namesCommerceTable))).toEqual([]);
             expect(variables.filter((v) => JSON.stringify(v).includes('AmodxCommerceTable'))).toEqual([]);
 
             // 3. IAM, by the reading rule of this block: every policy of the tree has a recognised shape and every DynamoDB
@@ -2685,5 +2690,35 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             expect(deployedParent).toBeLessThan(500);
             expect(deployedNested).toBeLessThan(500);
         });
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// CMRC-2B (docs/slices/cmrc-2b.md § Proofs; docs/slices/cmrc-1.md § 6 "The write freeze"): the commerce write freeze
+// variable is on exactly the five writer functions W1-W5 and on no other function of any template; with no deploy
+// input (this synth passes no context `commerceWriteFreezeTenants`) its value is the empty text: no tenant frozen.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('CMRC-2B — COMMERCE_WRITE_FREEZE_TENANTS on the five commerce writers only', () => {
+    const VARIABLE = 'COMMERCE_WRITE_FREEZE_TENANTS';
+    const WRITERS = ['CreateOrderFunc', 'UpdateOrderStatusFunc', 'UpdateOrderFunc', 'UpdateCustomerFunc', 'PublicUpdateCustomerFunc'];
+    /** Every function of every template that has the variable: template index, construct id (logical id minus its 8-character hash), value. */
+    const holders = () =>
+        allTemplates.flatMap((t, i) =>
+            Object.entries(t.findResources('AWS::Lambda::Function'))
+                .filter(([, fn]: [string, any]) => Object.prototype.hasOwnProperty.call(fn.Properties.Environment?.Variables ?? {}, VARIABLE))
+                .map(([id, fn]: [string, any]) => ({ template: i, construct: id.replace(/[0-9A-F]{8}$/, ''), value: fn.Properties.Environment.Variables[VARIABLE] })),
+        );
+
+    test('(cmrc2b-1) exactly the five writer functions hold the variable, all in the CommerceApi nested stack', () => {
+        const found = holders();
+        expect(found.map((h) => h.construct).sort()).toEqual([...WRITERS].sort());
+        const commerceAt = 1 + allTemplates.slice(1).findIndex((t) =>
+            Object.values(t.findResources('AWS::ApiGatewayV2::Route')).some((r: any) => r.Properties.RouteKey === 'POST /public/orders'));
+        expect(commerceAt).toBeGreaterThan(0);
+        expect(new Set(found.map((h) => h.template))).toEqual(new Set([commerceAt]));
+    });
+
+    test('(cmrc2b-2) with no deploy input the value is the empty text on each of them', () => {
+        expect(holders().map((h) => h.value)).toEqual(['', '', '', '', '']);
     });
 });

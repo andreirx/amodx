@@ -29,6 +29,9 @@ interface CommerceApiProps extends NestedStackProps {
     // avoids a nested→parent stack cycle). categories update/delete async-invoke it after the
     // fast-lane marker write so an edit's own edge drain runs in ~1s.
     debounceFlushFunctionName: string;
+    // CMRC-2B (docs/slices/cmrc-2b.md): the comma list of tenant ids whose commerce writes are frozen, set on exactly
+    // the five writer functions as COMMERCE_WRITE_FREEZE_TENANTS. Empty = no tenant frozen (the shipped state).
+    commerceWriteFreezeTenants: string;
 }
 
 export class CommerceApi extends NestedStack {
@@ -322,6 +325,13 @@ export class CommerceApi extends NestedStack {
 
         // SECURITY: Requires auth (renderer sends x-api-key). Was previously noAuth — see Finding 2 remediation.
         addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc);
+
+        // CMRC-2B (docs/slices/cmrc-2b.md; docs/slices/cmrc-1.md § 6 "The write freeze"): the five runtime writers of the
+        // commerce-private items, W1-W5. Each refuses a listed tenant with 503 before its first effect. Readers do not
+        // get the variable. A new writer of these items joins this list.
+        for (const writer of [createOrderFunc, updateOrderStatusFunc, updateOrderFunc, updateCustomerFunc, publicUpdateCustomerFunc]) {
+            writer.addEnvironment('COMMERCE_WRITE_FREEZE_TENANTS', props.commerceWriteFreezeTenants);
+        }
 
         // Customer self-service READS for the renderer (CMRC-1B, CMRC-1L; docs/slices/cmrc-1.md § 5.8): the account
         // pages' order history and profile, and (CMRC-1L) the order of the order confirmation and tracking pages. The

@@ -9,6 +9,7 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { getDefaultTemplates, renderTemplate } from "../lib/order-email.js";
 import { formatFromHeader } from "../lib/email-from.js";
+import { commerceWriteFreezeRefusal } from "../lib/commerce-freeze.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -37,6 +38,11 @@ const _handler: Handler = async (event) => {
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
+
+        // CMRC-2B (docs/slices/cmrc-2b.md): a frozen tenant's order is not changed. Before the split below, so both the
+        // field patch and the payment transition (its read, update, audit event and mail) are refused.
+        const frozen = commerceWriteFreezeRefusal(tenantId);
+        if (frozen) return frozen;
 
         const body = JSON.parse(event.body);
 

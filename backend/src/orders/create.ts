@@ -9,6 +9,7 @@ import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { OrderInputSchema, normalizeEmail, linePrice, roundToCents, sameAmountInCents, resolveLocaleStrings, evaluateCoupon, amountInCents, isCouponType, type PriceChangedAnswer, type CouponCartLine, type CouponRuleRecord } from "@amodx/shared";
 import { formatFromHeader } from "../lib/email-from.js";
+import { commerceWriteFreezeRefusal } from "../lib/commerce-freeze.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -31,6 +32,11 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
+
+        // CMRC-2B (docs/slices/cmrc-2b.md): a tenant in COMMERCE_WRITE_FREEZE_TENANTS takes no order. Before the origin
+        // check (a DynamoDB Query), reCAPTCHA, every read and the order-counter UpdateItem: a refused request has no effect.
+        const frozen = commerceWriteFreezeRefusal(tenantId);
+        if (frozen) return frozen;
 
         // Phase 3.4: Verify tenant ID matches origin domain
         const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId);

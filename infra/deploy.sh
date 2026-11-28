@@ -4,6 +4,10 @@
 #   ./deploy.sh prod            show the diff, ask, then deploy
 #   ./deploy.sh prod diff       show the diff only
 #   ./deploy.sh staging         same, for the staging stage
+#   COMMERCE_WRITE_FREEZE_TENANTS=<id,id> ./deploy.sh staging
+#                               CMRC-2B (docs/slices/cmrc-2b.md): freeze the commerce writes of these tenants. The list
+#                               is the CDK context commerceWriteFreezeTenants; without the variable it is empty (no
+#                               tenant frozen), so every deploy that does not name it releases a freeze.
 #
 # Why this script exists: the renderer build bakes NEXT_PUBLIC_API_URL, NEXT_PUBLIC_USER_POOL_ID and
 # NEXT_PUBLIC_USER_POOL_CLIENT_ID into the bundle. A deploy without them ships a renderer that cannot reach the API.
@@ -30,6 +34,8 @@ case "$action" in
   deploy|diff) ;;
   *) echo "usage: ./deploy.sh <prod|staging> [diff]" >&2; exit 2 ;;
 esac
+freeze="${COMMERCE_WRITE_FREEZE_TENANTS:-}"
+cdk_args+=(-c "commerceWriteFreezeTenants=$freeze")
 
 output() {
   aws cloudformation describe-stacks --region "$region" --stack-name "$stack" \
@@ -64,6 +70,7 @@ prune_old_build_output() {
   echo "deploy.sh: removed $removed build output entries older than 24 hours from cdk.out."
 }
 echo "deploy.sh: stage $stage, stack $stack, region $region; the three public variables are set from the stack outputs."
+echo "deploy.sh: commerce write freeze list: ${freeze:-<empty: no tenant frozen>}"
 
 npx cdk diff "${cdk_args[@]}"
 if [ "$action" = "diff" ]; then prune_old_build_output; exit 0; fi

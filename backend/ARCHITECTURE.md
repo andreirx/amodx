@@ -11,7 +11,7 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 26 files in total)
+├── lib/                   # (selected modules; 27 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── commerce-db.ts     # CMRC-1A (docs/slices/cmrc-1a.md; docs/slices/cmrc-1.md § 5.5; PROTOTYPE): WITHIN
 │   │                      #   backend/src, the only code that writes the commerce-private key prefixes (ORDER#,
@@ -35,6 +35,14 @@ src/
 │   │                      #   public-update, self-service), reports/summary.ts, resources/presign.ts. Does not import
 │   │                      #   scheduling-db.ts, and is not imported by it. Tests: test/unit/cmrc-1-commerce-db.test.ts,
 │   │                      #   cmrc-1-key-ownership.test.ts, cmrc-1-command-trace.test.ts (§ Testing)
+│   ├── commerce-freeze.ts # CMRC-2B (docs/slices/cmrc-2b.md; PROTOTYPE): the commerce write freeze. Pure
+│   │                      #   parseCommerceWriteFreeze(listText) → closed sum none | tenants | unreadable (an entry
+│   │                      #   with whitespace, ; or a quote → every tenant frozen, fail closed); commerceWriteFreezeRefusal
+│   │                      #   (tenantId) reads COMMERCE_WRITE_FREEZE_TENANTS at each call and returns the 503
+│   │                      #   { code: "commerceFrozen", error } answer or undefined, logging the reason. Users: the five
+│   │                      #   writers W1-W5 only (orders/create, orders/update-status, orders/update, customers/update,
+│   │                      #   customers/public-update), each once, before its first I/O call. A sibling of
+│   │                      #   commerce-db.ts (which stays pure); neither imports the other
 │   ├── dynamo-reserved-words.ts # PROJECTION-RESERVED-1: DYNAMO_RESERVED_WORDS, the 573 official reserved words
 │   │                      #   (source URL + copy date in the header). Imported by the unit-test guard only — in no
 │   │                      #   Lambda bundle. Rule: a reserved word used as an attribute name in an expression needs an
@@ -945,7 +953,16 @@ can still read all four: the main-table read grant is not changed.
   `backend/src`, `renderer/src` or `packages/*/src`, with no exception since CMRC-1L (it does not read
   `scripts/`, tests, `admin/`, `tools/`, `infra/`). Reason: `cmrc-4` moves the storage by changing the one binding
   `COMMERCE_TABLE` in the module; a site that names the key or the table itself would keep reading the old copy —
-  which is why the cutover gate (`docs/slices/cmrc-1.md` § 6) asks for this test with no exception. In `orders/create.ts` the three commerce-private transaction items take their table from the
+  which is why the cutover gate (`docs/slices/cmrc-1.md` § 6) asks for this test with no exception.
+  **The write freeze (CMRC-2B, record `docs/slices/cmrc-2b.md`):** the five runtime writers of these items — W1
+  `orders/create.ts`, W2 `orders/update-status.ts`, W3 `orders/update.ts`, W4 `customers/update.ts`, W5
+  `customers/public-update.ts` (re-derived from the importers of `lib/commerce-db.ts`) — call
+  `commerceWriteFreezeRefusal(tenantId)` of `lib/commerce-freeze.ts` once, after the tenant header, the presence checks
+  before it and the role check, and before the first I/O call of any kind (W1: before the origin check, reCAPTCHA,
+  every read and the order-counter UpdateItem). For a tenant in the deploy-time variable `COMMERCE_WRITE_FREEZE_TENANTS`
+  (on those five functions only) they answer 503 `{ code: "commerceFrozen", error: "Orders are paused for a short
+  maintenance. Try again in a few minutes." }` and cause no effect (no command, audit event, mail). Readers are not
+  frozen. Empty or absent list: no change for any tenant. A new writer of a commerce-private kind must call it too. In `orders/create.ts` the three commerce-private transaction items take their table from the
   references and the two coupon items keep `TABLE_NAME`. `COUPONUSE#` is not in the module yet (the operator's ruling
   CMRC-MAIN-KEYS = revised B moves it in `cmrc-4`); the order-mail counter `EMAILLIMIT#` stays a main-table key
   written in `orders/create.ts`
@@ -1181,6 +1198,14 @@ files, all credential-free:
   `assertNoBareReservedWord` itself: the `setupFiles` mock below wraps `@aws-sdk/lib-dynamodb`, which the tool does
   not use. These files and the tool are type-checked (strict) by the root `npm run typecheck`, step
   `typecheck:commerce-private-table-tool` — not by this package's `tsc`, which covers `src/` only.
+- `test/unit/cmrc-2b-write-freeze.test.ts`, `cmrc-2b-commerce-freeze.test.ts`, `cmrc-2b-self-service-readers.test.ts`
+  (CMRC-2B, record `docs/slices/cmrc-2b.md` § *Proofs*) — the write freeze. The first runs every scenario of the
+  command trace above with `COMMERCE_WRITE_FREEZE_TENANTS` set: listed tenant → every writer scenario has NO effect and
+  answers 503 `commerceFrozen`, except the five scenarios refused before the guard position (listed by name: they pin
+  each guard's position), and the origin check and reCAPTCHA decision of `orders/create.ts` are not reached; an
+  unreadable list → the same; every reader scenario equals the golden; other tenants, an empty and an absent variable
+  → the whole trace equals the golden file byte for byte (it does not capture a golden). The second tests the parsing
+  rules and the refusal; the third shows the three `/customer/*` reads answer a listed tenant.
 
 **The reserved-word guard (PROJECTION-RESERVED-1, `docs/slices/projection-reserved-1.md`).** The test doubles do not
 evaluate expressions, so a bare DynamoDB reserved word (`total`, `source`, `items`, `status`, `name`, `data`, …) in an

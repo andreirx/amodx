@@ -5,6 +5,7 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { normalizeEmail } from "@amodx/shared";
+import { commerceWriteFreezeRefusal } from "../lib/commerce-freeze.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -24,6 +25,10 @@ const _handler: Handler = async (event) => {
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
+
+        // CMRC-2B (docs/slices/cmrc-2b.md): a frozen tenant's customer profile is not changed.
+        const frozen = commerceWriteFreezeRefusal(tenantId);
+        if (frozen) return frozen;
 
         const body = JSON.parse(event.body);
         const { notes } = body;

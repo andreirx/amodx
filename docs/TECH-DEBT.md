@@ -625,6 +625,25 @@ word has these known limits:
 - **Generated maps** `scripts/MAP.md` and `scripts/migrate-commerce-private-table_ts_MAP.md` describe the old file
   until `rmap` is refreshed.
 
+### CMRC-2B residuals (2026-11-28)
+**Found / left by:** `cmrc-2b` (`docs/slices/cmrc-2b.md`). None is fixed there.
+
+- **Not yet proven on AWS:** that `./deploy.sh` brings the list to the five functions, that Lambda takes the empty
+  value, and that the five probes answer as stated. Open until the operator's staging procedure.
+- **F-CMRC2B-CHECKOUT-TEXT:** the checkout shows the freeze text as the server sends it, in English on every shop (as
+  for the route's other refusals). A localized text needs a code → locale-key mapping in `CheckoutPageView.tsx` and
+  approved RO/DE/FR texts. Minutes of exposure per copy.
+- **F-CMRC2B-PROFILE-SILENT:** the account page's profile form shows nothing on any non-OK save answer (the freeze
+  included); the form stays open. Pre-existing for every failure.
+- **F-CMRC2B-MCP-REASON:** MCP `update_order_status` returns `isError` with axios's message only ("Request failed with
+  status code 503"); the helper `apiError` of `tools/mcp-server/src/tool-helpers.ts` would show the server's reason.
+- **A well-formed but wrong tenant id freezes nothing** for the intended shop; only the operator's probe P2 finds it.
+- **F-CMRC2A-STALE-COMMENT** (above) is still open: the packet of `cmrc-2b` did not allocate `commerce-db.ts`.
+- **F-CMRC2B-NO-IMPLICIT-RETURNS:** `backend/tsconfig.json` does not set `noImplicitReturns`, so a `switch` over a
+  closed sum in a function that may return `undefined` compiles clean when a variant has no case (review-0 of
+  `cmrc-2b`, R1). `lib/commerce-freeze.ts` closes it locally with a `never` check. Setting the option for the whole
+  backend is a package-wide change; its fallout is not measured.
+
 ### F-RESERVED-SCAN-LIMITS: known false-clean forms of the reserved-word lint (2026-11-27)
 **Found:** `projection-reserved-1` review 2; scope frozen by the operator ruling PR1-STATIC-SCOPE
 (`docs/slices/projection-reserved-1.md`). The static lint (`scanExpressionSites`,

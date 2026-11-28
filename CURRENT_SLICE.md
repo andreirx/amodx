@@ -4,8 +4,15 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in Track B: `cmrc-2b` (the write freeze guard, `docs/slices/cmrc-1.md` § 6 "The write freeze").
+Nothing. Track B waits for the human on two points before `cmrc-3` (the copy rehearsal on staging) and `cmrc-4` (the
+cutover): (1) whether the operator may write `AmodxCommerceTable-staging` (the standing rule names two staging tables);
+(2) whether production holds a real customer order (CMRC-TEST-ONLY). Also open before `cmrc-4`: where the commerce
+audit entries are stored (`docs/slices/cmrc-1.md` Appendix R.1; F-CMRC2A-AUDIT).
 
+`cmrc-2b` is on staging since 2026-11-28 with an empty list (`docs/slices/cmrc-2b.md` § "Closeout") and waits for the
+human's production deploy: `COMMERCE_WRITE_FREEZE_TENANTS` (a deploy-time list; `infra/deploy.sh` reads the
+operator's variable of that name, empty when absent) makes the five commerce writers answer 503 `commerceFrozen`
+for a listed tenant before their first I/O; readers are not frozen.
 `cmrc-2a` is built since 2026-11-28 (`docs/slices/cmrc-2a.md` § "Closeout"; nothing to deploy): the tool
 `scripts/migrate-commerce-private-table.ts` (+ `scripts/commerce-private-table/`) does the inventory, the copy with
 conditional writes, the content verification with a manifest, the post-cutover verification, the purge of verified
@@ -81,8 +88,8 @@ site; one real order with a price change in the cart; one real custom-form submi
 ## Not started, by track
 
 - **B commerce-private** (`cmrc-1`…`6`): mandatory (human 2026-11-20; a client with real orders is named).
-  Specification `docs/slices/cmrc-1.md`; `cmrc-1a`, `cmrc-1b`, `cmrc-1l` (part L) and `cmrc-2a` (the tool) are built
-  (above); `cmrc-2b` (the write freeze) and `cmrc-3`…`6` are not started. Backlog behind it: `cmrc-reviews-ask`,
+  Specification `docs/slices/cmrc-1.md`; `cmrc-1a`, `cmrc-1b`, `cmrc-1l` (part L), `cmrc-2a` (the tool) and `cmrc-2b`
+  (the write freeze) are built (above); `cmrc-3`…`6` are not started. Backlog behind it: `cmrc-reviews-ask`,
   `cmrc-withdrawal`.
 - **C customer sign-in** (`auth-1`…`7`): planned, no code; Google sign-in exists.
 - **D scheduling**: draft `sched-1` — two shapes (a slot with a practitioner, a seat in a group), booking by

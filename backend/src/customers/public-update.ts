@@ -5,6 +5,7 @@ import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { normalizeEmail } from "@amodx/shared";
+import { commerceWriteFreezeRefusal } from "../lib/commerce-freeze.js";
 
 /**
  * Customer profile update — called via renderer proxy only.
@@ -40,6 +41,10 @@ const _handler: AmodxHandler = async (event) => {
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
+
+        // CMRC-2B (docs/slices/cmrc-2b.md): a frozen tenant's customer profile is not changed — before the read and the update.
+        const frozen = commerceWriteFreezeRefusal(tenantId);
+        if (frozen) return frozen;
 
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 

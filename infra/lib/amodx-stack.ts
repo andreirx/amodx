@@ -267,6 +267,15 @@ export class AmodxStack extends cdk.Stack {
       });
     }
 
+    // CMRC-2B (docs/slices/cmrc-2b.md): the commerce write freeze list, a deploy-time input: CDK context
+    // `-c commerceWriteFreezeTenants=<ids>` (`infra/deploy.sh` sets it from the operator's COMMERCE_WRITE_FREEZE_TENANTS).
+    // Absent = empty = no tenant frozen. A value that is not text (e.g. a list in cdk.json) stops the synth.
+    const freezeInput: unknown = this.node.tryGetContext('commerceWriteFreezeTenants');
+    if (freezeInput !== undefined && typeof freezeInput !== 'string') {
+      throw new Error(`context commerceWriteFreezeTenants must be a comma-separated text, got ${typeof freezeInput}`);
+    }
+    const commerceWriteFreezeTenants = freezeInput ?? '';
+
     // 3b. Commerce API (NestedStack — categories, orders, customers, delivery, coupons, reviews, woo import)
     const commerceApi = new CommerceApi(this, 'CommerceApi', {
       httpApiId: api.httpApi.apiId,
@@ -283,6 +292,7 @@ export class AmodxStack extends cdk.Stack {
       recaptchaSecretKey, // Deployment-level reCAPTCHA
       // CACHE-9: categories update/delete async-invoke the flusher. Deterministic name, no cycle.
       debounceFlushFunctionName,
+      commerceWriteFreezeTenants,
     });
 
     // rev-2a (REV2A-INFRA-SURFACE): the review moderation handler's `action: "approve-image"` path

@@ -411,6 +411,29 @@ UpdateCommand({
 - Sends email via SES using template for "placed" status
 - Publishes audit event to EventBridge
 
+## Commerce Write Freeze (`cmrc-2b`)
+
+A deploy-time switch for the copy of orders and customers into the commerce private table (Track B; record
+`docs/slices/cmrc-2b.md`). The list `COMMERCE_WRITE_FREEZE_TENANTS` (comma list of tenant ids; set with
+`COMMERCE_WRITE_FREEZE_TENANTS=<ids> ./deploy.sh <stage>`, empty by default) is on the five functions that write
+orders, the email → order index, customer profiles and the order counter. For a listed tenant each of them answers
+**503** `{ "code": "commerceFrozen", "error": "Orders are paused for a short maintenance. Try again in a few minutes." }`
+before it reads or writes anything:
+
+| Writer | Route | Refused for a listed tenant |
+|---|---|---|
+| `orders/create.ts` | `POST /public/orders` | placing an order (also: no coupon use, no counter, no mail, no reCAPTCHA call) |
+| `orders/update-status.ts` | `PUT /orders/{id}/status` | a status change (no audit event, no mail) |
+| `orders/update.ts` | `PUT /orders/{id}` | tracking/notes/delivery date edits and the payment transition |
+| `customers/update.ts` | `PUT /customers/{email}` | the admin note |
+| `customers/public-update.ts` | `POST /public/customers/profile` | the customer's profile save (account page) |
+
+Every read keeps working (order list and detail, `GET /public/orders/{id}`, customers, reports, the download check,
+the three `/customer/*` routes). What people see: the admin alerts "Failed to … : API Error (503): Orders are paused
+…"; the checkout shows the `error` text as sent (English on every shop, as for the route's other refusals); the account
+page's profile form stays open with no message. A list text with whitespace, `;` or a quote inside an entry freezes
+EVERY tenant (fail closed). Shops not in the list are not changed.
+
 ## Order Status Workflow
 
 **File**: `backend/src/orders/update-status.ts`

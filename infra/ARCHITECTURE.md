@@ -68,6 +68,11 @@ Controlled by `-c stage=<name>` CDK context flag:
 
 All resources tagged with `Stage` and `Project: AMODX`.
 
+A second deploy-time input (CMRC-2B): the CDK context `commerceWriteFreezeTenants` (comma list of tenant ids; absent =
+empty). `amodx-stack.ts` reads it (a non-text value stops the synth) and passes it to `CommerceApi`; `deploy.sh` sets it
+from the operator's environment variable `COMMERCE_WRITE_FREEZE_TENANTS` and prints it before the diff. A deploy that
+does not name it deploys the empty list. § *Commerce Write Freeze*.
+
 ## DynamoDB Table (`database.ts`)
 
 - **Billing:** PAY_PER_REQUEST (serverless auto-scaling)
@@ -155,6 +160,18 @@ Counts (credential-free test synth, 2026-11-28): parent raw 413 / 53 functions, 
 CloudFormation's limit of 500**, and a stateful resource cannot move to a nested stack without replacement
 (`docs/TECH-DEBT.md`, F-CMRC1B-PARENT-HEADROOM); `CommerceApi` raw 239 / 39 functions, deployed ≈ 278 (CMRC-1L added
 one function: 6 resources and its log group; before it 233 / 38, ≈ 271). The parent count did not change with CMRC-1L.
+
+## Commerce Write Freeze (CMRC-2B)
+
+Record: `docs/slices/cmrc-2b.md`. At the end of the customer block of `api-commerce.ts`, one loop sets
+`COMMERCE_WRITE_FREEZE_TENANTS` = the prop `commerceWriteFreezeTenants` on exactly the five writer functions of the
+commerce-private items: `CreateOrderFunc`, `UpdateOrderStatusFunc`, `UpdateOrderFunc`, `UpdateCustomerFunc`,
+`PublicUpdateCustomerFunc` (W1-W5, `docs/slices/cmrc-1.md` § 6). Each answers 503 `commerceFrozen` for a listed tenant
+before its first effect (`backend/src/lib/commerce-freeze.ts`). No IAM change; no other function has the variable.
+The shipped value is the empty text (no tenant frozen). Freeze: `COMMERCE_WRITE_FREEZE_TENANTS=<ids> ./deploy.sh
+<stage>`; release: `./deploy.sh <stage>`; drain after a freeze deploy: at least 60 s (twice the 29 s timeout). Tests:
+`(cmrc2b-1)` exactly the five functions hold the variable, all in the `CommerceApi` nested stack; `(cmrc2b-2)` with
+no context its value is `""` on each.
 
 ## Lambda Configuration (`api.ts`)
 

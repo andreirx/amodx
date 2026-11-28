@@ -38,6 +38,16 @@ note under Q6 in § 6 (operator ruling CMRC2A-Q6-RELEASE-EVIDENCE = B); purge wr
 before its first delete, as § 6 says, and discard writes each line before its delete; the selector of the old mail
 counters takes no tenant list (operator ruling CMRC2A-SYSTEM-ALLOWLIST = A). S19 of § 2.2 now imports
 `COMMERCE_PRIVATE_PREFIXES`; it sends Query, GetItem, conditional PutItem and DeleteItem, no `BatchWrite`.
+**Build status (2026-11-28, fifth line):** `cmrc-2b` — part (2) of the `cmrc-2` bullet, the write freeze of § 6 — is built:
+`docs/slices/cmrc-2b.md`, baseline `404927e`, operator gates pending. The writer list re-derived from the importers of
+`commerce-db.ts` is exactly W1-W5 (no W6). `COMMERCE_WRITE_FREEZE_TENANTS` is on those five functions only (empty by
+default; set through `infra/deploy.sh` as the CDK context `commerceWriteFreezeTenants`); each writer answers 503
+`commerceFrozen` for a listed tenant before its first I/O call of any kind (W1: before the origin check, reCAPTCHA and
+every read, not only before the counter UpdateItem). A list with an unreadable entry freezes every tenant (decision D3
+of that record). P2 of § 6 is given there as five probes that write nothing in either outcome, followed by a
+read-only before/after content comparison of the four kinds (two `plan` inventories of the `cmrc-2a` tool). `cmrc-2b` added five to
+six lines to each of the five writer files (one import, the guard), so a citation into W1-W5 below its guard is off
+by that much more.
 The § 2.2 site table below is corrected to `a78c006`. Every other file:line citation of this document stays as read
 at `5aee9cb`. `cmrc-1a` made the twelve handler files of S1-S15 shorter by zero to nine lines each (the largest:
 `customers/get.ts`, nine), so a citation into one of them can be off by that much on the current tree

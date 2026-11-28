@@ -8,6 +8,7 @@ import { publishAudit } from "../lib/events.js";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 import { formatFromHeader } from "../lib/email-from.js";
+import { commerceWriteFreezeRefusal } from "../lib/commerce-freeze.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -32,6 +33,11 @@ const _handler: Handler = async (event) => {
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
+
+        // CMRC-2B (docs/slices/cmrc-2b.md): a frozen tenant's order is not changed — before the order read, the update,
+        // the audit event and the mail.
+        const frozen = commerceWriteFreezeRefusal(tenantId);
+        if (frozen) return frozen;
 
         const body = JSON.parse(event.body);
         const { status, note, trackingNumber } = body;
