@@ -23,7 +23,7 @@ Browser (localStorage cart)
     │                              SES (email)
     │                              EventBridge (audit)
     │
-    ├─ Order tracking ────── Public GET with email verification
+    ├─ Order tracking ────── order id + email in the link → backend order lookup (renderer key; CMRC-1L)
     └─ Customer account ──── NextAuth Google OAuth → order history
 ```
 
@@ -265,6 +265,18 @@ prices). Record: `docs/slices/order-confirm-1.md`.
   `/checkout/confirmation?id=…`), with `orderId` from the order answer `{ orderId, orderNumber, couponDiscount }`
   (`order-checkout-1`). The page reads the order with `getOrderForCustomer(tenant, id, email)`; no match shows the
   generic thank-you panel.
+- **Where the order of the confirmation and tracking pages comes from (CMRC-1L, `docs/slices/cmrc-1l.md`):**
+  `getOrderForCustomer` (`renderer/src/lib/customer-api.ts`) asks the backend with the renderer key:
+  `POST /customer/order-lookup`, body `{ orderId, email }` — the two values of the page address. The backend answers
+  the order's 17 view fields (`ORDER_VIEW_FIELDS`: id, order number, date, currency, customer name and phone,
+  discount, estimated delivery date, items, payment method, shipping address and cost, status, status history,
+  subtotal, total, tracking number) when the stored email equals `normalizeEmail(email)`; else 404, which the page
+  shows as "no order" (the thank-you panel on the confirmation page, "Order Not Found" on the tracking page). No such
+  order, another shop's order and a wrong email look the same. The renderer reads no order from DynamoDB. A failed
+  backend call fails the page (HTTP 500, not stored); it is never shown as "not found". **Authority:** possession of
+  the order id and the email — no sign-in. That is an exception to PD-002, recorded in
+  `docs/platform-decisions.md` (amendment 2026-11-28; an operator ruling, not yet confirmed by the human): whoever
+  holds the link sees the buyer's name, phone and address.
 - `ConfirmationPageView`: Order details, bank transfer instructions (if applicable), order tracking link
 
 ## Order Creation (Backend)
@@ -885,6 +897,7 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 | GET/PUT | `/customers/{email}` | customers/get, update |
 | POST | `/public/customers/profile` | customers/public-update (renderer key only: the account page's profile save) |
 | POST | `/customer/order-history`, `/customer/profile-read` | customers/self-service (renderer key only, CMRC-1B: the account page's reads; body `{ email }`) |
+| POST | `/customer/order-lookup` | customers/self-service (renderer key only, CMRC-1L: the order of the confirmation and tracking pages; body `{ orderId, email }`; answers 17 fields or 404) |
 | GET/PUT | `/delivery` | delivery/get, update |
 | GET/POST | `/coupons` | coupons/list, create |
 | GET/PUT/DELETE | `/coupons/{id}` | coupons/get, update, delete |

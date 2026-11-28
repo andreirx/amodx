@@ -127,6 +127,7 @@ google: z.object({
 - `POST /comments`, `DELETE /comments` -- comment moderation
 - `POST /public/customers/profile` -- customer profile update (via session-validated proxy)
 - `POST /customer/order-history`, `POST /customer/profile-read` -- the account page's reads (CMRC-1B; body `{ email }` = the session's email; `backend/src/customers/self-service.ts` refuses every role but RENDERER and GLOBAL_ADMIN)
+- `POST /customer/order-lookup` -- the order of the order confirmation and tracking pages (CMRC-1L; body `{ orderId, email }` = the values of the PAGE ADDRESS, no session; same role rule; answers 17 fields of the order when the stored email equals the normalized one, else 404). An exception to PD-002, not conformance (`docs/platform-decisions.md`, amendment 2026-11-28; an operator ruling, not yet confirmed by the human)
 - the scheduling visitor routes `/scheduling/visitor/*` (booking pages; `docs/slices/sched-1.md` § 10.2)
 - `POST /contact`, `POST /leads`, `POST /consent` -- public form proxies (tenant derived from host)
 
@@ -244,7 +245,7 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 |---------|---------------|-----------|
 | Browse products | No | Public routes |
 | Place an order | No | `POST /public/orders` (reCAPTCHA + Origin verification) |
-| Track a specific order | No | `GET /public/orders/{id}?email=` (email verification) |
+| See the confirmation or the tracking page of one order | No | The page address carries the order id and the email; the renderer asks the backend (RENDERER key; `POST /customer/order-lookup`, CMRC-1L), which shows the order when the stored email equals the given one. Possession of the link is the proof: a recorded exception to PD-002. (The anonymous backend route `GET /public/orders/{id}?email=` uses the same proof and has no caller in the site; judged in `cmrc-5`) |
 | View account + all orders | Google sign-in | NextAuth session -> email -> backend via renderer proxy (RENDERER key; `/api/account/orders` -> `POST /customer/order-history`) |
 | Update profile | Google sign-in | NextAuth session -> email -> backend via renderer proxy (RENDERER key) |
 | Manage orders (admin) | Admin Cognito JWT | API Gateway authorizer |

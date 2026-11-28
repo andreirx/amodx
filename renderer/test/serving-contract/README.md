@@ -91,6 +91,16 @@ asserts that list is empty: a stub that invented absence would be the very defec
   HTTP `/__ctl/…` plane only because its probes were separate shell scripts.) On the
   `bundle` target it also serves the OpenNext tag-cache table (`startDdbStub({ tagTable })`),
   counted in `tagCache`, never in `render`; fault injection stays on the renderer's table.
+- **`backend-stub.mjs`** (slice `cmrc-1l`) — a stand-in for the BACKEND API, for ONE route:
+  `POST /customer/order-lookup`, answered from the `ORDER#` fixture items with the backend's rule
+  (the constructed key, the tenant header, `stored customerEmail === normalizeEmail(email)`, the 17
+  `ORDER_VIEW_FIELDS`, else 404 `notFound`). Since `cmrc-1l` the order confirmation and tracking pages
+  read their order from the backend, so the rows that request them with an order need it. **Every
+  other request is dropped** (the socket is destroyed): for the renderer that is the same as having
+  no backend, so the rows that depend on that keep their meaning (`sched1g-*`: 503 at the forward
+  step). `journal()` holds route and outcome only; the suite prints its counts at the end
+  ("backend stub (…): …"). It is a second, hand-written statement of the lookup rule: it proves the
+  renderer side only (the backend's rule: `backend/test/unit/cmrc-1-order-lookup.test.ts`).
 - **`harness.mjs`** — build/serve/HTTP helpers, the constructed child environment, the
   `SERVING_TARGET` switch, and `operationInventory` (bundle target). `request()` takes an
   optional `body` and `timeoutMs` and returns `rawHeaders` too.
@@ -111,6 +121,10 @@ in `harness.mjs` is the complete list of what `next build` / `next start` can se
    `CI`. An ambient `AWS_PROFILE`, `AMODX_API_KEY` or CI secret cannot reach the renderer, so
    the suite cannot exercise a credentialed path and pass for the wrong reason. Assertion
    `iso1` fails if an unlisted name appears — i.e. if the spread ever comes back.
+   Since `cmrc-1l` the SERVING renderer (not the build) has two more constructed variables:
+   `API_URL` = the loopback backend stub, and `AMODX_API_KEY` = a fixed test value
+   (`RENDERER_TEST_KEY`), which `lib/api-client.ts` takes before it would ask Secrets Manager.
+   `iso1` lists both and asserts their values, so an inherited key still fails the row.
 2. **`renderer/.env*` is invisible to the children**, two independent ways:
    - `no-dotenv.cjs` makes those paths throw `ENOENT` from `fs.statSync`/`readFileSync`.
      `@next/env`'s loader then takes the branch it already takes on a checkout without the

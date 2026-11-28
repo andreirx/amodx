@@ -275,7 +275,7 @@ Rules (executable form: rows `sched1g-*` of `renderer/test/serving-contract/cont
   before the slice; on the final tree, ten consecutive runs, each 141 / 141, exit 0 (the 139 earlier rows +
   `sched1g3-switch` + `sched1g3-noindex`).
 - **Proxy inputs.** Absent / valid / malformed for every query parameter and body: a valid input reaches the forward
-  step (`503 unavailable` in the suite, which has no backend), the others are refused before it. Row
+  step (`503 unavailable` in the suite, which has no booking backend: since CMRC-1L its backend stub answers the order lookup only and drops every other request), the others are refused before it. Row
   `sched1g-proxy-inputs`; what is forwarded, the checks (the backend route's own schemas from `@amodx/shared`),
   and the complete input inventory: `test/unit/sched-1g-proxy.test.ts`. The `?service` selector: row
   `sched1g-selectors` (server reader; since SCHED-GROUPS-REMOVE-1 an old `?course` link still serves the book page and
@@ -364,9 +364,10 @@ the old HTTP-200 "Site Not Found" shell suppressed the page's own `notFound()`.)
 Ratified 2026-07-26 (human decision **CACHE-1-D4**), after review found the rule was
 implemented for `getTenantConfig()` only.
 
-**Every read helper in `renderer/src/lib/dynamo.ts` and `renderer/src/lib/dynamo-customer-reads.ts` (the order-page
-read `getOrderForCustomer`, re-exported by `dynamo.ts`; since CMRC-1B the account reads are `lib/customer-api.ts`, which
-asks the backend and THROWS `CustomerApiError` for anything but the route's answer — the same rule) lets AWS/SDK errors propagate, and so does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
+**Every read helper in `renderer/src/lib/dynamo.ts` (and, since CMRC-1B and CMRC-1L, every customer and order read of
+`lib/customer-api.ts` — the account reads and the order-page read `getOrderForCustomer` — which asks the backend and
+THROWS `CustomerApiError` for anything but the route's answer: the same rule; `lib/dynamo-customer-reads.ts`, which held
+those reads, is deleted) lets AWS/SDK errors propagate, and so does `app/api/posts/route.ts`.** A `null` or empty return from any of them means one thing:
 the record genuinely is not there. Not one of them catches an operational failure. This is
 not a `getTenantConfig()` rule, not a "`lib/dynamo.ts` only" rule and not a "cacheable routes
 only" rule — dual read semantics were explicitly rejected, so there is no render-mode
@@ -449,6 +450,17 @@ Two read paths outside `lib/dynamo.ts` keep different internals on purpose:
   the grep above no longer lists every caller of the key, and "only from `/api/*` handlers"
   holds for the cacheable tree, not for the booking tree, which is never stored. The property
   D4 is about is unchanged: no 200 carrying empty data.
+  Since CMRC-1L (2026-11-28) `callBackend` has a third user under `lib/customer-api.ts`:
+  `getOrderForCustomer`, called by `components/SitePage.tsx` for the order confirmation and
+  tracking pages. So one RENDER path now reaches `lib/api-client.ts`. It cannot store a failure:
+  the read is called only when the page address carries a query value (`?id&email`, `?email`),
+  and every request with a query string is served by the dynamic twin (`private, no-store`); the
+  cacheable route passes `query: {}` and makes no call. A failed call (no key, no `API_URL`, a
+  status that is not the route's answer, also the API gateway's own 404) THROWS — HTTP 500 on
+  the twin, as a DynamoDB error did when the renderer read the order itself; "not found" is only
+  the route's own 404 `{ code: "notFound" }`. Executable form: `renderer/test/unit/cmrc-1-order-pages.test.ts`
+  (row "S7") and `cmrc-1-customer-api.test.ts`; in the serving suite the order pages get their
+  order from `test/serving-contract/backend-stub.mjs`.
 
 The hazard that gated the deploy (**H1**, the `RSC` cache key) is closed in `cache-3` — see
 **Open hazards activated by cache-1** below for the before/after. Nothing in the track is

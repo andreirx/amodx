@@ -10,6 +10,8 @@ let cachedKey: string | null = null;
  *   - POST /public/customers/profile (session-gated via renderer proxy)
  *   - POST /customer/order-history, POST /customer/profile-read (CMRC-1B: the account pages' reads; the email is
  *     the validated session's, `lib/customer-api.ts`)
+ *   - POST /customer/order-lookup (CMRC-1L: the order confirmation and tracking pages' read; the order id and the
+ *     email are the page address's — no session; a recorded exception to PD-002, docs/platform-decisions.md)
  *
  * It cannot access admin APIs (orders, tenants, settings, etc.) because
  * those handlers require TENANT_ADMIN or GLOBAL_ADMIN roles.

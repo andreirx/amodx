@@ -1,22 +1,24 @@
 import { TABLE_NAME } from "./db.js";
 
 /**
- * CMRC-1A (docs/slices/cmrc-1a.md; docs/slices/cmrc-1.md § 5.5; PROTOTYPE) — WITHIN THE BACKEND (`backend/src`),
- * the only code that writes the commerce-private key prefixes and that chooses the table of those items: the 15
- * handler sites S1-S15 take both from here.
+ * CMRC-1A (docs/slices/cmrc-1a.md; docs/slices/cmrc-1.md § 5.5; PROTOTYPE) — the only RUNTIME code (`backend/src`,
+ * `renderer/src`, `packages/<name>/src`) that writes the commerce-private key prefixes and that chooses the table of
+ * those items: the 15 handler sites S1-S15 and the three renderer-key reads of `customers/self-service.ts` take both
+ * from here.
  *
- * NOT yet true for the whole repository. Still outside this module:
- *  - the public renderer: ONE read of `renderer/src/lib/dynamo-customer-reads.ts` builds an `ORDER#` key and chooses
- *    its table itself (S16 `getOrderForCustomer`, the order confirmation and tracking pages). Part L of `cmrc-1`
- *    removes it. CMRC-1B (docs/slices/cmrc-1b.md) removed the other two (S17 `getCustomerOrders`, S18
- *    `getCustomerProfile`): the account routes now ask `customers/self-service.ts`, which reads through this module;
- *  - the operational copy tool `scripts/migrate-commerce-private-table.ts` (S19) keeps its own list of the prefixes
- *    and takes its table names from its arguments. `cmrc-2` makes it import the list below.
+ * The public renderer names none of these keys since CMRC-1L (docs/slices/cmrc-1l.md): its three reads (S16
+ * `getOrderForCustomer`, S17 `getCustomerOrders`, S18 `getCustomerProfile`) now ask `customers/self-service.ts`
+ * (CMRC-1B removed S17 and S18, CMRC-1L removed S16).
+ *
+ * NOT true for the whole repository. Still outside this module: the operational copy tool
+ * `scripts/migrate-commerce-private-table.ts` (S19) keeps its own list of the prefixes and takes its table names from
+ * its arguments. `cmrc-2` makes it import the list below.
  *
  * Why: Track B moves these items out of the main table, which the public renderer can read (docs/VISION.md,
- * guarantee 2). For the backend, that move is now a change of ONE binding below (`COMMERCE_TABLE`), not of every
- * handler. The storage may move only when the renderer read above is gone too (cutover gate, cmrc-1.md § 6): a
- * reader that still names the main table would keep reading the old copy.
+ * guarantee 2). That move is now a change of ONE binding below (`COMMERCE_TABLE`), not of every handler. The storage
+ * may move only when no runtime reader or writer names the main table for these items (cutover gate, cmrc-1.md § 6):
+ * a reader that still names it would keep reading the old copy. The renderer's IAM role can still read all four
+ * families in the main table until the data has moved (`cmrc-4`) and the old items are removed (`cmrc-6`).
  *
  * What it gives: LOCATED REFERENCES. A reference carries the table and the key in one value, so a caller cannot name
  * a key without its table. The handler still builds its own command and spreads the reference into it:
@@ -40,9 +42,8 @@ import { TABLE_NAME } from "./db.js";
  *
  * The guard: `test/unit/cmrc-1-key-ownership.test.ts` parses the source files under `backend/src`, `renderer/src`
  * and `packages/<name>/src` and fails when a string literal or template text of a file other than this one contains
- * one of `COMMERCE_PRIVATE_PREFIXES` — except the one renderer read named above, which it lists and permits. It
- * does not read `scripts/`, tests, `admin/`, `tools/` or `infra/`, and it cannot see a prefix joined from parts at
- * run time. The command trace `test/unit/cmrc-1-command-trace.test.ts` pins the commands that the backend handlers
+ * one of `COMMERCE_PRIVATE_PREFIXES` — with no exception since CMRC-1L. It does not read `scripts/`, tests,
+ * `admin/`, `tools/` or `infra/`, and it cannot see a prefix joined from parts at run time. The command trace `test/unit/cmrc-1-command-trace.test.ts` pins the commands that the backend handlers
  * build from these references.
  */
 

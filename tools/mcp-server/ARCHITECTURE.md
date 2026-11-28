@@ -250,6 +250,7 @@ a permission, so none changed.
 | `/public/*`, `POST /consent`, `POST /contact`, `POST /webhooks/paddle` | Visitor / webhook surfaces, not admin surfaces |
 | `POST /comments` | Deliberately unexposed: the visitor comment route (RENDERER role) |
 | `POST /customer/order-history`, `POST /customer/profile-read` | Deliberately unexposed (CMRC-1B): the site's account-page reads for the renderer key. The body names a customer's email, which the renderer takes from a validated session; a tool would let the robot key read any customer's orders and profile by address. The coverage report lists them under `customer` |
+| `POST /customer/order-lookup` | Deliberately unexposed (CMRC-1L): the site's read for the order confirmation and tracking pages, for the renderer key. The body names an order id and a customer's email; the answer holds the buyer's name, phone and address. A tool would let the robot key read an order by guessing an address for a known id; the admin order tools already read orders with the admin's authority. The coverage report lists it under `customer` |
 | `POST /assets` | Not in the ruled IN set; asset upload needs the presign flow |
 | Remaining commerce routes (categories/coupons/reviews/customers/orders by id, `/delivery/config`, `/import/woocommerce`, `/import/reviews`) | Commerce track |
 

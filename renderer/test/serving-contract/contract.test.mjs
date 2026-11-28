@@ -32,6 +32,7 @@ import {
     BUNDLE, versionedExpectation, operationInventory, servedResponses, REVALIDATION_TEST_SECRET,
 } from "./harness.mjs";
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
+import { RENDERER_TEST_KEY } from "./backend-stub.mjs";
 import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readClientModules, splitFlight, writeCaptures,
@@ -283,6 +284,11 @@ const RENDERER_SERVER_ENV = [
 const BUNDLE_HERMETIC_ENV = [
     "AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE",
 ];
+/**
+ * CMRC-1L: the backend address and the renderer key of the SERVING renderer, both constructed (harness.mjs
+ * `rendererEnv`): the loopback backend stub (it answers `POST /customer/order-lookup` only) and a test key.
+ */
+const BACKEND_STUB_ENV = ["API_URL", "AMODX_API_KEY"];
 
 /**
  * `(iso3)` on the bundle target: the `open-next build` tree and the Lambda host child.
@@ -344,6 +350,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     after(async () => {
         const unhandled = stubs.unhandled();
         if (BUNDLE) console.log(`\n${operationInventory(stubs, "contract rows")}`);
+        // CMRC-1L: what reached the backend stub, on both targets — the order lookups it answered (by status) and the
+        // other backend calls it dropped (the booking proxy's forward step). Evidence that the order pages of this
+        // run were read through the backend route, not from DynamoDB.
+        const backendCalls = {};
+        for (const e of stubs.api.journal()) backendCalls[`${e.route}→${e.outcome}`] = (backendCalls[`${e.route}→${e.outcome}`] ?? 0) + 1;
+        console.log(`\nbackend stub (${BUNDLE ? "bundle" : "next"} target, contract rows): ${JSON.stringify(backendCalls)}`);
         await server?.close();
         await stubs?.close();
         await rm(AUDIT_PATH, { force: true });
@@ -372,7 +384,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
     test("(iso1) the renderer child environment is constructed, never inherited", (exp) => {
         // Bundle target: the environment the Lambda host child was ACTUALLY spawned with.
-        const env = exp === "bundle-env" ? server.env : rendererEnv(stub.url);
+        const env = exp === "bundle-env" ? server.env : rendererEnv(stub.url, stubs.api.url);
         // Whitelist = the four OS passthroughs + the variables harness.mjs pins itself.
         const allowed = new Set([
             "PATH", "HOME", "TMPDIR", "CI",
@@ -383,6 +395,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             "NEXTAUTH_SECRET", "RECAPTCHA_SITE_KEY",
             // LANG-1B: a constructed test value, so row lang1b-purge can call /api/revalidate on the `next` target.
             "REVALIDATION_SECRET",
+            // CMRC-1L: the backend stub's address and the constructed renderer key (the order pages' read).
+            ...BACKEND_STUB_ENV,
             ...(exp === "bundle-env" ? [...RENDERER_SERVER_ENV, ...BUNDLE_HERMETIC_ENV] : []),
         ]);
         if (exp === "bundle-env") {
@@ -405,6 +419,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         );
         // The endpoint override is what keeps every SDK call on this host.
         assert.match(env.AWS_ENDPOINT_URL_DYNAMODB, /^http:\/\/127\.0\.0\.1:\d+$/);
+        // CMRC-1L: the backend address is the stub on this host, and the key is the harness's test value — never an
+        // inherited one (the operator's shell may hold a real `AMODX_API_KEY`).
+        assert.equal(env.API_URL, stubs.api.url, "API_URL must be the backend stub");
+        assert.match(env.API_URL, /^http:\/\/127\.0\.0\.1:\d+$/);
+        assert.equal(env.AMODX_API_KEY, RENDERER_TEST_KEY, "the constructed renderer key, not an inherited one");
         assert.equal(env.TABLE_NAME, TABLE_NAME, "the fixture table, not the operator's");
         // The `.env*` hook must travel in the ENVIRONMENT. An argv `--require` covers only the
         // process we spawn; NODE_OPTIONS is inherited by everything Next spawns beneath it.
@@ -1104,7 +1123,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     //
     // A rejected write is a 403 with the guard's body BEFORE any tenant/backend hop. An
     // accepted (same-origin) write PASSES the guard and proceeds; in this hermetic harness
-    // `API_URL` is unset, so it then fails downstream (config/parse) — the point is only that
+    // no backend answers these routes (since cmrc-1l `API_URL` is the backend stub, which drops
+    // every request but the order lookup), so it then fails downstream (config/parse) — the point is only that
     // it is NOT the guard's 403. Asserting `!== 403` isolates exactly the guard's own decision
     // without coupling to the proxy's downstream behaviour.
     const HARDENED_WRITE_PROXIES = ["/api/consent", "/api/contact", "/api/leads"];
@@ -3961,8 +3981,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // ── ROWS (sched1g-*) — SCHED-1G2, the hosted booking pages (docs/slices/sched-1.md § 10.1, § 9.1, § 17.3 rows G1-G8;
         // the contract rows in docs/caching-architecture.md § Serving contract, "Booking pages"). Running build only; the
-        // tenants are `SCHED1G` (fixtures.mjs). The suite has no booking backend (no `API_URL` in the constructed
-        // environment, row iso1), so a proxy request that passes every renderer check answers 503 `unavailable` at the
+        // tenants are `SCHED1G` (fixtures.mjs). The suite has no booking backend: since cmrc-1l `API_URL` is the
+        // backend stub (backend-stub.mjs), which answers the order lookup only and DROPS every other request, so the
+        // forward call fails as it did when the environment had no `API_URL`. A proxy request that passes every
+        // renderer check therefore answers 503 `unavailable` at the
         // forward step: that status is the proof that the request was accepted and would have been forwarded. What the
         // proxy forwards (key, tenant, body, address gate) and the feed's 200 headers are proven by
         // test/unit/sched-1g-proxy.test.ts. Staging rows G9 and G13 (and the CloudFront `x-cache` half of G1) are not

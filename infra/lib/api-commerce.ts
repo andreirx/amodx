@@ -323,11 +323,14 @@ export class CommerceApi extends NestedStack {
         // SECURITY: Requires auth (renderer sends x-api-key). Was previously noAuth — see Finding 2 remediation.
         addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc);
 
-        // Customer self-service READS for the renderer (CMRC-1B; docs/slices/cmrc-1.md § 5.8): the account pages'
-        // order history and profile. The renderer no longer reads these items from DynamoDB; it calls these routes
-        // with its key. The functions only read the main table: `TABLE_NAME` alone (no event bus, no revalidation
-        // variables — they publish nothing and purge nothing), `grantReadData` alone (no write, no SES, no secret).
-        // Behind the authorizer (never `noAuth`); the HANDLER admits the RENDERER role only (PD-002).
+        // Customer self-service READS for the renderer (CMRC-1B, CMRC-1L; docs/slices/cmrc-1.md § 5.8): the account
+        // pages' order history and profile, and (CMRC-1L) the order of the order confirmation and tracking pages. The
+        // renderer no longer reads these items from DynamoDB; it calls these routes with its key. The functions only
+        // read the main table: `TABLE_NAME` alone (no event bus, no revalidation variables — they publish nothing and
+        // purge nothing), `grantReadData` alone (no write, no SES, no secret).
+        // Behind the authorizer (never `noAuth`); the HANDLER admits the RENDERER role only. The two account reads
+        // take the email from the validated session (PD-002); the order lookup takes the order id and the email from
+        // the page address — a recorded exception to PD-002 (docs/platform-decisions.md, amendment of 2026-11-28).
         const selfServiceReadProps = {
             ...nodeProps,
             environment: { TABLE_NAME: table.tableName },
@@ -345,8 +348,15 @@ export class CommerceApi extends NestedStack {
         });
         table.grantReadData(customerProfileReadFunc);
 
+        const customerOrderLookupFunc = new nodejs.NodejsFunction(this, 'CustomerOrderLookupFunc', {
+            ...selfServiceReadProps,
+            handler: 'orderLookupHandler',
+        });
+        table.grantReadData(customerOrderLookupFunc);
+
         addRoute('CustomerOrderHistory', 'POST /customer/order-history', customerOrderHistoryFunc);
         addRoute('CustomerProfileRead', 'POST /customer/profile-read', customerProfileReadFunc);
+        addRoute('CustomerOrderLookup', 'POST /customer/order-lookup', customerOrderLookupFunc);
 
         // ===================== DELIVERY =====================
         const getDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'GetDeliveryConfigFunc', {
@@ -554,9 +564,9 @@ export class CommerceApi extends NestedStack {
         addRoute('WooImport', 'POST /import/woocommerce', wooImportFunc);
 
         // Grant EventBus permissions to all Lambdas in this stack — except the two customer read functions of
-        // CMRC-1B: they publish no audit event (they have no EVENT_BUS_NAME), so they get no `events:PutEvents`
+        // CMRC-1B, CMRC-1L: they publish no audit event (they have no EVENT_BUS_NAME), so they get no `events:PutEvents`
         // (docs/slices/cmrc-1.md § 5.8: main-table read and nothing else).
-        const publishNoEvent: Construct[] = [customerOrderHistoryFunc, customerProfileReadFunc];
+        const publishNoEvent: Construct[] = [customerOrderHistoryFunc, customerProfileReadFunc, customerOrderLookupFunc];
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction && !publishNoEvent.includes(child)) {
                 eventBus.grantPutEventsTo(child);

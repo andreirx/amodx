@@ -142,7 +142,7 @@ Role Hierarchy:
   GLOBAL_ADMIN  →  full access, all tenants (MCP, master key)
   TENANT_ADMIN  →  full access, single tenant
   EDITOR        →  content CRUD, single tenant
-  RENDERER      →  comments, profile, account reads (order history + profile, CMRC-1B), contact/leads/consent proxies, all tenants (restricted key)
+  RENDERER      →  comments, profile, account reads (order history + profile, CMRC-1B), order-page lookup (CMRC-1L), contact/leads/consent proxies, all tenants (restricted key)
   anonymous     →  public routes only
 ```
 
@@ -765,7 +765,7 @@ AmodxStack (parent, ~390 resources)
 │
 ├── Secrets Manager
 │   ├── MasterKey (MCP/robots)
-│   ├── RendererApiKey (renderer proxy routes: comments, profile, account reads, contact/leads/consent)
+│   ├── RendererApiKey (renderer proxy routes: comments, profile, account reads, order-page lookup, contact/leads/consent)
 │   ├── RevalidationSecret (cache purge)
 │   └── NextAuthSecret (session signing)
 │
@@ -891,7 +891,8 @@ Claude Desktop ◄──► MCP Server (stdio transport)
 │  │  Server Lambda has:                                 │    │
 │  │    ✓ DynamoDB read (all tenants, all entity types)  │    │
 │  │    ✓ Renderer API key (scoped: comments, profile,   │    │
-│  │      account reads, contact/leads/consent proxies)  │    │
+│  │      account reads, order-page lookup,              │    │
+│  │      contact/leads/consent proxies)                 │    │
 │  │    ✓ Revalidation secret (cache purge)              │    │
 │  │    ✗ Master API key (removed)                       │    │
 │  │    ✗ Write access to DynamoDB (removed)             │    │

@@ -1,13 +1,14 @@
 import { vi, describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 
 /**
- * CMRC-1B (docs/slices/cmrc-1b.md § Proofs; PD-002 "they do NOT accept anonymous or CUSTOMER directly") — the part
- * BEFORE the handler: the REAL authorizer on the two new route keys, and then the real handler with the context the
- * authorizer produced.
+ * CMRC-1B, CMRC-1L (docs/slices/cmrc-1b.md § Proofs, docs/slices/cmrc-1l.md § Proofs; PD-002 "they do NOT accept
+ * anonymous or CUSTOMER directly") — the part BEFORE the handler: the REAL authorizer on the three customer read
+ * route keys, and then the real handler with the context the authorizer produced.
  *
- *  - no credential, or a wrong key → the authorizer refuses; no handler runs (the two route keys are not among the
+ *  - no credential, or a wrong key → the authorizer refuses; no handler runs (the three route keys are not among the
  *    authorizer's anonymous routes);
- *  - the renderer key → `RENDERER`, tenant `ALL` → the handler answers 200;
+ *  - the renderer key → `RENDERER`, tenant `ALL` → the handler reads and gives its "nothing stored" answer (200 with
+ *    an empty result for the two account routes; 404 `notFound` for the order lookup);
  *  - a valid ADMIN token (a tenant admin signed in to the admin panel) → the authorizer admits it with its own role,
  *    and the HANDLER answers 403 and reads nothing.
  * The HTTP status the API gateway answers for a refused authorizer is the gateway's (operator's staging check).
@@ -35,18 +36,20 @@ vi.mock("@aws-sdk/client-secrets-manager", () => ({
 vi.mock("../../src/lib/db.js", () => ({ db: { send: dbSend }, TABLE_NAME: "test-table" }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: vi.fn() }));
 
+/** Route key, handler, a well-formed request body, and the handler's answer when nothing is stored. */
 const ROUTES = [
-    ["POST /customer/order-history", "orderHistoryHandler", { orders: [] }],
-    ["POST /customer/profile-read", "profileReadHandler", { profile: null }],
+    ["POST /customer/order-history", "orderHistoryHandler", { email: "ana@example.com" }, { status: 200, body: { orders: [] } }],
+    ["POST /customer/profile-read", "profileReadHandler", { email: "ana@example.com" }, { status: 200, body: { profile: null } }],
+    ["POST /customer/order-lookup", "orderLookupHandler", { orderId: "o-1", email: "ana@example.com" }, { status: 404, body: { code: "notFound" } }],
 ] as const;
 
 const authEvent = (routeKey: string, headers: Record<string, string>): any => ({
     headers: { "x-tenant-id": "t1", ...headers }, routeKey, requestContext: { http: { sourceIp: "127.0.0.1" } },
 });
 /** The handler's event for a request the authorizer admitted with `context`. */
-const handlerEvent = (context: unknown): any => ({
+const handlerEvent = (context: unknown, body: unknown): any => ({
     headers: { "x-tenant-id": "t1", "content-type": "application/json" },
-    body: JSON.stringify({ email: "ana@example.com" }),
+    body: JSON.stringify(body),
     requestContext: { authorizer: { lambda: context } },
 });
 
@@ -73,7 +76,7 @@ beforeEach(() => {
     for (const method of ["log", "warn", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
 
-describe.each(ROUTES)("CMRC-1B — the authorizer on %s", (route, handlerName, nothingFound) => {
+describe.each(ROUTES)("CMRC-1B / CMRC-1L — the authorizer on %s", (route, handlerName, body, nothingStored) => {
     it("no credential → refused by the authorizer (no handler runs)", async () => {
         expect((await authorizer(authEvent(route, {}))).isAuthorized).toBe(false);
     });
@@ -83,11 +86,11 @@ describe.each(ROUTES)("CMRC-1B — the authorizer on %s", (route, handlerName, n
         expect((await authorizer(authEvent(route, { authorization: "Bearer renderer-key" }))).isAuthorized).toBe(false);
     });
 
-    it("the renderer key → RENDERER, tenant ALL; the handler then answers 200 for the tenant of x-tenant-id", async () => {
+    it("the renderer key → RENDERER, tenant ALL; the handler then reads the tenant of x-tenant-id and gives its nothing-stored answer", async () => {
         const admitted = await authorizer(authEvent(route, { "x-api-key": "renderer-key" }));
         expect(admitted).toEqual({ isAuthorized: true, context: { sub: "renderer", role: "RENDERER", tenantId: "ALL" } });
-        const res = await handlers[handlerName](handlerEvent(admitted.context));
-        expect({ status: res.statusCode, body: JSON.parse(res.body) }).toEqual({ status: 200, body: nothingFound });
+        const res = await handlers[handlerName](handlerEvent(admitted.context, body));
+        expect({ status: res.statusCode, body: JSON.parse(res.body) }).toEqual(nothingStored);
         expect(dbSend).toHaveBeenCalledTimes(1);
         expect(JSON.stringify(dbSend.mock.calls[0][0].input)).toContain("TENANT#t1");
     });
@@ -98,7 +101,7 @@ describe.each(ROUTES)("CMRC-1B — the authorizer on %s", (route, handlerName, n
         expect(admitted.isAuthorized).toBe(true);
         expect(admitted.context).toMatchObject({ role: "TENANT_ADMIN", tenantId: "t1" });
         dbSend.mockClear();   // the authorizer itself may read; the claim is about the handler
-        const res = await handlers[handlerName](handlerEvent(admitted.context));
+        const res = await handlers[handlerName](handlerEvent(admitted.context, body));
         expect({ status: res.statusCode, body: JSON.parse(res.body) }).toEqual({ status: 403, body: { code: "forbidden" } });
         expect(dbSend).not.toHaveBeenCalled();
     });

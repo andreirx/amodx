@@ -174,7 +174,7 @@ Constructed, never inherited: `rendererEnv()` (the `next` target's environment) 
 |---|---|---|
 | `NODE_ENV` | `production` | `renderer-hosting.ts:245` |
 | `TABLE_NAME` | the fixture table (from `rendererEnv`) | `:246` |
-| `API_URL` | `http://127.0.0.1:1` (nothing listens) | `:247` |
+| `API_URL` | the backend stub (`../serving-contract/backend-stub.mjs`, from `rendererEnv`; slice `cmrc-1l`): it answers `POST /customer/order-lookup` and drops every other request. Before `cmrc-1l`: `http://127.0.0.1:1` (nothing listens) | `:247` |
 | `CACHE_BUCKET_NAME` | `serving-bundle-cache` | `:248` |
 | `CACHE_BUCKET_KEY_PREFIX` | `_cache` | `:249` |
 | `CACHE_BUCKET_REGION` | `eu-central-1` | `:250` |
@@ -190,6 +190,7 @@ Constructed, never inherited: `rendererEnv()` (the `next` target's environment) 
 | `AWS_ENDPOINT_URL_S3`, `_SQS` | the stubs (`_DYNAMODB` comes from `rendererEnv`) | hermetic |
 | `AWS_ENDPOINT_URL` | `http://127.0.0.1:1` — every AWS service without a stub (Secrets Manager via `lib/api-client.ts`) fails locally | hermetic |
 | `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE` | a path that does not exist — the operator's `~/.aws/config` could set `ignore_configured_endpoint_urls` and void every endpoint above | hermetic |
+| `AMODX_API_KEY` | a fixed test value (`RENDERER_TEST_KEY`, from `rendererEnv`; slice `cmrc-1l`). The Lambda takes its key from Secrets Manager, which has no stub here; the environment key is the first source of `lib/api-client.ts`, so that call is not made. **No bundle row requests an order page with an order today** (the stub's journal is empty on this target; `docs/TECH-DEBT.md` F-CMRC1L-BUNDLE-COVERAGE) | hermetic |
 
 The build (`npm run build:open`) runs under `rendererEnv()` with the same `NODE_OPTIONS=--require
 no-dotenv.cjs` journal; `(iso3)` asserts the npm root, `open-next build`, `next build`, a

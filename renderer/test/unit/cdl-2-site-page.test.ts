@@ -23,6 +23,9 @@ const dynamo = vi.hoisted(() => ({
     getProductReviews: vi.fn(), getSiteReviews: vi.fn(), getProductById: vi.fn(), hasActivePopups: vi.fn(async () => false),
 }));
 vi.mock("@/lib/dynamo", () => dynamo);
+// CMRC-1L: SitePage takes the order read from `@/lib/customer-api` (the backend), no longer from `@/lib/dynamo`. The same
+// mock function serves, so every assertion below is unchanged; its entry in the `@/lib/dynamo` mock is now unused.
+vi.mock("@/lib/customer-api", () => ({ getOrderForCustomer: dynamo.getOrderForCustomer }));
 vi.mock("next/navigation", () => ({
     permanentRedirect: (url: string) => { throw new Error(`NEXT_REDIRECT:${url}`); },
     notFound: () => { throw new Error("NEXT_NOT_FOUND"); },

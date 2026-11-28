@@ -2136,15 +2136,18 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
 
     // ────────────────────────────────────────────────────────────────────────────────────────────
     // CMRC-1B — test T7 (docs/slices/cmrc-1b.md § Proofs; docs/slices/cmrc-1.md § 5.8, § 5.9): the EMPTY commerce-private
-    // table that nothing uses, and the two renderer-key read routes of the CommerceApi nested stack. Inside the SCHED-1B
-    // block so that the IAM reading rule above (every value matched as a whole against a closed list of shapes) is the
-    // one used: "no role has a statement on the table" is an absence claim and must not pass by not understanding a value.
+    // table that nothing uses, and the renderer-key read routes of the CommerceApi nested stack — two of CMRC-1B (the
+    // account pages) and, since CMRC-1L (docs/slices/cmrc-1l.md), a third (the order pages), wired the same way: the
+    // rows below run for every entry of `ROUTES`. Inside the SCHED-1B block so that the IAM reading rule above (every
+    // value matched as a whole against a closed list of shapes) is the one used: "no role has a statement on the
+    // table" is an absence claim and must not pass by not understanding a value.
     // ────────────────────────────────────────────────────────────────────────────────────────────
-    describe('CMRC-1B — the unused commerce-private table and the two customer read routes', () => {
+    describe('CMRC-1B / CMRC-1L — the unused commerce-private table and the three customer read routes', () => {
         const COMMERCE = 'AmodxCommerceTable-test';
         const ROUTES = [
             { key: 'POST /customer/order-history', construct: 'CustomerOrderHistoryFunc', handler: 'index.orderHistoryHandler' },
             { key: 'POST /customer/profile-read', construct: 'CustomerProfileReadFunc', handler: 'index.profileReadHandler' },
+            { key: 'POST /customer/order-lookup', construct: 'CustomerOrderLookupFunc', handler: 'index.orderLookupHandler' },   // CMRC-1L
         ];
         /** The action set of CDK's `table.grantReadData` (aws-cdk-lib `READ_DATA_ACTIONS` + DescribeTable). */
         const READ_ACTIONS = ['dynamodb:BatchGetItem', 'dynamodb:ConditionCheckItem', 'dynamodb:DescribeTable', 'dynamodb:GetItem',
@@ -2245,7 +2248,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             expect(checkDynamodbGrants(readIam(granted).located, granted, scheduling).resolved).toEqual([id]);
         });
 
-        test('(cmrc1b-3) the two routes: once in the stack tree, in the CommerceApi nested stack, behind its authorizer (never anonymous), each on its own function', () => {
+        test('(cmrc1b-3) the three routes: once in the stack tree, in the CommerceApi nested stack, behind its authorizer (never anonymous), each on its own function', () => {
             const at = templateOfRoute(ROUTES[0].key);
             const commerceTemplate = allTemplates[at];
             // The template is the commerce nested stack: it holds the existing renderer-key route and the admin customer routes.
@@ -2254,6 +2257,11 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             const authorizers = Object.keys(commerceTemplate.findResources('AWS::ApiGatewayV2::Authorizer'));
             expect(authorizers).toHaveLength(1);
 
+            expect(ROUTES).toHaveLength(3);
+            // No other route of the whole tree is under /customer/: the three are the renderer's only customer reads.
+            const customerKeys = allTemplates.flatMap((t) => Object.values(t.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties.RouteKey as string))
+                .filter((k) => /^[A-Z]+ \/customer\//.test(k));
+            expect(customerKeys.sort()).toEqual(ROUTES.map((r) => r.key).sort());
             for (const { key, construct, handler } of ROUTES) {
                 expect(templateOfRoute(key)).toBe(at);
                 const route = (Object.values(commerceTemplate.findResources('AWS::ApiGatewayV2::Route')).find((r: any) => r.Properties.RouteKey === key) as any).Properties;
@@ -2268,7 +2276,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             }
         });
 
-        test('(cmrc1b-4) each of the two functions: TABLE_NAME (the main table) is its only variable; its role is its own and every statement on it is a read of the main table — no write, no SES, no event bus, no secret, no invoke; every OTHER commerce function keeps the event-bus grant', () => {
+        test('(cmrc1b-4) each of the three functions: TABLE_NAME (the main table) is its only variable; its role is its own and every statement on it is a read of the main table — no write, no SES, no event bus, no secret, no invoke; every OTHER commerce function keeps the event-bus grant', () => {
             const tree = realTree();
             const main = parentTable(MAIN);
             const at = templateOfRoute(ROUTES[0].key);
@@ -2317,7 +2325,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 for (const list of [policyIds, integrationIds, routeIds, permissionIds]) expect(list).toHaveLength(1);
                 logicalIds.push(fnId, roleId, ...policyIds, ...integrationIds, ...routeIds, ...permissionIds);
             }
-            // The stack's event-bus grant (the loop at the end of api-commerce.ts) skips exactly these two functions: every
+            // The stack's event-bus grant (the loop at the end of api-commerce.ts) skips exactly these three functions: every
             // other function of the commerce nested stack still has `events:PutEvents`.
             const policies = Object.values(json.Resources).filter((r: any) => r.Type === 'AWS::IAM::Policy') as any[];
             const withoutEventBus = (Object.entries(json.Resources) as Array<[string, any]>)
@@ -2332,8 +2340,14 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             expect(withoutEventBus.sort()).toEqual(ROUTES.map((r) => r.construct).sort());
             expect(Object.values(json.Resources).filter((r: any) => r.Type === 'AWS::Lambda::Function').length).toBeGreaterThan(30);   // control: the siblings were read
 
-            // The logical ids the staging diff will show for this slice (docs/slices/cmrc-1b.md § Deployment), logged once.
-            console.log(`(cmrc1b-4) new logical ids — parent: ${parentTable(COMMERCE).logicalId}; CommerceApi nested stack: ${logicalIds.join(', ')}`);
+            // The logical ids of the table and of the three functions' resources, logged once. The staging diff of CMRC-1B
+            // showed the table and the first two groups (docs/slices/cmrc-1b.md § Deployment); the staging diff of CMRC-1L
+            // shows the `CustomerOrderLookup…` group (docs/slices/cmrc-1l.md § Migration / deployment notes).
+            console.log(`(cmrc1b-4) logical ids — parent: ${parentTable(COMMERCE).logicalId}; CommerceApi nested stack: ${logicalIds.join(', ')}`);
+            const commerceResources = Object.keys(json.Resources).length;
+            const commerceFunctions = Object.values(json.Resources).filter((r: any) => r.Type === 'AWS::Lambda::Function').length;
+            console.log(`(cmrc1b-4) CommerceApi nested stack: ${commerceResources} resources, ${commerceFunctions} functions (deployed ≈ ${commerceResources + commerceFunctions} with one log group per function); limit 500`);
+            expect(commerceResources + commerceFunctions).toBeLessThan(500);
         });
 
         test("(cmrc1b-5) the renderer server function: no variable names the commerce table, and its role's DynamoDB grants denote the main table and its own tag-cache table only", () => {

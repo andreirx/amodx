@@ -45,7 +45,7 @@ AmodxStack
 ├── AmodxEvents (EventBridge bus + Audit rule + SQS DLQ)
 ├── CatalogApi (NestedStack — content/redirects/products/import FUNCTIONS only; instantiated before AmodxApi and passed in; their routes live in AmodxApi)
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
-├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports; CMRC-1B: the two customer read routes for the renderer key)
+├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports; CMRC-1B, CMRC-1L: the three customer read routes for the renderer key)
 ├── EngagementApi (NestedStack — popups, forms)
 ├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1G1: calendar feed, scheduled job; after AdminHosting, which supplies `adminUrl`)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
@@ -81,16 +81,17 @@ All resources tagged with `Stage` and `Project: AMODX`.
 | GSI_Type | Type (STRING) | CreatedAt (STRING) | List entities by type |
 | GSI_Status | Status (STRING) | ScheduledFor (STRING) | Workflow/inbox queries |
 
-## Commerce-Private Table and Customer Read Routes (CMRC-1B)
+## Commerce-Private Table and Customer Read Routes (CMRC-1B, CMRC-1L)
 
-Record `docs/slices/cmrc-1b.md`; specification `docs/slices/cmrc-1.md` § 5.8. PROTOTYPE until the operator's staging
-run. The section above describes the main table only; `database.ts` declares three tables: the main table, the
+Records `docs/slices/cmrc-1b.md` (the table and two routes) and `docs/slices/cmrc-1l.md` (the third route);
+specification `docs/slices/cmrc-1.md` § 5.8. PROTOTYPE until the operator's staging run. The section above describes the main table only; `database.ts` declares three tables: the main table, the
 scheduling-private table (described under `SchedulingApi` below) and this one.
 
 **What is NOT true yet — read this first.** The table protects nothing. It is empty, and every order and customer
 item is still in the main table. The renderer server function still has `grantReadData` on the whole main table
-(`renderer-hosting.ts`), so the renderer's IAM reach to that data is the same as before this slice. CMRC-1B changed
-which CODE reads the account data (the renderer's two account routes now ask the backend), not which ROLE can read
+(`renderer-hosting.ts`), so the renderer's IAM reach to that data is the same as before these slices. CMRC-1B and
+CMRC-1L changed which CODE reads the data (the renderer's two account routes and its two order pages now ask the
+backend; since CMRC-1L no renderer code reads an order or a customer item), not which ROLE can read
 it. The reach ends only when the items leave the main table (`cmrc-4`, `cmrc-6`).
 
 **The table (`database.ts`, property `commerceTable`).** `AmodxCommerceTable<suffix>`, construct id `CommerceTable`,
@@ -101,13 +102,19 @@ a variable (there is no `COMMERCE_TABLE_NAME`); no role has a statement on it. W
 a stateful resource is reviewed alone, in a diff that cannot break a function, and `cmrc-2` proves the copy tool
 against the empty table on staging. `cmrc-4` wires it into the commerce functions only.
 
-**The two functions and their routes (`api-commerce.ts`).** Both are built from
-`backend/src/customers/self-service.ts`:
+**The three functions and their routes (`api-commerce.ts`).** All are built from
+`backend/src/customers/self-service.ts` with one property set (`selfServiceReadProps`):
 
-| Function (construct id) | Handler | Route |
-|---|---|---|
-| `CustomerOrderHistoryFunc` | `orderHistoryHandler` | `POST /customer/order-history` |
-| `CustomerProfileReadFunc` | `profileReadHandler` | `POST /customer/profile-read` |
+| Function (construct id) | Handler | Route | Since |
+|---|---|---|---|
+| `CustomerOrderHistoryFunc` | `orderHistoryHandler` | `POST /customer/order-history` | CMRC-1B |
+| `CustomerProfileReadFunc` | `profileReadHandler` | `POST /customer/profile-read` | CMRC-1B |
+| `CustomerOrderLookupFunc` | `orderLookupHandler` | `POST /customer/order-lookup` | CMRC-1L |
+
+The first two serve the account page (the email is the validated session's). The third serves the order
+confirmation and tracking pages: its request holds the order id and the email of the page address, with no session —
+a recorded exception to PD-002 (`docs/platform-decisions.md`, amendment 2026-11-28; an operator ruling, not yet
+confirmed by the human). The infrastructure of the three is the same; the difference is in the handler.
 
 - **Authorization:** `addRoute` without `noAuth` → `AuthorizationType: CUSTOM` with the nested stack's authorizer
   (`CommerceAuthorizer`), as `POST /public/customers/profile`. The authorizer admits any valid credential and passes
@@ -119,7 +126,7 @@ against the empty table on staging. `cmrc-4` wires it into the commerce function
 - **Restricted grants:** `table.grantReadData` only — the read actions on the main table and its indexes (CDK writes
   it as two statements). No write, no SES, no secret, no `lambda:InvokeFunction`.
 - **No event bus:** the loop at the end of the `CommerceApi` constructor grants `events:PutEvents` to every
-  `NodejsFunction` of the nested stack. It skips exactly these two (the list `publishNoEvent`). Every other commerce
+  `NodejsFunction` of the nested stack. It skips exactly these three (the list `publishNoEvent`). Every other commerce
   function keeps the grant it had; a new read-only function that must not publish joins that list.
 
 **After a rollback** the table stays (RETAIN). The next deploy that declares it fails on the existing name until the
@@ -134,18 +141,20 @@ understanding a value):
   each detected on a probe); no function variable holds it by name or by value; every DynamoDB grant of the stack
   tree has a table shape and denotes the main table or the renderer's OpenNext tag-cache table — never this one (a
   probe grant on it IS resolved to it);
-- `(cmrc1b-3)` the two routes: once in the stack tree, in the commerce nested stack, `CUSTOM` with its authorizer,
-  each on its own function and handler;
+- `(cmrc1b-3)` the three routes: once in the stack tree, in the commerce nested stack, `CUSTOM` with its authorizer,
+  each on its own function and handler; no other route of the tree is under `/customer/`;
 - `(cmrc1b-4)` each function: `TABLE_NAME` its only variable; its own role with the one AWS logging policy; every
   statement an Allow of read actions on the main table, together exactly the read set; every OTHER commerce function
-  still has `events:PutEvents`. The row logs the new logical ids (listed in `docs/slices/cmrc-1b.md` § *Migration /
-  deployment notes*, for the operator's reading of the staging diff);
+  still has `events:PutEvents`. The row logs the logical ids of the table and of the three functions' resources
+  (listed in `docs/slices/cmrc-1b.md` and `docs/slices/cmrc-1l.md` § *Migration / deployment notes*, for the
+  operator's reading of each staging diff) and the nested stack's resource count;
 - `(cmrc1b-5)` the renderer server function: no variable names the commerce table; its DynamoDB grants denote the
   main table and its tag-cache table only.
 
 Counts (credential-free test synth, 2026-11-28): parent raw 413 / 53 functions, deployed ≈ 479 — **21 below
 CloudFormation's limit of 500**, and a stateful resource cannot move to a nested stack without replacement
-(`docs/TECH-DEBT.md`, F-CMRC1B-PARENT-HEADROOM); `CommerceApi` raw 233 / 38 functions, deployed ≈ 271.
+(`docs/TECH-DEBT.md`, F-CMRC1B-PARENT-HEADROOM); `CommerceApi` raw 239 / 39 functions, deployed ≈ 278 (CMRC-1L added
+one function: 6 resources and its log group; before it 233 / 38, ≈ 271). The parent count did not change with CMRC-1L.
 
 ## Lambda Configuration (`api.ts`)
 

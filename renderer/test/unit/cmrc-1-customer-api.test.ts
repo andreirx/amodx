@@ -18,6 +18,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * The answers per stored-data class are `cmrc-1-account-answers.test.ts` (which ran before and after the change);
  * what the backend does with the call is `backend/test/unit/cmrc-1-self-service.test.ts`.
  *
+ * CMRC-1L (docs/slices/cmrc-1l.md § Proofs) adds the rows of the third read, `getOrderForCustomer` (the order
+ * confirmation and tracking pages): the call, and the answer mapping — 200 → the order, the route's own 404
+ * `notFound` → `null`, EVERY other outcome → `CustomerApiError` (also a 404 that is not the route's). The backend's
+ * side is `backend/test/unit/cmrc-1-order-lookup.test.ts`; the pages are `cmrc-1-order-pages.test.ts`.
+ *
  * Credential-free: `AMODX_API_KEY` makes `getRendererKey` return without a Secrets Manager call. Mocked at the module
  * boundary: the tenant lookup by host and the session.
  */
@@ -30,7 +35,7 @@ vi.mock("@/lib/dynamo", () => ({ getTenantConfig: async (host: string) => TENANT
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { CustomerApiError, getCustomerOrders, getCustomerProfile } from "@/lib/customer-api";
+import { CustomerApiError, getCustomerOrders, getCustomerProfile, getOrderForCustomer } from "@/lib/customer-api";
 import { GET as getOrders } from "@/app/api/account/orders/route";
 import { GET as getProfile } from "@/app/api/profile/route";
 
@@ -253,5 +258,93 @@ describe("CMRC-1B T5 — the moved backend call holds no address extraction (the
             expect(code, file).not.toMatch(/viewerAddress|x-viewer-address|x-forwarded-for|cloudfront-viewer-address/i);
             expect(code.length, `control: ${file} was read`).toBeGreaterThan(200);
         }
+    });
+});
+
+describe("CMRC-1L T5 — getOrderForCustomer: the call and the answer mapping", () => {
+    const ROUTE = "/customer/order-lookup";
+    const failure = async (run: Promise<unknown>) => {
+        const error = await run.catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(CustomerApiError);
+        return error as CustomerApiError;
+    };
+
+    it("one POST to its route: exactly the renderer key, the tenant and the content type; the body is { orderId, email } as given", async () => {
+        reply = jsonReply(200, { order: { id: "o-1" } });
+        await getOrderForCustomer("tenant-shop", " O-1#x ", " Ana@Example.COM ");
+        expect(calls).toEqual([{
+            url: `https://backend.example.test${ROUTE}`,
+            method: "POST",
+            headers: { "x-api-key": "renderer-key", "x-tenant-id": "tenant-shop", "content-type": "application/json" },
+            body: { orderId: " O-1#x ", email: " Ana@Example.COM " },   // not normalized, not trimmed here: the backend holds the rule
+            cache: "no-store",
+        }]);
+    });
+
+    it("200 → the `order` as answered, deep-equal: null, numbers, text, nested maps and lists; {} stays {}", async () => {
+        const order = {
+            id: "o-1", orderNumber: "PPB-0001", total: 160, subtotal: "160.00", customerPhone: null, shippingAddress: { street: "1 Test Street", lines: ["a", 2, null] },
+            items: [{ productId: "p-1", quantity: 2, selectedVariant: null, personalizations: [{ label: "Monogram", value: "AB" }] }],
+            statusHistory: [{ status: "placed", timestamp: "2026-11-01T10:00:00.000Z", note: null }],
+        };
+        reply = jsonReply(200, { order });
+        expect(await getOrderForCustomer("tenant-shop", "o-1", "ana@example.com")).toEqual(order);
+        reply = jsonReply(200, { order: {} });
+        expect(await getOrderForCustomer("tenant-shop", "o-1", "ana@example.com")).toEqual({});
+    });
+
+    it("the route's own 404 { code: notFound } → null (the page's 'no order' look), and nothing is logged", async () => {
+        reply = jsonReply(404, { code: "notFound" });
+        expect(await getOrderForCustomer("tenant-shop", "o-none", "ana@example.com")).toBeNull();
+        expect(logs.filter((l) => l.includes("[backend-call]"))).toEqual([]);
+    });
+
+    it.each([
+        ["the API gateway's 404 for a route that does not exist (a deploy in progress)", jsonReply(404, { message: "Not Found" })],
+        ["a 404 with another code", jsonReply(404, { code: "forbidden" })],
+        ["a 404 that is not JSON", () => new Response("<html>not found</html>", { status: 404 })],
+        ["a 404 whose body is a JSON list", jsonReply(404, ["notFound"])],
+    ])("a 404 that is NOT the route's answer (%s) → CustomerApiError 404, never null", async (_case, answer) => {
+        reply = answer;
+        const error = await failure(getOrderForCustomer("tenant-shop", "sentinel-order", "sentinel.visitor@example.test"));
+        expect({ route: error.route, status: error.status }).toEqual({ route: ROUTE, status: 404 });
+        expect(error.message).not.toContain("sentinel");
+    });
+
+    it.each([400, 401, 403, 429, 500, 502, 503])("the backend answers %i → CustomerApiError { route, status } — also when its body says notFound", async (status) => {
+        reply = jsonReply(status, { code: "notFound", order: { id: "o-1" } });
+        const error = await failure(getOrderForCustomer("tenant-shop", "sentinel-order", "sentinel.visitor@example.test"));
+        expect({ route: error.route, status: error.status }).toEqual({ route: ROUTE, status });
+        expect(error.message).not.toContain("sentinel");
+    });
+
+    it("the call itself fails → CustomerApiError unreachable; the log has the route and the error's name, no email and no order id", async () => {
+        reply = () => { throw new TypeError("connect ECONNREFUSED sentinel-order sentinel.visitor@example.test"); };
+        const error = await failure(getOrderForCustomer("tenant-shop", "sentinel-order", "sentinel.visitor@example.test"));
+        expect(error.status).toBe("unreachable");
+        expect(logs.filter((l) => l.includes("[backend-call]"))).toEqual([`[backend-call] backend call failed: ${ROUTE} TypeError`]);
+        expect(logs.join("\n")).not.toContain("sentinel");
+    });
+
+    it("no API_URL, or no renderer key → CustomerApiError unreachable, and nothing is sent", async () => {
+        delete process.env.API_URL;
+        expect((await failure(getOrderForCustomer("tenant-shop", "o-1", "ana@example.com"))).status).toBe("unreachable");
+        process.env.API_URL = "https://backend.example.test";
+        process.env.AMODX_API_KEY = "";
+        expect((await failure(getOrderForCustomer("tenant-shop", "o-1", "ana@example.com"))).status).toBe("unreachable");
+        expect(calls).toEqual([]);
+    });
+
+    it.each([
+        ["a body that is not JSON", () => new Response("<html>gateway</html>", { status: 200 })],
+        ["JSON null", jsonReply(200, null)],
+        ["a JSON list", jsonReply(200, [])],
+        ["an object without `order`", jsonReply(200, { code: "ok" })],
+        ["`order` null", jsonReply(200, { order: null })],
+        ["`order` as text", jsonReply(200, { order: "none" })],
+        ["`order` as a list", jsonReply(200, { order: [] })],
+    ])("a 200 answer that is not the route's answer (%s) → CustomerApiError malformedAnswer, never null", async (_case, answer) => {
+        reply = answer;
+        expect((await failure(getOrderForCustomer("tenant-shop", "o-1", "ana@example.com"))).status).toBe("malformedAnswer");
     });
 });

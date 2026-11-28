@@ -44,11 +44,16 @@
 //     status — so no 200-with-empty-data is produced either way. Reached only from `/api/*`
 //     handlers; verified by grep over `renderer/src`: `getRendererKey`/`getMasterKey` have
 //     no callers under `app/[siteId]/` or `components/`.
+//     Since CMRC-1B / CMRC-1L that last sentence is true for those two names only: `callBackend`
+//     of the same file is reached from `lib/customer-api.ts`, and through it from ONE render
+//     path — `components/SitePage.tsx`, the order confirmation and tracking pages (dynamic twin
+//     only). `callBackend` forwards no empty key: without a key or `API_URL` it makes no call,
+//     and `customer-api` THROWS for everything but the route's answer. So the rule above holds
+//     there too: a failed order read fails the render; it never renders "Order Not Found".
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings, pageLanguageOf, languageTagOf, localeLanguageSubtag } from "@amodx/shared";
 import { docClient, requireTableName } from "./dynamo-client";
-export { getOrderForCustomer } from "./dynamo-customer-reads";
 
 /** Check if a product is within its availability date window today (UTC day). The rule is `@amodx/shared`'s
  *  `isProductAvailable` (CAT-IMPORT-PROFILE-1B moved it there for the admin preview); this binds it to the clock. */

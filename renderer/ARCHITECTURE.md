@@ -78,10 +78,9 @@ src/
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
-    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing; re-exports getOrderForCustomer
+    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing (no read of an order or a customer item: those are customer-api.ts)
     ├── dynamo-client.ts                       # The read layer's one DynamoDB document client (`docClient`) and `requireTableName()` (refactor-renderer-reads-1)
-    ├── dynamo-customer-reads.ts               # The ONE direct read of a customer's commerce data that is left: getOrderForCustomer (order confirmation and tracking pages) — part L of cmrc-1 removes it and this file
-    ├── customer-api.ts                        # CMRC-1B: getCustomerOrders, getCustomerProfile OVER HTTP — one callBackend call each (POST /customer/order-history, /customer/profile-read); anything but the route's 200 answer → CustomerApiError
+    ├── customer-api.ts                        # CMRC-1B, CMRC-1L: getCustomerOrders, getCustomerProfile, getOrderForCustomer OVER HTTP — one callBackend call each (POST /customer/order-history, /customer/profile-read, /customer/order-lookup); anything but the route's answer → CustomerApiError (the order lookup's own 404 `notFound` → null). The renderer's only reads of a customer's or an order's data (CMRC-1L deleted dynamo-customer-reads.ts)
     ├── tenant-directory.ts                    # EDGE runtime: the host verdict for middleware — unknown / unwired / wired + languages (own client — see file header)
     ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input; FINDINGS-1: `SITEMAP_BY_ID_HEADER` (middleware → sitemap route)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
@@ -97,6 +96,7 @@ test/
     ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection; failHostGate(), staleTenantRecord() (lang-1b); pageQueries() (lang-1c)
     ├── lang-1c-sitemap-before.json            # /sitemap.xml of every fixture tenant at d940fc1 (row lang1c-sitemap-identity)
     ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
+    ├── backend-stub.mjs                       # CMRC-1L: stand-in for the backend API, ONE route (POST /customer/order-lookup, from the fixture items); every other request is dropped, so the renderer still has no booking or form backend
     ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage
     └── fixtures.mjs                           # tenant + ROUTE# + CONTENT# items, `.test` TLD hosts
 ```
@@ -393,23 +393,32 @@ and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 
 ## Direct DynamoDB Access (`lib/dynamo.ts`)
 
-**Three files, one read layer** (slice `refactor-renderer-reads-1`, moves only):
+**Two files, one read layer** (slice `refactor-renderer-reads-1` made three, moves only; CMRC-1L deleted the third,
+`lib/dynamo-customer-reads.ts`, when its last read moved to the backend):
 
 | File | Holds | Imports from the tree |
 |---|---|---|
 | `lib/dynamo-client.ts` | the one `DynamoDBClient` + `DynamoDBDocumentClient` (`docClient`, created at import) and `requireTableName()` | none |
-| `lib/dynamo-customer-reads.ts` | `getOrderForCustomer` — the read of `ORDER#` for the order confirmation and tracking pages. Since CMRC-1B the account reads (`getCustomerOrders`, `getCustomerProfile`) are NOT here: they are in `lib/customer-api.ts` and go through the backend | `dynamo-client.ts` |
-| `lib/dynamo.ts` | every other read; re-exports `getOrderForCustomer`, so `SitePage` keeps `from "@/lib/dynamo"` | `dynamo-client.ts`, `dynamo-customer-reads.ts` |
+| `lib/dynamo.ts` | every read of the main table: tenant, content, products, categories, reviews, delivery settings. No order and no customer item | `dynamo-client.ts` |
 
-- **Rule (CMRC-1B, `docs/slices/cmrc-1b.md`):** the renderer adds NO direct read of an order or a customer item. A
-  customer read goes through the backend: a function in `lib/customer-api.ts` that calls `callBackend`
-  (`lib/api-client.ts`) with the tenant of the host's record and the email of the validated session (PD-002). One
-  direct read is left, `getOrderForCustomer` in `lib/dynamo-customer-reads.ts`; part L of `cmrc-1` moves it to
-  `customer-api.ts` and deletes the file. The guard is `backend/test/unit/cmrc-1-key-ownership.test.ts` (it permits
-  exactly that one read). `customer-api.ts` maps an answer: the route's 200 body → the value; any other status, a
+- **Rule (CMRC-1B, CMRC-1L; `docs/slices/cmrc-1b.md`, `docs/slices/cmrc-1l.md`):** the renderer has NO direct read
+  of an order or a customer item, and adds none. Such a read goes through the backend: a function in
+  `lib/customer-api.ts` that calls `callBackend` (`lib/api-client.ts`) with the tenant of the host's record. Three
+  functions: `getCustomerOrders` and `getCustomerProfile` (the account routes; the email of the validated session,
+  PD-002) and `getOrderForCustomer` (`SitePage`, the order confirmation and tracking pages; the order id and the
+  email of the PAGE ADDRESS — a recorded exception to PD-002, `docs/platform-decisions.md` amendment 2026-11-28, an
+  operator ruling not yet confirmed by the human). The guard is `backend/test/unit/cmrc-1-key-ownership.test.ts`: it
+  refuses a commerce-private key prefix in any file under `renderer/src`, with no exception.
+  `customer-api.ts` maps an answer: the route's 200 body → the value; any other status, a
   200 body that is not the route's answer, or no call possible → `CustomerApiError` (route + status, never the
-  email) — so a failed dependency never looks like "no orders" or "no profile". The two account routes catch it and
-  answer their fixed 500 text.
+  email or the order id) — so a failed dependency never looks like "no orders", "no profile" or "no such order". The
+  two account routes catch it and answer their fixed 500 text. **`SitePage` catches nothing:** a failed order read
+  fails the render (HTTP 500 on the dynamic twin, never stored), as a DynamoDB error did before. The order lookup's
+  "not found" is ONLY the route's own answer, 404 with `code: "notFound"` → `null` → the page's "no order" look; a
+  404 without that code is the API gateway's (a route that does not exist: a deploy in progress) and throws.
+  **The order view is narrower than the old read:** the backend answers the 17 fields the two views read
+  (`ORDER_VIEW_FIELDS`, shared), where the old read gave the whole item without `internalNotes`. A view that needs
+  another field of the order must add it to that list first — and that changes the PD-002 exception.
   **Tests.** `test/unit/cmrc-1-customer-api.test.ts` (the transport through the real `callBackend`: one POST, exactly
   three headers, the body from the arguments; the answer mapping; the identity rule at the two routes — no session →
   no backend call; nothing of the browser request is forwarded). `test/unit/cmrc-1-account-answers.test.ts` (what the
@@ -419,16 +428,23 @@ and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
   `backend/test/unit/memory-table.ts`. No file under `renderer/src` imports backend code; the edge is renderer TEST →
   backend, one direction (no backend file imports the renderer). The handler file is loaded by an absolute path built
   from `import.meta.url`: the test runner resolves a computed relative import against the project root.
-- **Direction:** `dynamo.ts` → `dynamo-customer-reads.ts` → `dynamo-client.ts`, and `dynamo.ts` → `dynamo-client.ts`.
+  `test/unit/cmrc-1-order-pages.test.ts` (CMRC-1L; the same cross-workspace shape, with the real `orderLookupHandler`):
+  the static markup of the confirmation and tracking pages for 34 states, from stored items and a page address,
+  byte-equal to `cmrc-1-order-pages-before.json`, which the same file wrote on the commit before CMRC-1L; and the
+  field pin — a recorder around the order object shows that the two views read exactly the 17 `OrderView` fields and
+  never enumerate the object. `test/unit/order-email-1.test.ts` keeps the renderer half of its rule (the email is
+  forwarded as typed); the stored-form cases are in `backend/test/unit/cmrc-1-order-lookup.test.ts`.
+- **Direction:** `dynamo.ts` → `dynamo-client.ts`.
   Nothing imports `dynamo.ts` back (that would be a cycle); a new read file imports the client from
   `dynamo-client.ts`, never from `dynamo.ts`.
 - **One client:** `new DynamoDBClient(` appears once in the read layer (`dynamo-client.ts`). The other two in
   `renderer/src` are separate on purpose: `lib/tenant-directory.ts` (edge, see above) and `app/api/posts/route.ts`.
-- **The error rule below covers all three files.** The `dynamo.ts` file header and the `requireTableName` comment
-  say "this file"; the moves-only rule kept their text, so this section is where the rule is stated for the customer
-  reads too (finding F-RRR1-HEADER-SCOPE in `docs/slices/refactor-renderer-reads-1.md`).
+- **The error rule below covers both files, and `lib/customer-api.ts`.** The `dynamo.ts` file header and the
+  `requireTableName` comment say "this file"; this section is where the rule is stated for the customer and order
+  reads too (finding F-RRR1-HEADER-SCOPE in `docs/slices/refactor-renderer-reads-1.md`): they throw
+  `CustomerApiError` for every outcome that is not the route's answer.
 - **Server only:** the callers are server code (`components/SitePage.tsx`; until CMRC-1B also the two account
-  routes, which now import `lib/customer-api.ts`); no `"use client"` module reaches these files. None of the three files has an
+  routes, which now import `lib/customer-api.ts`); no `"use client"` module reaches these files. Neither file has an
   `import "server-only"` marker (finding F-RRR1-NO-SERVER-ONLY).
 
 The renderer reads directly from DynamoDB for performance (bypasses backend API):
@@ -482,7 +498,10 @@ whole estate on a blip — the render repeats the lookup and throws anyway; and
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
 One caller does not forward an empty key: `callBackend` in the same file (CMRC-1B; users `lib/customer-api.ts` and
 `lib/booking-proxy.ts`) makes no call and returns `null`; the two account GET routes then answer 500 and the booking
-proxy 503. The property is the same: no 200 with empty data.
+proxy 503. The property is the same: no 200 with empty data. Since CMRC-1L `callBackend` is also reached from ONE
+render path — `SitePage` → `getOrderForCustomer`, the order confirmation and tracking pages, on the dynamic twin
+only (the read needs a query value; the cacheable route passes none). There `null` becomes a thrown
+`CustomerApiError`: the render fails and nothing is stored — never an "Order Not Found" page.
 
 ## Category page content (CATEGORY-CONTENT-1, PROTOTYPE)
 
@@ -761,13 +780,16 @@ Tests: `test/unit/price-locale-1.test.ts` (real provider, button, cart page, che
 
 ## Order read by email — slice `order-email-1`
 
-Record `docs/slices/order-email-1.md`. `getOrderForCustomer(tenant, orderId, email)` (`lib/dynamo-customer-reads.ts`, re-exported by `lib/dynamo.ts`) reads
-`ORDER#<orderId>` and returns it (without `internalNotes`) only when the stored `customerEmail` equals
-`normalizeEmail(email)` (`@amodx/shared`). The order handler stores `normalizeEmail(typed)`; the confirmation address
+Record `docs/slices/order-email-1.md`. Since CMRC-1L the rule has two places: `getOrderForCustomer(tenant, orderId,
+email)` (`lib/customer-api.ts`) forwards the order id and the email as given, and the backend's `orderLookupHandler`
+(`backend/src/customers/self-service.ts`) reads `ORDER#<orderId>` and answers its 17 view fields only when the stored
+`customerEmail` equals `normalizeEmail(email)` (`@amodx/shared`). (Before CMRC-1L the renderer made that read itself
+and returned the whole item without `internalNotes`.) The order handler stores `normalizeEmail(typed)`; the confirmation address
 (`CheckoutPageView`) and the account page's tracking link carry the email as typed or as the session gives it, so the
 read normalizes the request side. Only the request side: a stored value that is not in normalized form matches no
 request (the current writer makes none; only an order of 2026-02-15..03-07 can hold one; the backend `orders/public-get.ts` normalizes both sides).
-Tests: `test/unit/order-email-1.test.ts`.
+Tests: `test/unit/order-email-1.test.ts` (the renderer forwards the email as typed), `backend/test/unit/cmrc-1-order-lookup.test.ts`
+(the comparison and the stored-form cases), `test/unit/cmrc-1-order-pages.test.ts` (both, from stored items to the page).
 
 ## Checkout region list — slice `cmrc-counties-1`
 

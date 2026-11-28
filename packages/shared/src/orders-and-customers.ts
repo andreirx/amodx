@@ -161,6 +161,37 @@ export type CustomerProfileView = {
     defaultAddress?: StoredValue;
 };
 
+// --- ORDER LOOKUP FOR THE ORDER PAGES (CMRC-1L; docs/slices/cmrc-1l.md, docs/slices/cmrc-1.md § 5.6 D3) ---
+// The data that crosses the renderer → backend boundary of POST /customer/order-lookup: the read of the order
+// confirmation page and the order tracking page. The renderer sends the order id and the email of the PAGE ADDRESS
+// (no session): an exception to PD-002, recorded in docs/platform-decisions.md (amendment of 2026-11-28).
+
+/**
+ * The request body: exactly two fields, each a non-empty string. A STRUCTURE check only — no format rule and no length
+ * bound: the backend applies `normalizeEmail()` to the email and reads; a value that matches no stored order is "not
+ * found", never an error (the input rule). The renderer always builds this shape, so a body that fails here is a
+ * renderer defect.
+ */
+export const OrderLookupRequestSchema = z.object({ orderId: z.string().min(1), email: z.string().min(1) }).strict();
+
+/**
+ * The attributes of a stored order that the route may answer: the 17 that the two order pages read
+ * (`renderer/src/components/site-page/order-views.tsx`), and no other. ONE list: the backend builds its projection and
+ * its answer from it. An attribute that a page starts to read is added HERE first — and the PD-002 amendment names
+ * this list, so a new field is a change of that exception.
+ */
+export const ORDER_VIEW_FIELDS = [
+    "id", "orderNumber", "createdAt", "currency", "customerName", "customerPhone", "discount", "estimatedDeliveryDate", "items",
+    "paymentMethod", "shippingAddress", "shippingCost", "status", "statusHistory", "subtotal", "total", "trackingNumber",
+] as const;
+export type OrderViewField = (typeof ORDER_VIEW_FIELDS)[number];
+
+/**
+ * The answer `{ order }` of POST /customer/order-lookup: the stored order reduced to `ORDER_VIEW_FIELDS`. Each field is
+ * the stored attribute passed through (the value rule) and is absent exactly when the stored item lacks it.
+ */
+export type OrderView = Partial<Record<OrderViewField, StoredValue>>;
+
 // --- ORDER INPUT VALIDATION (for public checkout API) ---
 
 export const OrderItemInputSchema = z.object({

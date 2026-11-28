@@ -170,9 +170,57 @@ from the request body or a browser-set header. Four access classes, and nothing 
 Choosing a tenant by URL grants nothing private: private data needs a token issued under that tenant. No backend
 route becomes anonymous; the `CUSTOMER` branch stays dormant (PD-003).
 
+### Order-page lookup exception (amendment 2026-11-28, CMRC-1L)
+
+Operator ruling of 2026-11-28 under the human's standing rule of 2026-11-27; not yet confirmed by the human; the human may overrule.
+
+This is an **exception** to the invariant "the browser never supplies … customer email as an authority". It is not
+a variant that conforms, and no document may claim PD-002 conformance for this read. Decision record:
+`docs/slices/cmrc-1.md` § 8 CMRC-ORDER-LOOKUP-AUTHORITY (answer A) and its Appendix R; build record
+`docs/slices/cmrc-1l.md`.
+
+**Why it exists.** A buyer needs no account. After checkout the browser opens the order confirmation page with the
+order id and the email in the page address; the order tracking page works the same way. Before CMRC-1L the renderer
+read the order from the main table itself and showed it when the stored email equalled the given one. CMRC-1L keeps
+that proof and moves the read behind the backend, so that the order can leave the table the renderer can read.
+
+**What is excepted — one read, and nothing else:**
+
+- A **read-only order view**, authorized by **possession of the order id and an email equal to the stored normalized
+  email** (`stored customerEmail === normalizeEmail(email)`; only the request side is normalized).
+- Through the **renderer**, with the **`RENDERER` key**: route `POST /customer/order-lookup`. The backend refuses
+  every other role (except `GLOBAL_ADMIN`, which `requireRole` always admits). The browser cannot call the route.
+  The tenant is host-derived by the renderer, as everywhere in PD-002.
+- The answer holds **17 fields** of the order and no other: `id`, `orderNumber`, `createdAt`, `currency`,
+  `customerName`, `customerPhone`, `discount`, `estimatedDeliveryDate`, `items`, `paymentMethod`, `shippingAddress`,
+  `shippingCost`, `status`, `statusHistory`, `subtotal`, `total`, `trackingNumber` (`ORDER_VIEW_FIELDS` in
+  `packages/shared/src/orders-and-customers.ts`). A field added to that list is a change of this exception.
+- "No such order", "an order of another tenant" and "the email is not equal" get one answer (404 `notFound`).
+
+**What is NOT excepted:**
+
+- Any write.
+- Any other read: the account order history and the profile keep the session rule (the email of the validated
+  NextAuth session).
+- The anonymous `GET /public/orders/{id}?email=`. It uses the same possession proof, with no renderer and no key,
+  and it answers more than the 17 fields. It is not covered by this text; it is judged in `cmrc-5`
+  (finding F-CMRC1-PUBLIC-ORDER-GET).
+
+**Residual risk, in plain words.** Whoever holds the link sees the buyer's name, phone and address, and what was
+bought. The link is not secret by design: the email travels in page addresses and in the browser history, and it
+can reach logs and a `Referer` header (finding F-CMRC1-EMAIL-IN-PAGE-URL stays open). The order id is a random
+UUID, so a link cannot be guessed; it can be forwarded, read over a shoulder, or left on a shared computer. This
+exception records the risk. It does not repair it.
+
+**The stronger design that would retire it.** Option C of the decision: token links. Each order gets an
+unguessable token, stored as a hash (the scheduling `TOKEN#` pattern above); the confirmation and tracking
+addresses carry the token instead of the email; the lookup becomes a token lookup. That design removes the email
+from page addresses and makes this exception unnecessary. It is separate later work, not started.
+
 ### Applies to
 
-- commerce account / profile / order self-service
+- commerce account / profile / order self-service (the order confirmation and tracking pages of a guest: under the
+  *Order-page lookup exception* above, amendment 2026-11-28 — an exception, not conformance)
 - scheduling (appointments and group seats): availability reads, booking, view, confirm, cancel and move, under
   the *Booking-token variant* above (amendment 2026-11-21; replaces "appointment booking / list / cancel in Phase 1")
 

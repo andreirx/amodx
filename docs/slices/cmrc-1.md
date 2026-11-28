@@ -7,7 +7,7 @@ Status: **PLANNED (specification draft, revision 1 of 2026-11-22, not ratified) 
 the staging procedure of § 5.13 passes; MATURE when `cmrc-4` passes on staging.
 
 **Build status (2026-11-28):** `cmrc-1a` (C2, and C1 for the backend sites only: the data module, the re-pointing of S1-S15, T1b, T2, T3; the renderer sites S16-S18 of C1 stay) is built —
-`docs/slices/cmrc-1a.md`, baseline `a78c006`, on staging since 2026-11-28. Not built: part L.
+`docs/slices/cmrc-1a.md`, baseline `a78c006`, on staging since 2026-11-28. (Part L: the third line below.)
 **Build status (2026-11-28, second line):** `cmrc-1b` (C3, C4, C5, C6, C7, part K: the routes D1 and D2, the renderer's
 account routes through `customer-api.ts`, `callBackend`, the empty table, T4, T5, T7, T10) is built —
 `docs/slices/cmrc-1b.md`, baseline `9d454f5`, operator gates pending. The renderer reads S17 and S18 of § 2.2 are
@@ -15,6 +15,17 @@ gone; S16 stays (the one exception of C1 and T3) until part L. Differences from 
 are recorded in `docs/slices/cmrc-1b.md` § *Deviations and local decisions* (among them: the commerce stack grants
 the event bus to every function by a loop, so § 5.8's "no event bus" needed an exclusion in that loop; the request
 schemas are in `packages/shared/src/orders-and-customers.ts`, not `index.ts`, since `refactor-shared-1`).
+**Build status (2026-11-28, third line):** `cmrc-1l` (part L: every **[L]** item of § 5 — D3 `POST /customer/order-lookup`,
+`OrderLookupRequestSchema`, `OrderView`, `getOrderForCustomer` of `customer-api.ts`, the `SitePage` import, the deletion of
+`dynamo-customer-reads.ts`, T3 with no exception, T4/T5 [L] rows, T6, T8, T9, T11) is built — `docs/slices/cmrc-1l.md`,
+baseline `7200d38`, operator gates pending. The renderer read S16 of § 2.2 is gone: no code under `renderer/src` names a
+commerce-private key. **Decision status: CMRC-ORDER-LOOKUP-AUTHORITY = A is an operator ruling of 2026-11-28 under the
+human's standing rule of 2026-11-27, not yet confirmed by the human; the human may overrule (option C, token links).**
+It is recorded as an exception in `docs/platform-decisions.md` (PD-002, amendment 2026-11-28), not as conformance.
+Differences from this document that the build found are in `docs/slices/cmrc-1l.md` § *Deviations and local decisions*
+(among them: T11 is a headless render comparison in `renderer/test/unit/`, by the build packet's direction, not a
+serving-contract baseline; the serving harness needs a backend address and a constructed key, so row `(iso1)` lists two
+more names).
 The § 2.2 site table below is corrected to `a78c006`. Every other file:line citation of this document stays as read
 at `5aee9cb`. `cmrc-1a` made the twelve handler files of S1-S15 shorter by zero to nine lines each (the largest:
 `customers/get.ts`, nine), so a citation into one of them can be off by that much on the current tree
@@ -774,6 +785,7 @@ DECISION_REQUIRED:
   - B. Session-derived email only (PD-002 as written). Reward: no exception; the strongest rule without new mechanism. Risk: every guest buyer (checkout needs no account) loses the order details on the confirmation page and the tracking page; a tenant without Google sign-in configured loses them for everyone. Consequence: C5 is rewritten for the order pages and part L gets a guest design (what the page shows without a session) before it is built.
   - C. Token links in a prerequisite slice: each order gets an unguessable token stored as a hash (the scheduling `TOKEN#` pattern, PD-002 booking-token variant extended to commerce); the confirmation and tracking addresses carry the token instead of the email; D3 becomes a token lookup. Reward: a stronger proof; no email in page addresses (closes F-CMRC1-EMAIL-IN-PAGE-URL). Risk: new scope — token issue at checkout, links already in browsers and account pages, expiry, rollout of old links; one more slice before part L. Consequence: `cmrc-1` ships as part K; S16 stays in the renderer until the token slice; PD-002 gets a commerce token amendment; `cmrc-4` waits for the token slice (cutover gate, § 6).
   RECOMMENDED: A for this preservation slice (it changes no behaviour and records the gap), with C recorded as separate later work.
+  STATUS (2026-11-28): operator ruling A, not yet confirmed by the human. Applied under the human's standing rule of 2026-11-27 (the operator applies its reviewed recommendation and records it); the human was told on 2026-11-27 and 2026-11-28 and may overrule it (option C = token links). Recorded as an EXCEPTION in `docs/platform-decisions.md` (PD-002, amendment 2026-11-28); part L is built under it (`docs/slices/cmrc-1l.md`).
   BLOCKING_REASON: Blocks part L of `cmrc-1` (every item marked [L] in § 5) and, through the cutover gate (§ 6), `cmrc-4` and everything after it. Part K does not depend on it. The document claims no PD-002 conformance for the order-page read until this is decided.
 
 DECISION_REQUIRED:

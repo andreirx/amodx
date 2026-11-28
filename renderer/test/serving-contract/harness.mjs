@@ -49,6 +49,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { TABLE_NAME } from "./fixtures.mjs";
 import { startDdbStub } from "./ddb-stub.mjs";
+import { startBackendStub, RENDERER_TEST_KEY } from "./backend-stub.mjs";
 import { startS3Stub } from "../serving-bundle/s3-stub.mjs";
 import { startSqsStub } from "../serving-bundle/sqs-stub.mjs";
 import { startLambdaHost } from "../serving-bundle/lambda-host.mjs";
@@ -108,8 +109,9 @@ export const BUNDLE_FIXTURE = {
     revalidationSecret: "serving-bundle-revalidation-secret",
 };
 
-/** An address no request can reach and that never leaves this host (nothing listens on port 1):
- *  `API_URL` and the catch-all `AWS_ENDPOINT_URL`. A row that reaches either fails locally. */
+/** An address no request can reach and that never leaves this host (nothing listens on port 1): the catch-all
+ *  `AWS_ENDPOINT_URL`. A row that reaches it fails locally. (Until cmrc-1l it was also the bundle target's `API_URL`;
+ *  that is now the backend stub, which answers ONE route and drops every other request — backend-stub.mjs.) */
 const UNREACHABLE = "http://127.0.0.1:1";
 
 /**
@@ -187,7 +189,11 @@ export async function readAudit() {
 /** LANG-1B: the `next` target's revalidation secret (a constructed test value; row lang1b-purge). */
 export const REVALIDATION_TEST_SECRET = "serving-contract-revalidation-secret";
 
-export function rendererEnv(stubUrl) {
+/**
+ * @param stubUrl  the DynamoDB stub
+ * @param apiUrl   the backend stub (backend-stub.mjs) — given for the SERVING phase only; the build makes no backend call
+ */
+export function rendererEnv(stubUrl, apiUrl) {
     const env = {};
     for (const key of OS_PASSTHROUGH) {
         if (process.env[key] !== undefined) env[key] = process.env[key];
@@ -216,6 +222,13 @@ export function rendererEnv(stubUrl) {
         // LANG-1B: lets row lang1b-purge call POST /api/revalidate (the route refuses every call without a secret). A
         // constructed test value, never the operator's; the bundle target overrides it with its own (`bundleEnv`).
         REVALIDATION_SECRET: REVALIDATION_TEST_SECRET,
+        // CMRC-1L: the order confirmation and tracking pages read their order from the backend
+        // (`lib/customer-api.ts` → `callBackend`), so the serving renderer needs a backend address and a key. Both
+        // are CONSTRUCTED: the address is the loopback backend stub, the key is a test value that
+        // `lib/api-client.ts` takes from the environment before it would ask Secrets Manager. The stub answers
+        // `POST /customer/order-lookup` only and drops every other request, so every other backend call still fails
+        // as it did when the renderer had no address (rows `sched1g-*`: 503 at the forward step).
+        ...(apiUrl ? { API_URL: apiUrl, AMODX_API_KEY: RENDERER_TEST_KEY } : {}),
     };
 }
 
@@ -233,15 +246,19 @@ export function rendererEnv(stubUrl) {
  *                                and the operator's ~/.aws/config could otherwise set
  *                                `ignore_configured_endpoint_urls`, which makes the SDK ignore
  *                                every `AWS_ENDPOINT_URL_*` above. A Lambda has no such file.
+ *   AMODX_API_KEY                (cmrc-1l) the constructed renderer key, from `rendererEnv`. The Lambda gets its key
+ *                                from Secrets Manager (`AMODX_API_KEY_SECRET`), which has no stub here; the
+ *                                environment key is `lib/api-client.ts`'s first source, so that call is not made.
+ *                                `API_URL` is the backend stub (one route answered, every other request dropped).
  */
-export function bundleEnv({ ddb, s3, sqs }) {
+export function bundleEnv({ ddb, s3, sqs, api }) {
     const noAwsFile = path.join(os.tmpdir(), "amodx-serving-bundle-no-such-aws-file");
     return {
-        ...rendererEnv(ddb.url),
+        ...rendererEnv(ddb.url, api.url),
         // ── RendererServer `environment` (infra/lib/renderer-hosting.ts) ──
         NODE_ENV: "production",
         // TABLE_NAME: from rendererEnv (the fixture table).
-        API_URL: UNREACHABLE,
+        // API_URL: from rendererEnv (the backend stub; cmrc-1l).
         CACHE_BUCKET_NAME: BUNDLE_FIXTURE.cacheBucket,
         CACHE_BUCKET_KEY_PREFIX: "_cache",
         CACHE_BUCKET_REGION: "eu-central-1",
@@ -266,18 +283,21 @@ export function bundleEnv({ ddb, s3, sqs }) {
 }
 
 /**
- * The stubs a target needs: DynamoDB always; under `bundle` also S3 and SQS, and the DynamoDB
- * stub serves the tag-cache table too. `close()` stops all of them.
+ * The stubs a target needs: DynamoDB and the backend stub (cmrc-1l: one route, backend-stub.mjs) always; under
+ * `bundle` also S3 and SQS, and the DynamoDB stub serves the tag-cache table too. `close()` stops all of them.
  */
 export async function startStubs() {
     const ddb = await startDdbStub(BUNDLE ? { tagTable: BUNDLE_FIXTURE.tagTable } : {});
+    const api = await startBackendStub();
     const s3 = BUNDLE ? await startS3Stub({ bucket: BUNDLE_FIXTURE.cacheBucket }) : null;
     const sqs = BUNDLE ? await startSqsStub({ queueName: BUNDLE_FIXTURE.queueName }) : null;
     return {
         ddb,
         s3,
         sqs,
-        /** Every operation a stub could not answer, prefixed by stub. Empty = all modelled. */
+        api,
+        /** Every operation a stub could not answer, prefixed by stub. Empty = all modelled. (The backend stub is not
+         *  in this list: it DROPS every request but one by design — its journal is in `operationInventory`.) */
         unhandled: () => [
             ...ddb.stats().unhandled.map((u) => `dynamodb: ${u}`),
             ...(s3?.unhandled() ?? []).map((u) => `s3: ${u}`),
@@ -285,6 +305,7 @@ export async function startStubs() {
         ],
         close: async () => {
             await ddb.close();
+            await api.close();
             await s3?.close();
             await sqs?.close();
         },
@@ -312,6 +333,7 @@ export function operationInventory(stubs, label) {
         `  dynamodb ${JSON.stringify(count(stubs.ddb.journal(), (e) => `${e.table}:${e.op}${e.index ? `@${e.index}` : ""}`))}`,
         `  s3       ${JSON.stringify(count(stubs.s3.journal(), (e) => `${e.op}[${e.addressing}]→${e.status}`))}`,
         `  sqs      ${JSON.stringify(count(stubs.sqs.journal(), (e) => e.op))}`,
+        `  backend  ${JSON.stringify(count(stubs.api.journal(), (e) => `${e.route}→${e.outcome}`))}`,
         `  tag rows written ${stubs.ddb.tagItems().length}`,
     ].join("\n");
 }
@@ -324,10 +346,10 @@ export function operationInventory(stubs, label) {
  * would work for this process but would hide, from anyone reading the code, that argv is the
  * delivery path that does NOT propagate.
  */
-function spawnNext(args, stubUrl) {
+function spawnNext(args, stubUrl, apiUrl) {
     return spawn(process.execPath, [NEXT_BIN, ...args], {
         cwd: RENDERER_DIR,
-        env: rendererEnv(stubUrl),
+        env: rendererEnv(stubUrl, apiUrl),
         stdio: ["ignore", "pipe", "pipe"],
     });
 }
@@ -421,7 +443,7 @@ export async function startRenderer(stubs) {
     }
     const stubUrl = stubs.ddb.url;
     const port = await freePort();
-    const child = spawnNext(["start", "-p", String(port)], stubUrl);
+    const child = spawnNext(["start", "-p", String(port)], stubUrl, stubs.api.url);
     let log = "";
     child.stdout.on("data", (d) => (log += d));
     child.stderr.on("data", (d) => (log += d));
