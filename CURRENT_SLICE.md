@@ -4,9 +4,13 @@ Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` 
 
 ## In the worktree
 
-Nothing. Next in Track B: `cmrc-2` (`docs/slices/cmrc-1.md` § 6). Its shape depends on CMRC-TEST-ONLY (asked of the
-human: does production hold a real customer order?); the planned default is A, the full copy.
+Nothing. Next in Track B: `cmrc-2b` (the write freeze guard, `docs/slices/cmrc-1.md` § 6 "The write freeze").
 
+`cmrc-2a` is built since 2026-11-28 (`docs/slices/cmrc-2a.md` § "Closeout"; nothing to deploy): the tool
+`scripts/migrate-commerce-private-table.ts` (+ `scripts/commerce-private-table/`) does the inventory, the copy with
+conditional writes, the content verification with a manifest, the post-cutover verification, the purge of verified
+copies and the discard under an authorization record. Its read-only modes ran on staging; its writing modes are
+proven by unit tests only until the human permits writes to the commerce staging table.
 `cmrc-1l` (part L of `cmrc-1`) is on staging since 2026-11-28 (`docs/slices/cmrc-1l.md` § "Closeout") and waits for
 the human's production deploy: the order confirmation and tracking pages read the order through
 `POST /customer/order-lookup` (renderer key; 17 fields). No renderer code reads a commerce-private item any more
@@ -77,8 +81,9 @@ site; one real order with a price change in the cart; one real custom-form submi
 ## Not started, by track
 
 - **B commerce-private** (`cmrc-1`…`6`): mandatory (human 2026-11-20; a client with real orders is named).
-  Specification `docs/slices/cmrc-1.md`; `cmrc-1a`, `cmrc-1b` and `cmrc-1l` (part L) are built (above); `cmrc-2`…`6`
-  are not started. Backlog behind it: `cmrc-reviews-ask`, `cmrc-withdrawal`.
+  Specification `docs/slices/cmrc-1.md`; `cmrc-1a`, `cmrc-1b`, `cmrc-1l` (part L) and `cmrc-2a` (the tool) are built
+  (above); `cmrc-2b` (the write freeze) and `cmrc-3`…`6` are not started. Backlog behind it: `cmrc-reviews-ask`,
+  `cmrc-withdrawal`.
 - **C customer sign-in** (`auth-1`…`7`): planned, no code; Google sign-in exists.
 - **D scheduling**: draft `sched-1` — two shapes (a slot with a practitioner, a seat in a group), booking by
   emailed link; `sched-frame-1` offers it to sites that are not on AMODX. Four decisions open.

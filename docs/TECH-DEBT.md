@@ -584,6 +584,47 @@ word has these known limits:
 - **F-CMRC1-CONFIRM-DISCOUNT, F-CMRC1-CUSTORDER-STATUS, F-CMRC1-REQUIREROLE-NAME** of the specification stay open and
   are preserved (`discount` is one of the 17 fields and no runtime writer stores it).
 
+### CMRC-2A residuals (2026-11-28)
+**Found / left by:** `cmrc-2a` (`docs/slices/cmrc-2a.md`). None is fixed there.
+
+- **The tool is not yet proven against DynamoDB.** `scripts/migrate-commerce-private-table.ts` is proven against an
+  in-memory double that accepts exactly its four command forms. Its file rules (`scripts/commerce-private-table/files.ts`)
+  are proven against a file-system double and against `node:fs` in a temporary directory on the builder's machine
+  (macOS); the entry file itself (the wiring of the real client and `node:fs`) is run by no test. Open until the operator's staging run: `ConsistentRead`
+  on the Queries, the error name `ConditionalCheckFailedException` of a refused conditional Put, the number texts
+  DynamoDB returns, a real partition size. Closes `docs/slices/cmrc-1.md` § 10.2 D2 for the tests and the missing modes.
+- **No restore tool for the NDJSON export** of `purge` and `discard`. The line format is defined (the item in
+  canonical, lossless form with its SHA-256); a restore is written when one is needed. Until then a restore is the
+  DynamoDB backup named by `--backup-ref`.
+- **F-CMRC2A-AUDIT — to decide before `cmrc-4`:** the `AUDIT#` entries of order status and payment changes hold the
+  order id and a free-text note (`docs/slices/cmrc-1.md` Appendix R.1). The tool does not copy, verify or delete them.
+- **F-CMRC2A-STALE-COMMENT:** `backend/src/lib/commerce-db.ts` (header, "keeps its own list of the prefixes …
+  `cmrc-2` makes it import the list below") is stale since `cmrc-2a`: the tool imports the list. `cmrc-2a` could not
+  edit `backend/src`. One sentence; correct it in `cmrc-2b`.
+- **F-CMRC2A-CLAUDE-MD:** `CLAUDE.md` Critical rule 10 says the copy tool "still writes these keys" (it now holds no
+  prefix text; `backend/test/unit/cmrc-2a-tool-kinds.test.ts` checks it), and its Commands block says `npm run
+  typecheck` covers "all 8 workspaces" (it now has a ninth step, `typecheck:commerce-private-table-tool`). Governance
+  text; not edited by the slice.
+- **F-CMRC2A-COUNTER-PREFIX:** the order counter is selected by `begins_with(SK, <its whole key>)`, as § 6 states the
+  predicate. A later key that starts with the same text would be copied, verified and purged with it. None exists today.
+- **`verify --post-cutover` cannot say when a commerce-table key outside the manifest was created** (operator ruling
+  CMRC2A-Q6-RELEASE-EVIDENCE = B; slice record D4; `docs/slices/cmrc-1.md` § 6, note of 2026-11-28). It lists those
+  keys and counts them. Q6 is passed only with the operator's freeze record (freeze on from before P1 until the
+  release deploy; P2 showed every writer refusing). That check is manual and blocking in `cmrc-4`.
+- **"The detail file" of that ruling is read as the tool's report** (slice record D17): the keys are report lines, the
+  operator keeps the report with the shell function `keep` of the runbook, which also keeps the exit status (a plain
+  pipe to `tee` returns 0 for a refused run). A separate key file would be one more output; not built.
+- **`verify --post-cutover` does not check that every manifest key still has its main-table item** (slice record D5;
+  review-1 F06): the ruling ratifies three statements and this is none of them. The last line of the report gives the
+  count of manifest keys and of main-table items; a smaller second count before `cmrc-6` needs a look by the operator.
+- **The capture function `keep` is runbook text, not a tested program:** verified by hand in bash and zsh on the
+  builder's machine (macOS). If the operator's shell is another one, verify `keep` there first with `cmrc --help`
+  (status 0) and with a refused request (status 1).
+- **The root `typecheck` script calls `tsc` for `scripts/commerce-private-table/tsconfig.json`**, and the root
+  `package.json` does not list `typescript`: the binary is there because every workspace depends on it.
+- **Generated maps** `scripts/MAP.md` and `scripts/migrate-commerce-private-table_ts_MAP.md` describe the old file
+  until `rmap` is refreshed.
+
 ### F-RESERVED-SCAN-LIMITS: known false-clean forms of the reserved-word lint (2026-11-27)
 **Found:** `projection-reserved-1` review 2; scope frozen by the operator ruling PR1-STATIC-SCOPE
 (`docs/slices/projection-reserved-1.md`). The static lint (`scanExpressionSites`,

@@ -26,6 +26,18 @@ Differences from this document that the build found are in `docs/slices/cmrc-1l.
 (among them: T11 is a headless render comparison in `renderer/test/unit/`, by the build packet's direction, not a
 serving-contract baseline; the serving harness needs a backend address and a constructed key, so row `(iso1)` lists two
 more names).
+**Build status (2026-11-28, fourth line):** `cmrc-2a` — the TOOL half of the `cmrc-2` bullet of § 6 (its part (1): the
+extended `scripts/migrate-commerce-private-table.ts`; the manifest of P1; `verify --post-cutover` of Q6; both removal
+branches of the `cmrc-6` bullet with the key-set-and-hash guard of Appendix R.2 condition 4) — is built:
+`docs/slices/cmrc-2a.md`, baseline `9f2e10e`, operator staging run pending. No runtime file changed. The write freeze
+guard (part (2) of the bullet) is `cmrc-2b`, not built. Differences from § 6 that the build recorded are in
+`docs/slices/cmrc-2a.md` § *Deviations and local decisions* (among them: plain `--mode verify` and
+`--allow-existing-destination` are removed; the key-set-and-hash guard applies to both discard predicates). Revised
+2026-11-28 after review-0 of `cmrc-2a`: the tool does NOT establish "created after the release" of Q6 — see the dated
+note under Q6 in § 6 (operator ruling CMRC2A-Q6-RELEASE-EVIDENCE = B); purge writes the export of every candidate
+before its first delete, as § 6 says, and discard writes each line before its delete; the selector of the old mail
+counters takes no tenant list (operator ruling CMRC2A-SYSTEM-ALLOWLIST = A). S19 of § 2.2 now imports
+`COMMERCE_PRIVATE_PREFIXES`; it sends Query, GetItem, conditional PutItem and DeleteItem, no `BatchWrite`.
 The § 2.2 site table below is corrected to `a78c006`. Every other file:line citation of this document stays as read
 at `5aee9cb`. `cmrc-1a` made the twelve handler files of S1-S15 shorter by zero to nine lines each (the largest:
 `customers/get.ts`, nine), so a citation into one of them can be off by that much on the current tree
@@ -667,6 +679,27 @@ S16 (removed by part L under CMRC-ORDER-LOOKUP-AUTHORITY = A or B, or by the tok
      exists only there was created after the release; the main table holds no key outside the manifest and every
      main-table item still hashes to its manifest value (no writer targets the main table). A Q failure: re-freeze at
      once (deploy with the list), then the human chooses fix-forward or a rollback across the boundary.
+
+     **Note of 2026-11-28 on Q6 — operator ruling CMRC2A-Q6-RELEASE-EVIDENCE = B** (after review-0 of `cmrc-2a`; an
+     operator ruling under the human's standing rule of 2026-11-27, the human may overrule). Q6 is split in two
+     parts, and BOTH are needed to pass it:
+     - **The tool** (`verify --post-cutover`) proves, and says it proves, exactly three statements: (1) every
+       manifest key exists in the commerce table; (2) the main table holds no key of a moved kind outside the
+       manifest; (3) every main-table item still hashes to its manifest value. It LISTS the commerce-table keys that
+       are not in the manifest — their count, and each key as a line of its report — under the name "destination
+       keys not in the manifest". It never calls them "written after the manifest" or "created after the release":
+       it cannot establish when an item was created. With (1)-(3) holding its result is green, and its last lines
+       say how many such keys there are and that the tool cannot date them.
+     - **The operator, BLOCKING:** the freeze record shows that the write freeze was on from before the manifest run
+       P1 until the release deploy, and that P2 showed every frozen writer refusing. Only with that record does "a
+       key absent from the manifest can only have been written after the release" hold. Without it Q6 is not
+       passed, whatever the tool printed.
+     The words "every key that exists only there was created after the release" above therefore name the result of
+     the two parts together, not an output of the tool. Rejected: a release-time input compared with `createdAt` —
+     the order counter and the customer profile carry no creation time, so the check would cover some kinds and
+     suggest all. (Revised 2026-11-28 after review-1 of `cmrc-2a`: the tool has exactly these three failure
+     conditions. (2) and (3) speak of the items the main table holds; a manifest key that has no main-table item
+     breaks none of the three and is not reported as a difference — `docs/slices/cmrc-2a.md` D5.)
 - **`cmrc-4` — storage cutover.** Scope: `COMMERCE_TABLE` = required `COMMERCE_TABLE_NAME` (no fallback);
   `COMMERCE_TABLE_NAME` and grants on the commerce table for exactly the functions that use it (create: read-write;
   admin order and customer writes: read-write; reads, reports, `GET /resources/{id}/download`, the `cmrc-1`

@@ -18,9 +18,9 @@ src/
 │   │                      #   CUSTORDER#, CUSTOMER#, COUNTER#ORDER) and that chooses their table (handler sites
 │   │                      #   S1-S15, and the three read handlers of customers/self-service.ts, CMRC-1B and
 │   │                      #   CMRC-1L). Since CMRC-1L the public renderer names none of these keys (CMRC-1B removed
-│   │                      #   its reads S17 and S18, CMRC-1L removed S16). NOT repository-wide: the operational copy
-│   │                      #   tool scripts/migrate-commerce-private-table.ts (S19) keeps its own prefix list, until
-│   │                      #   cmrc-2. Pure, no I/O: seven functions return a
+│   │                      #   its reads S17 and S18, CMRC-1L removed S16). The operational copy tool
+│   │                      #   scripts/migrate-commerce-private-table.ts (S19) imports COMMERCE_PRIVATE_PREFIXES from
+│   │                      #   here since CMRC-2A and has no list of its own. Pure, no I/O: seven functions return a
 │   │                      #   LOCATED REFERENCE — { TableName, Key } (orderRef, customerRef, customerOrderRef,
 │   │                      #   orderCounterRef) or { TableName, KeyConditionExpression, ExpressionAttributeValues }
 │   │                      #   (ordersQuery, customersQuery, customerOrdersQuery) — which the handler spreads into its
@@ -929,9 +929,11 @@ can still read all four: the main-table read grant is not changed.
   `COUNTER#ORDER`. Scope of this rule today: the 15 backend handler sites S1-S15 and the three read handlers of
   `customers/self-service.ts` (CMRC-1B, CMRC-1L). The public renderer names none of these keys since CMRC-1L: its
   three reads S16-S18 (`getOrderForCustomer`, `getCustomerOrders`, `getCustomerProfile`) call the backend, and
-  `renderer/src/lib/dynamo-customer-reads.ts` is deleted. Retained outside the module: the
-  operational copy tool `scripts/migrate-commerce-private-table.ts` (S19), which has its own prefix list and takes
-  table names as arguments — `cmrc-2` changes it. The guarantee "customer-private data is out of the renderer's
+  `renderer/src/lib/dynamo-customer-reads.ts` is deleted. Outside `backend/src`: the operational tool
+  `scripts/migrate-commerce-private-table.ts` (S19; CMRC-2A, record `docs/slices/cmrc-2a.md`) imports
+  `COMMERCE_PRIVATE_PREFIXES` from the module — it holds no prefix of its own — and takes both table names as
+  arguments (it copies between the main table and the commerce table, verifies, purges and discards; described in
+  `scripts/README.md`; its tests are `test/unit/cmrc-2a-*.test.ts`). The guarantee "customer-private data is out of the renderer's
   reach" is still NOT true: the renderer's role can read the whole main table, where every order and customer
   item still is. An empty table `AmodxCommerceTable<suffix>` exists since CMRC-1B; no function has its name or a grant.
   A handler takes a located reference from the module and spreads it into the command it builds itself:
@@ -1148,7 +1150,8 @@ files, all credential-free:
   hits outside the owner file is compared with the empty list (CMRC-1A permitted three named renderer reads, CMRC-1B
   one) — so a passing run proves "backend: one file; renderer: none; packages: none" for the scanned forms. Not
   scanned: `scripts/` (the copy tool
-  S19), tests, `admin/`, `tools/`, `infra/`. It cannot see a prefix that is joined from parts at run time.
+  S19 — since CMRC-2A `test/unit/cmrc-2a-tool-kinds.test.ts` checks that no file of that tool holds a prefix as
+  text), tests, `admin/`, `tools/`, `infra/`. It cannot see a prefix that is joined from parts at run time.
 - `test/unit/cmrc-1-self-service.test.ts` (CMRC-1B, T4) — the two handlers of `customers/self-service.ts` over the
   in-memory table: `RENDERER` and `GLOBAL_ADMIN` pass, every other caller gets 403 and no DynamoDB command; the
   tenant of every command is `x-tenant-id`; a body that is not exactly `{ email }` → 400 with no request text; the
@@ -1161,6 +1164,23 @@ files, all credential-free:
   email rule with the stored-form cases the renderer test `order-email-1` held before; one byte-equal 404 for every
   "not found" cause; the answer holds exactly the view fields the item has, also when the table returns the whole
   item; a DynamoDB failure → 500 and a log line with no email and no order id.
+- `test/unit/cmrc-2a-canonical-item.test.ts`, `cmrc-2a-decisions.test.ts`, `cmrc-2a-files.test.ts`,
+  `cmrc-2a-tool.test.ts`, `cmrc-2a-tool-kinds.test.ts` (CMRC-2A, record `docs/slices/cmrc-2a.md` § *Safety table*) —
+  the operational tool
+  `scripts/migrate-commerce-private-table.ts`, which lives OUTSIDE `backend/`; the unit suite reaches it by relative
+  import (`../../../scripts/commerce-private-table/…`), so `npm run test:unit` stays the one command. The canonical
+  form and hash of an item in DynamoDB wire form; every verdict of the pure core; every mode from the argument list to
+  the exit status over `cmrc-2a-raw-tables.ts` — NAMED in-memory tables that hold wire-form items and accept only the
+  tool's four command forms of `@aws-sdk/client-dynamodb` (consistent Query by PK + sort-key prefix, consistent
+  GetItem, PutItem with `attribute_not_exists(SK)`, DeleteItem); a table can be made read-only or untouchable, which
+  is the proof that `purge` only reads the destination and `discard` never touches it; hooks before a command and
+  after an applied write make a call fail with or without its effect (the failure tests). `cmrc-2a-files.test.ts`
+  tests the tool's file rules (`scripts/commerce-private-table/files.ts`) over a file-system double (short writes,
+  failed flush) and over `node:fs` in a temporary directory `CMRC-2A-files-*` under the system temp directory, which
+  it removes — the one unit test file that writes to disk. The double calls
+  `assertNoBareReservedWord` itself: the `setupFiles` mock below wraps `@aws-sdk/lib-dynamodb`, which the tool does
+  not use. These files and the tool are type-checked (strict) by the root `npm run typecheck`, step
+  `typecheck:commerce-private-table-tool` — not by this package's `tsc`, which covers `src/` only.
 
 **The reserved-word guard (PROJECTION-RESERVED-1, `docs/slices/projection-reserved-1.md`).** The test doubles do not
 evaluate expressions, so a bare DynamoDB reserved word (`total`, `source`, `items`, `status`, `name`, `data`, …) in an

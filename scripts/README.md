@@ -21,32 +21,45 @@ Run after every `cdk deploy`.
 
 ## `npm run migrate-commerce-private-table`
 
-One-time operational migration tool for moving customer-private commerce records out of the main table and into the dedicated commerce-private table.
+The operational tool of Track B (CMRC-2A; record and operator runbook: `docs/slices/cmrc-2a.md`). It moves the
+customer-private commerce records out of the main table into the commerce-private table: inventory, copy, content
+verification with a manifest, post-cutover verification, purge of verified copies, discard under an authorization
+record. `--help` prints the modes and rules. Run `npm run build` first (the tool loads `@amodx/shared`).
 
-Modes:
-- `plan` - query counts from source and destination, no writes
-- `migrate` - copy the moved record families into the destination table and verify
-- `verify` - compare source and destination without writing
+Files: `scripts/migrate-commerce-private-table.ts` (the entry: it only connects the real client, the clock and
+`node:fs`; it holds no rule), `scripts/commerce-private-table/run.ts` (every read, write and delete of a table, and
+the report), `files.ts` (every rule about a file the tool writes: the whole line on disk before a delete, never
+inside the repository, never over a file), `decisions.ts` and `canonical-item.ts` (the pure decisions: one canonical
+form and hash of an item, one verdict per key). Tests:
+`backend/test/unit/cmrc-2a-*.test.ts`, run by `npm --prefix backend run test:unit` (in-memory tables, no AWS). Type
+check: `npm run typecheck` (its last step, `typecheck:commerce-private-table-tool`).
 
-Moved sort-key families:
-- `ORDER#`
-- `CUSTORDER#`
-- `CUSTOMER#`
-- `COUNTER#ORDER`
+Modes (`--mode`):
+- `plan` - counts per tenant and kind; reports GSI key attributes and keys not in normalized email form; `--inventory-out` writes the key set with one SHA-256 per item. Reads only
+- `migrate` - copies with conditional Puts (`attribute_not_exists(SK)`), never overwrites; writes only with `--execute`
+- `verify --strict --manifest-out <file>` - every attribute of every item equal in both tables; writes the verification manifest only when nothing differs
+- `verify --post-cutover --manifest <file> --manifest-sha256 <hex>` - establishes three statements: every manifest key exists in the destination; the source holds no key of a moved kind outside the manifest; every source item still hashes to its manifest value. It lists the destination keys that are not in the manifest and cannot say when they were created: the operator establishes that from the freeze record
+- `purge-plan`, `purge`, `purge-verify` - delete from the SOURCE only what the manifest proves copied; `purge` deletes only with `--execute --backup-ref <text> --export-path <file>`, and writes the export of EVERY candidate before its first delete (green only when no key was refused)
+- `discard-plan`, `discard`, `discard-verify` - delete from the SOURCE under the human's authorization record (`--authorization <file>`), only the listed keys with unchanged hashes; the export line of an item is written just before its delete
+
+The moved kinds are not listed in the tool: it imports `COMMERCE_PRIVATE_PREFIXES` from `backend/src/lib/commerce-db.ts`.
 
 Hard rules:
-- explicit tenant allowlist required
-- explicit source and destination tables required
-- uses `QueryCommand`, never `ScanCommand`
-- does not delete source records
+- explicit tenant allowlist required for every mode and selector that addresses tenant partitions. The one exception: `--selector old-mail-counters` (`PK = SYSTEM`, sort key begins with `EMAILLIMIT#`) addresses items of no tenant, takes no `--tenants` and refuses one; it is protected by the fixed predicate, the authorization record, the authorized key set with hashes, the backup reference and the export
+- explicit source and destination tables required; they must differ
+- Query (PK + sort-key prefix), GetItem, conditional PutItem, DeleteItem only; never a Scan
+- a mode that writes or deletes does so only with `--execute`; without it, it prints the plan
+- a file the tool writes must be outside the repository (its real directory, links resolved) and must not exist yet: the inventory, the manifest and the export hold keys that contain email addresses (the export holds whole items)
+- of a failed AWS or file call the report prints the error's name only, never its message; after a failed Put or Delete it states the outcome only as a consistent read showed it, else UNKNOWN
+- the last line is `RESULT: GREEN` (exit status 0) or `RESULT: NOT GREEN` (exit status 1)
 
 Example:
 
 ```bash
 npm run migrate-commerce-private-table -- \
   --mode plan \
-  --source-table AmodxTable \
-  --destination-table AmodxCommerceTable \
+  --source-table AmodxTable-staging \
+  --destination-table AmodxCommerceTable-staging \
   --tenants tenant-a,tenant-b
 ```
 
